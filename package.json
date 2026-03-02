@@ -31,15 +31,5 @@
     "extensions": [
       "./extensions/fancy-footer.ts"
     ]
-  },
-  "scripts": {
-    "clean": "echo 'nothing to clean'",
-    "build": "echo 'nothing to build'",
-    "check": "echo 'nothing to check'"
-  },
-  "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*"
   }
 }
