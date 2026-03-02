@@ -1,0 +1,9 @@
+name: Release
+
+jobs:
+  release:
+    uses: tenzir/ship/.github/workflows/reusable-release.yaml@main
+    with:
+      intro: ${{ inputs.intro }}
+      title: ${{ inputs.title }}
+    secrets: inherit
