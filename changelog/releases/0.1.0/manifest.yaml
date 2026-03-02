@@ -1,0 +1,7 @@
+created: 2026-03-02
+title: Fancy footer extension for pi
+intro: >-
+  This initial release introduces pi-fancy-footer, a compact two-line status footer
+  that surfaces model, context usage, cost, and git info at a glance. The extension
+  also ships with an optional rainbow pi-digit launch banner to give sessions a recognizable
+  visual identity.
