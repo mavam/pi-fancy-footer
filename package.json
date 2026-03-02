@@ -1,7 +1,7 @@
 {
   "name": "pi-fancy-footer",
   "version": "0.1.0",
-  "description": "A fancy two-line footer extension for pi with git and context stats",
+  "description": "A fancy footer extension for pi",
   "type": "module",
   "files": [
     "extensions",
