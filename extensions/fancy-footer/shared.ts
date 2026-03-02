@@ -150,7 +150,8 @@ export interface FooterMetrics {
   commit: string;
   added: number;
   removed: number;
-  gitStatus: string;
+  gitStatusSymbol: string;
+  gitStatusText: string;
 }
 
 export interface WidgetRenderContext {
@@ -159,6 +160,8 @@ export interface WidgetRenderContext {
   ctx: ExtensionContext;
   compactionSettings: CompactionSettingsSnapshot;
   metrics: FooterMetrics;
+  defaultIconColor: FooterWidgetColor;
+  defaultTextColor: FooterWidgetColor;
 }
 
 export type FooterWidgetSize = number | ((ctx: WidgetRenderContext) => number);

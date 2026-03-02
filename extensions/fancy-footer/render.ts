@@ -99,17 +99,17 @@ function buildBricks(
   return out;
 }
 
-function buildGitStatus(counts: GitCounts, theme: Theme): string {
+function buildGitStatus(counts: GitCounts): Pick<FooterMetrics, "gitStatusSymbol" | "gitStatusText"> {
   if (counts.ahead > 0 && counts.behind > 0) {
-    return `${theme.fg("accent", STATUSLINE_SYMBOLS.gitDiverged)}${theme.fg("dim", `${counts.ahead}/${counts.behind}`)}`;
+    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitDiverged, gitStatusText: `${counts.ahead}/${counts.behind}` };
   }
   if (counts.ahead > 0) {
-    return `${theme.fg("accent", STATUSLINE_SYMBOLS.gitAhead)}${theme.fg("dim", `${counts.ahead}`)}`;
+    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitAhead, gitStatusText: `${counts.ahead}` };
   }
   if (counts.behind > 0) {
-    return `${theme.fg("warning", STATUSLINE_SYMBOLS.gitBehind)}${theme.fg("dim", `${counts.behind}`)}`;
+    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitBehind, gitStatusText: `${counts.behind}` };
   }
-  return "";
+  return { gitStatusSymbol: "", gitStatusText: "" };
 }
 
 function widgetKey(widget: FooterWidget): string {
@@ -357,11 +357,11 @@ function computeFooterMetrics(
     commit: git.commit,
     added: git.added,
     removed: git.removed,
-    gitStatus: buildGitStatus(git.counts, theme),
+    ...buildGitStatus(git.counts),
   };
 }
 
-function baseWidgetPlacement(widgetId: FooterWidgetId): Pick<FooterWidget, "id" | "location" | "align" | "fill"> {
+function baseWidgetDefaults(widgetId: FooterWidgetId): Pick<FooterWidget, "id" | "location" | "align" | "fill" | "icon" | "textColor"> {
   const defaults = FOOTER_WIDGET_META[widgetId].defaults;
 
   return {
@@ -372,32 +372,28 @@ function baseWidgetPlacement(widgetId: FooterWidgetId): Pick<FooterWidget, "id" 
     },
     align: defaults.align,
     fill: defaults.fill,
+    icon: getDefaultWidgetIcon(widgetId),
+    textColor: "dim",
   };
 }
 
 function buildFooterWidgets(): FooterWidget[] {
   return [
     {
-      ...baseWidgetPlacement("model"),
-      icon: getDefaultWidgetIcon("model"),
-      textColor: "dim",
+      ...baseWidgetDefaults("model"),
       renderText: ({ metrics }) => metrics.model,
     },
     {
-      ...baseWidgetPlacement("thinking"),
-      icon: getDefaultWidgetIcon("thinking"),
-      textColor: "dim",
+      ...baseWidgetDefaults("thinking"),
       visible: ({ metrics }) => metrics.thinking !== "",
       renderText: ({ metrics }) => metrics.thinking,
     },
     {
-      ...baseWidgetPlacement("context-capacity"),
-      icon: getDefaultWidgetIcon("context-capacity"),
-      textColor: "dim",
+      ...baseWidgetDefaults("context-capacity"),
       renderText: ({ metrics }) => `${metrics.totalK}k`,
     },
     {
-      ...baseWidgetPlacement("context-bar"),
+      ...baseWidgetDefaults("context-bar"),
       minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
       renderText: ({ metrics, compactionSettings, theme }, availableWidth = 0) =>
@@ -410,58 +406,45 @@ function buildFooterWidgets(): FooterWidget[] {
         ),
     },
     {
-      ...baseWidgetPlacement("context-usage"),
-      icon: getDefaultWidgetIcon("context-usage"),
-      textColor: "dim",
+      ...baseWidgetDefaults("context-usage"),
       visible: ({ width }) => width >= 40,
       renderText: ({ metrics }) => `${metrics.usedK}k`,
     },
     {
-      ...baseWidgetPlacement("total-cost"),
-      icon: getDefaultWidgetIcon("total-cost"),
-      textColor: "dim",
+      ...baseWidgetDefaults("total-cost"),
       visible: ({ width, metrics }) => width >= 60 && metrics.totalCost > 0,
       renderText: ({ metrics }) => metrics.totalCost.toFixed(2),
     },
     {
-      ...baseWidgetPlacement("location"),
-      icon: getDefaultWidgetIcon("location"),
-      textColor: "dim",
+      ...baseWidgetDefaults("location"),
       renderText: ({ metrics }) => metrics.locationText,
     },
     {
-      ...baseWidgetPlacement("branch"),
-      icon: getDefaultWidgetIcon("branch"),
-      textColor: "dim",
+      ...baseWidgetDefaults("branch"),
       visible: ({ metrics }) => metrics.branch !== "",
       renderText: ({ metrics }) => metrics.branch,
     },
     {
-      ...baseWidgetPlacement("commit"),
-      icon: getDefaultWidgetIcon("commit"),
-      textColor: "dim",
+      ...baseWidgetDefaults("commit"),
       visible: ({ metrics }) => metrics.commit !== "",
       renderText: ({ metrics }) => metrics.commit,
     },
     {
-      ...baseWidgetPlacement("diff-added"),
-      icon: getDefaultWidgetIcon("diff-added"),
-      textColor: "dim",
+      ...baseWidgetDefaults("diff-added"),
       visible: ({ metrics }) => metrics.added > 0,
       renderText: ({ metrics }) => `${metrics.added}`,
     },
     {
-      ...baseWidgetPlacement("diff-removed"),
-      icon: getDefaultWidgetIcon("diff-removed"),
-      textColor: "dim",
+      ...baseWidgetDefaults("diff-removed"),
       visible: ({ metrics }) => metrics.removed > 0,
       renderText: ({ metrics }) => `${metrics.removed}`,
     },
     {
-      ...baseWidgetPlacement("git-status"),
+      ...baseWidgetDefaults("git-status"),
       styled: true,
-      visible: ({ metrics }) => metrics.gitStatus !== "",
-      renderText: ({ metrics }) => metrics.gitStatus,
+      visible: ({ metrics }) => metrics.gitStatusSymbol !== "",
+      renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) =>
+        `${theme.fg(defaultIconColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`,
     },
   ];
 }
@@ -606,6 +589,8 @@ export function renderFooterLines(
     ctx,
     compactionSettings,
     metrics,
+    defaultIconColor: footerConfig.defaultIconColor,
+    defaultTextColor: footerConfig.defaultTextColor,
   };
 
   const widgets = applyWidgetConfigOverrides(
