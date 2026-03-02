@@ -37,6 +37,7 @@ Create `~/.pi/agent/fancy-footer.json`:
 ```json
 {
   "refreshMs": 3000,
+  "showPiBanner": true,
   "defaultTextColor": "dim",
   "defaultIconColor": "text",
   "widgets": {
@@ -62,6 +63,7 @@ Create `~/.pi/agent/fancy-footer.json`:
 Top-level settings:
 
 - `refreshMs` (number)
+- `showPiBanner` (boolean)
 - `defaultTextColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 - `defaultIconColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 

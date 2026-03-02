@@ -203,6 +203,7 @@ export interface FooterWidgetConfigOverride {
 
 export interface FooterConfigSnapshot {
   refreshMs: number;
+  showPiBanner: boolean;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
   widgets: Partial<Record<FooterWidgetId, FooterWidgetConfigOverride>>;
@@ -210,6 +211,7 @@ export interface FooterConfigSnapshot {
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
+  showPiBanner: true,
   defaultTextColor: "dim",
   defaultIconColor: "text",
   widgets: {},

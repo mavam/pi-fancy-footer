@@ -26,16 +26,19 @@ import {
 } from "./fancy-footer/config.ts";
 import { collectGitInfo } from "./fancy-footer/git.ts";
 import { collectSessionUsageMetrics, renderFooterLines } from "./fancy-footer/render.ts";
+import { renderBannerLines } from "./fancy-footer/banner.ts";
 
 interface ActiveFooterControls {
   requestRender: () => void;
   reschedule: () => void;
+  applyHeader: () => void;
 }
 
 export default function (pi: ExtensionAPI) {
   let compactionSettings: CompactionSettingsSnapshot = { ...DEFAULT_COMPACTION_SETTINGS };
   let footerConfig: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
+    showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
@@ -48,6 +51,22 @@ export default function (pi: ExtensionAPI) {
 
     compactionSettings = loadCompactionSettings(ctx.cwd);
     footerConfig = loadFooterConfig();
+
+    const applyHeader = () => {
+      if (!footerConfig.showPiBanner) {
+        ctx.ui.setHeader(undefined);
+        return;
+      }
+
+      ctx.ui.setHeader((_tui, theme) => ({
+        render(width: number): string[] {
+          return renderBannerLines(theme, width);
+        },
+        invalidate() {},
+      }));
+    };
+
+    applyHeader();
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       let currentGit = { ...EMPTY_GIT_INFO };
@@ -108,6 +127,7 @@ export default function (pi: ExtensionAPI) {
       activeFooterControls = {
         requestRender,
         reschedule: scheduleRefresh,
+        applyHeader,
       };
 
       void refreshGit();
@@ -156,6 +176,7 @@ export default function (pi: ExtensionAPI) {
           try {
             writeFooterConfigSnapshot(draft);
             footerConfig = loadFooterConfig();
+            activeFooterControls?.applyHeader();
             activeFooterControls?.reschedule();
             activeFooterControls?.requestRender();
           } catch (error) {
@@ -171,6 +192,7 @@ export default function (pi: ExtensionAPI) {
         let settingsList: SettingsList;
         const syncRootValues = () => {
           settingsList.updateValue("refreshMs", String(draft.refreshMs));
+          settingsList.updateValue("showPiBanner", draft.showPiBanner ? "on" : "off");
           settingsList.updateValue("defaultTextColor", draft.defaultTextColor);
           settingsList.updateValue("defaultIconColor", draft.defaultIconColor);
           for (const widgetId of FOOTER_WIDGET_IDS) {
@@ -193,6 +215,12 @@ export default function (pi: ExtensionAPI) {
               const refreshMs = coerceRefreshMs(newValue);
               if (refreshMs !== undefined) {
                 draft.refreshMs = refreshMs;
+                applyDraft();
+                syncRootValues();
+              }
+            } else if (id === "showPiBanner") {
+              if (newValue === "on" || newValue === "off") {
+                draft.showPiBanner = newValue === "on";
                 applyDraft();
                 syncRootValues();
               }

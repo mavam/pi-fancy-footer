@@ -134,6 +134,7 @@ function coerceFooterWidgetOverride(value: unknown): FooterWidgetConfigOverride 
 function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
   const out: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
+    showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: {},
@@ -148,6 +149,10 @@ function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
   const refreshMs = toBoundedNonNegativeInt(input.refreshMs, MAX_FOOTER_REFRESH_MS);
   if (refreshMs !== undefined) {
     out.refreshMs = Math.max(MIN_FOOTER_REFRESH_MS, refreshMs);
+  }
+
+  if (typeof input.showPiBanner === "boolean") {
+    out.showPiBanner = input.showPiBanner;
   }
 
   if (isFooterWidgetColor(input.defaultTextColor)) {
@@ -200,6 +205,7 @@ export function cloneFooterConfig(config: FooterConfigSnapshot): FooterConfigSna
 
   return {
     refreshMs: config.refreshMs,
+    showPiBanner: config.showPiBanner,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
     widgets,
@@ -225,6 +231,7 @@ function toFooterConfigObject(config: FooterConfigSnapshot): Record<string, unkn
 
   const out: Record<string, unknown> = {
     refreshMs: clampInt(config.refreshMs, MIN_FOOTER_REFRESH_MS, MAX_FOOTER_REFRESH_MS),
+    showPiBanner: config.showPiBanner,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
   };
@@ -581,6 +588,13 @@ export function rootFooterSettingsItems(
       currentValue: String(draft.refreshMs),
       values: refreshValues,
       description: "How often git/footer data is refreshed. Lower = snappier, higher = fewer background git calls.",
+    },
+    {
+      id: "showPiBanner",
+      label: "show π banner",
+      currentValue: draft.showPiBanner ? "on" : "off",
+      values: ["on", "off"],
+      description: "Show rainbow pi banner in the header.",
     },
     {
       id: "defaultTextColor",
