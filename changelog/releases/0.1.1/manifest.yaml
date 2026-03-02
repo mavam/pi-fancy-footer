@@ -1,0 +1,6 @@
+created: 2026-03-02
+title: Styled widget color override fix
+intro: >-
+  Fixes color overrides for styled footer widgets. Widget configuration for `iconColor`
+  and `textColor` now correctly propagates into styled widgets' render functions,
+  and git status icons use semantic colors automatically.
