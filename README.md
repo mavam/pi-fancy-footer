@@ -1,8 +1,10 @@
-# pi-fancy-footer
+# ✨ pi-fancy-footer
 
-A pi extension that replaces the default footer with a compact, two-line fancy status footer.
+A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
+extension that replaces the default footer with a compact, two-line fancy status
+footer.
 
-## What it shows
+## 📊 What it shows
 
 - Active model + thinking level
 - Context window capacity and approximate usage
@@ -11,55 +13,32 @@ A pi extension that replaces the default footer with a compact, two-line fancy s
 - Repo / path, branch, commit
 - Git diff stats and ahead/behind status
 
-## Install
+## 📦 Install
 
-### Local path
-
-```bash
-pi install /absolute/path/to/pi-fancy-footer
-```
-
-Or project-local:
+Install as a pi package:
 
 ```bash
-pi install -l /absolute/path/to/pi-fancy-footer
+pi install npm:pi-fancy-footer
 ```
 
-### One-off test
-
-```bash
-pi -e /absolute/path/to/pi-fancy-footer
-```
-
-## Migration from a local extension file
-
-If you previously used `~/.pi/agent/extensions/statusline.ts`, remove or rename it so only one extension sets the footer.
-
-## Commands
+## 🎮 Commands
 
 - `/fancy-footer` - open interactive footer config editor (small TUI)
   - all widgets are listed directly (with icon prefixes)
   - select a widget and press Enter for detailed settings
-  - in widget settings, adjust row/position/align/fill/min-width, visibility, icon show/hide, and icon color
+  - in widget settings, adjust row/position/align/fill/min-width, visibility,
+    icon show/hide, icon color, and text color
   - use Enter/Space to cycle values
 
-## Notes
-
-- Uses pi package convention directories (`extensions/`) instead of an explicit `pi.extensions` manifest.
-- Uses Nerd Font glyphs for best visuals.
-- Reads compaction settings from:
-  - `~/.pi/agent/settings.json`
-  - `<project>/.pi/settings.json`
-- Poll interval and widget overrides are read from:
-  - `~/.pi/agent/fancy-footer.json` (global only)
-
-## Configuration
+## ⚙️ Configuration
 
 Create `~/.pi/agent/fancy-footer.json`:
 
 ```json
 {
   "refreshMs": 3000,
+  "defaultTextColor": "dim",
+  "defaultIconColor": "text",
   "widgets": {
     "context-bar": {
       "align": "middle",
@@ -72,24 +51,34 @@ Create `~/.pi/agent/fancy-footer.json`:
       "enabled": false
     },
     "branch": {
-      "icon": { "text": "", "color": "accent" },
+      "icon": "show",
+      "iconColor": "text",
       "textColor": "muted"
     }
   }
 }
 ```
 
+Top-level settings:
+
+- `refreshMs` (number)
+- `defaultTextColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `defaultIconColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+
 Supported per-widget overrides:
+
 - `enabled` (boolean)
 - `row` (number)
 - `position` (number, ordering within an aligned row group)
 - `align` (`left` | `middle` | `right`)
 - `fill` (`none` | `grow`)
 - `minWidth` (number)
-- `icon` (`null` to hide, or `{ "text": string, "color": ... }`)
+- `icon` (`default` | `show` | `hide`)
+- `iconColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 - `textColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 
 Widget IDs:
+
 - `model`
 - `thinking`
 - `context-capacity`
@@ -103,6 +92,13 @@ Widget IDs:
 - `diff-removed`
 - `git-status`
 
-## License
+Notes:
 
-MIT
+- Uses Nerd Font glyphs for best visuals.
+- Reads compaction settings from:
+  - `~/.pi/agent/settings.json`
+  - `<project>/.pi/settings.json`
+
+## 📄 License
+
+[MIT](LICENSE)
