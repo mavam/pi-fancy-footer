@@ -112,6 +112,16 @@ function buildGitStatus(counts: GitCounts): Pick<FooterMetrics, "gitStatusSymbol
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
 
+function resolveGitStatusSymbolColor(
+  symbol: string,
+  configuredColor: FooterConfigSnapshot["defaultIconColor"],
+): FooterConfigSnapshot["defaultIconColor"] {
+  if (configuredColor !== "text") return configuredColor;
+  if (symbol === STATUSLINE_SYMBOLS.gitBehind) return "warning";
+  if (symbol === STATUSLINE_SYMBOLS.gitAhead || symbol === STATUSLINE_SYMBOLS.gitDiverged) return "accent";
+  return configuredColor;
+}
+
 function widgetKey(widget: FooterWidget): string {
   return `${widget.location.row}:${widget.id}`;
 }
@@ -304,7 +314,6 @@ function computeFooterMetrics(
   ctx: ExtensionContext,
   git: GitInfo,
   thinkingLevel: string,
-  theme: Theme,
   usageMetrics: SessionUsageMetrics,
 ): FooterMetrics {
   const { latest, totalCost } = usageMetrics;
@@ -443,8 +452,10 @@ function buildFooterWidgets(): FooterWidget[] {
       ...baseWidgetDefaults("git-status"),
       styled: true,
       visible: ({ metrics }) => metrics.gitStatusSymbol !== "",
-      renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) =>
-        `${theme.fg(defaultIconColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`,
+      renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) => {
+        const symbolColor = resolveGitStatusSymbolColor(metrics.gitStatusSymbol, defaultIconColor);
+        return `${theme.fg(symbolColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`;
+      },
     },
   ];
 }
@@ -464,6 +475,7 @@ function applyWidgetConfigOverrides(
     };
 
     const textColor = override.textColor ?? defaultTextColor;
+    const resolvedIconColor = override.iconColor ?? defaultIconColor;
 
     let icon = widget.icon;
     if (override.icon === "hide") {
@@ -475,12 +487,23 @@ function applyWidgetConfigOverrides(
     if (icon) {
       icon = {
         ...icon,
-        color: override.iconColor ?? defaultIconColor,
+        color: resolvedIconColor,
       };
     }
 
     let visible = widget.visible;
     let renderText = widget.renderText;
+
+    const baseRenderText = renderText;
+    renderText = (renderCtx, availableWidth) =>
+      baseRenderText(
+        {
+          ...renderCtx,
+          defaultIconColor: resolvedIconColor,
+          defaultTextColor: textColor,
+        },
+        availableWidth,
+      );
 
     if (override.enabled === false) {
       visible = () => false;
@@ -582,7 +605,7 @@ export function renderFooterLines(
 ): string[] {
   if (width <= 0) return ["", ""];
 
-  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, theme, usageMetrics);
+  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics);
   const renderCtx: WidgetRenderContext = {
     width,
     theme,
