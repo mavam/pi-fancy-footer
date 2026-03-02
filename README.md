@@ -4,6 +4,10 @@ A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 extension that replaces the default footer with a compact, two-line fancy status
 footer.
 
+<p align="center">
+  <img src="screenshot.png" alt="screenshot" />
+</p>
+
 ## 📊 What it shows
 
 - Active model + thinking level
