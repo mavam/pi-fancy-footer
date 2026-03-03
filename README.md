@@ -11,6 +11,7 @@ footer.
 ## 📊 What it shows
 
 - Active model + thinking level
+- OAuth provider usage bar (Codex/Claude when linked)
 - Context window capacity and approximate usage
 - Context usage bar with compaction reserve tail
 - Total session cost
@@ -85,6 +86,7 @@ Supported per-widget overrides:
 
 Widget IDs:
 
+- `provider-usage`
 - `model`
 - `thinking`
 - `context-capacity`

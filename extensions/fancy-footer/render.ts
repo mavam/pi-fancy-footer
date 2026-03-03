@@ -14,6 +14,7 @@ import {
   type FooterWidget,
   type FooterWidgetId,
   type FooterWidgetSize,
+  type ModelProviderUsageMetrics,
   type GitCounts,
   type GitInfo,
   type PreparedWidget,
@@ -120,6 +121,79 @@ function resolveGitStatusSymbolColor(
   if (symbol === STATUSLINE_SYMBOLS.gitBehind) return "warning";
   if (symbol === STATUSLINE_SYMBOLS.gitAhead || symbol === STATUSLINE_SYMBOLS.gitDiverged) return "accent";
   return configuredColor;
+}
+
+function normalizeUsagePercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
+}
+
+function formatTimeUntil(resetAtMs: number, nowMs: number): string {
+  const deltaMs = Math.max(0, resetAtMs - nowMs);
+  const totalMinutes = Math.floor(deltaMs / 60_000);
+
+  if (totalMinutes < 60) {
+    return `${Math.max(1, totalMinutes)}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours < 24) {
+    if (minutes === 0) return `${hours}h`;
+    return `${hours}h${minutes}m`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  if (remHours === 0) return `${days}d`;
+  return `${days}d${remHours}h`;
+}
+
+function renderProviderUsage(
+  providerUsage: ModelProviderUsageMetrics,
+  theme: Theme,
+  availableWidth?: number,
+): string {
+  const maxWidth = availableWidth === undefined
+    ? 12
+    : Math.max(0, Math.floor(availableWidth));
+
+  if (maxWidth <= 0) return "";
+
+  const usedPercent = normalizeUsagePercent(providerUsage.primary.usedPercent);
+  const percentText = `${Math.round(usedPercent)}%`;
+  const includeLabel = maxWidth >= 18 && providerUsage.label.trim() !== "";
+  const labelWidth = includeLabel ? visibleWidth(providerUsage.label) + 1 : 0;
+
+  if (maxWidth <= 4) {
+    return theme.fg("dim", percentText);
+  }
+
+  const now = Date.now();
+  const resetText = providerUsage.primary.resetAtMs
+    ? formatTimeUntil(providerUsage.primary.resetAtMs, now)
+    : "";
+
+  const includeReset = resetText !== "" && maxWidth >= 14;
+  const reserveWidth = labelWidth + visibleWidth(percentText) + 1 + (includeReset ? visibleWidth(resetText) + 1 : 0);
+
+  let barCells = Math.max(2, Math.min(8, maxWidth - reserveWidth));
+  if (maxWidth - reserveWidth < 2) {
+    barCells = 0;
+  }
+
+  const label = includeLabel ? `${theme.fg("muted", providerUsage.label)} ` : "";
+  const tail = `${theme.fg("dim", percentText)}${includeReset ? ` ${theme.fg("muted", resetText)}` : ""}`;
+
+  if (barCells <= 0) {
+    return `${label}${tail}`;
+  }
+
+  const usedCells = clampInt(Math.round((usedPercent * barCells) / 100), 0, barCells);
+  const bar = `${theme.fg("text", STATUSLINE_SYMBOLS.providerUsageUsed.repeat(usedCells))}${theme.fg("dim", STATUSLINE_SYMBOLS.providerUsageFree.repeat(barCells - usedCells))}`;
+
+  return `${label}${bar} ${tail}`;
 }
 
 function widgetKey(widget: FooterWidget): string {
@@ -315,6 +389,7 @@ function computeFooterMetrics(
   git: GitInfo,
   thinkingLevel: string,
   usageMetrics: SessionUsageMetrics,
+  providerUsage: ModelProviderUsageMetrics | undefined,
 ): FooterMetrics {
   const { latest, totalCost } = usageMetrics;
 
@@ -356,6 +431,7 @@ function computeFooterMetrics(
   return {
     model,
     thinking,
+    providerUsage,
     totalTokens,
     usedTokensForBar,
     usedK,
@@ -388,6 +464,16 @@ function baseWidgetDefaults(widgetId: FooterWidgetId): Pick<FooterWidget, "id" |
 
 function buildFooterWidgets(): FooterWidget[] {
   return [
+    {
+      ...baseWidgetDefaults("provider-usage"),
+      minWidth: 8,
+      styled: true,
+      visible: ({ metrics }) => metrics.providerUsage !== undefined,
+      renderText: ({ metrics, theme }, availableWidth) => {
+        if (!metrics.providerUsage) return "";
+        return renderProviderUsage(metrics.providerUsage, theme, availableWidth);
+      },
+    },
     {
       ...baseWidgetDefaults("model"),
       renderText: ({ metrics }) => metrics.model,
@@ -600,12 +686,13 @@ export function renderFooterLines(
   thinkingLevel: string,
   theme: Theme,
   usageMetrics: SessionUsageMetrics,
+  providerUsage: ModelProviderUsageMetrics | undefined,
   compactionSettings: CompactionSettingsSnapshot,
   footerConfig: FooterConfigSnapshot,
 ): string[] {
   if (width <= 0) return ["", ""];
 
-  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics);
+  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics, providerUsage);
   const renderCtx: WidgetRenderContext = {
     width,
     theme,

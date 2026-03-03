@@ -20,6 +20,8 @@ export const STATUSLINE_SYMBOLS = {
   diffAdded: "↗",
   diffRemoved: "↘",
   currency: "$",
+  providerUsageUsed: "━",
+  providerUsageFree: "─",
 } as const;
 
 export const GIT_REFRESH_MS = 5000;
@@ -53,6 +55,19 @@ export interface UsageSnapshot {
 export interface SessionUsageMetrics {
   latest: UsageSnapshot | undefined;
   totalCost: number;
+}
+
+export interface ProviderUsageWindow {
+  usedPercent: number;
+  resetAtMs?: number;
+}
+
+export interface ModelProviderUsageMetrics {
+  provider: string;
+  label: string;
+  primary: ProviderUsageWindow;
+  secondary?: ProviderUsageWindow;
+  fetchedAt: number;
 }
 
 export interface GitCounts {
@@ -103,6 +118,7 @@ export const FOOTER_WIDGET_COLORS = [
 export type FooterWidgetColor = (typeof FOOTER_WIDGET_COLORS)[number];
 
 export const FOOTER_WIDGET_IDS = [
+  "provider-usage",
   "model",
   "thinking",
   "context-capacity",
@@ -140,6 +156,7 @@ export interface FooterWidgetIcon {
 export interface FooterMetrics {
   model: string;
   thinking: string;
+  providerUsage: ModelProviderUsageMetrics | undefined;
   totalTokens: number;
   usedTokensForBar: number;
   usedK: number;
@@ -235,6 +252,11 @@ export interface FooterWidgetMeta {
 }
 
 export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
+  "provider-usage": {
+    defaults: { row: 1, position: 5, align: "right", fill: "none" },
+    description: "OAuth account usage bar for supported providers",
+    settingIcon: "⏱",
+  },
   model: {
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
     description: "Active model name",

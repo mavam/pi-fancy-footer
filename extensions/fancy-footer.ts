@@ -10,6 +10,7 @@ import {
   clampInt,
   type CompactionSettingsSnapshot,
   type FooterConfigSnapshot,
+  type ModelProviderUsageMetrics,
   type SessionUsageMetrics,
 } from "./fancy-footer/shared.ts";
 import {
@@ -26,12 +27,14 @@ import {
 } from "./fancy-footer/config.ts";
 import { collectGitInfo } from "./fancy-footer/git.ts";
 import { collectSessionUsageMetrics, renderFooterLines } from "./fancy-footer/render.ts";
+import { collectProviderUsage, type ProviderUsageState } from "./fancy-footer/provider-usage.ts";
 import { renderBannerLines } from "./fancy-footer/banner.ts";
 
 interface ActiveFooterControls {
   requestRender: () => void;
   reschedule: () => void;
   applyHeader: () => void;
+  refresh: () => void;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -71,6 +74,8 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setFooter((tui, theme, footerData) => {
       let currentGit = { ...EMPTY_GIT_INFO };
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
+      let providerUsage: ModelProviderUsageMetrics | undefined;
+      let providerUsageState: ProviderUsageState | undefined;
       let refreshing = false;
       let refreshQueued = false;
       let disposed = false;
@@ -96,9 +101,14 @@ export default function (pi: ExtensionAPI) {
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
-            const git = await collectGitInfo(pi, ctx.cwd);
+            const [git, nextProviderUsage] = await Promise.all([
+              collectGitInfo(pi, ctx.cwd),
+              collectProviderUsage(ctx, providerUsageState),
+            ]);
             if (disposed) return;
             currentGit = git;
+            providerUsageState = nextProviderUsage;
+            providerUsage = nextProviderUsage?.metrics;
             requestRender();
           } while (!disposed && refreshQueued);
         } finally {
@@ -128,6 +138,9 @@ export default function (pi: ExtensionAPI) {
         requestRender,
         reschedule: scheduleRefresh,
         applyHeader,
+        refresh: () => {
+          void refreshGit();
+        },
       };
 
       void refreshGit();
@@ -151,6 +164,7 @@ export default function (pi: ExtensionAPI) {
             pi.getThinkingLevel(),
             theme,
             usageMetrics,
+            providerUsage,
             compactionSettings,
             footerConfig,
           );
@@ -268,6 +282,10 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_before_compact", async (event) => {
     compactionSettings = coerceCompactionSettings(event.preparation.settings, compactionSettings);
     activeFooterControls?.requestRender();
+  });
+
+  pi.on("model_select", async () => {
+    activeFooterControls?.refresh();
   });
 
   pi.on("session_start", async (_event, ctx) => {
