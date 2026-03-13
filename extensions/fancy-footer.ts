@@ -24,7 +24,7 @@ import {
   widgetSummary,
   writeFooterConfigSnapshot,
 } from "./fancy-footer/config.ts";
-import { collectGitInfo } from "./fancy-footer/git.ts";
+import { collectGitInfo, collectPullRequestInfo, shouldRefreshPullRequest } from "./fancy-footer/git.ts";
 import { collectSessionUsageMetrics, renderFooterLines } from "./fancy-footer/render.ts";
 import { renderBannerLines } from "./fancy-footer/banner.ts";
 
@@ -73,12 +73,51 @@ export default function (pi: ExtensionAPI) {
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
       let refreshQueued = false;
+      let pullRequestRefreshing = false;
+      let pullRequestRefreshQueued = false;
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
       const requestRender = () => {
         if (disposed) return;
         tui.requestRender();
+      };
+
+      const isPullRequestWidgetEnabled = () => footerConfig.widgets["pull-request"]?.enabled !== false;
+
+      // Keep networked PR discovery off the local git refresh path.
+      const refreshPullRequest = async () => {
+        if (disposed || !isPullRequestWidgetEnabled() || !shouldRefreshPullRequest(currentGit)) return;
+        if (pullRequestRefreshing) {
+          pullRequestRefreshQueued = true;
+          return;
+        }
+
+        pullRequestRefreshing = true;
+        try {
+          do {
+            pullRequestRefreshQueued = false;
+
+            if (!isPullRequestWidgetEnabled() || !shouldRefreshPullRequest(currentGit)) continue;
+
+            const targetBranch = currentGit.branch;
+            const targetRepository = currentGit.repository;
+            const targetLookupAt = currentGit.pullRequestLookupAt;
+            const pullRequest = await collectPullRequestInfo(pi, ctx.cwd, targetBranch);
+            if (disposed) return;
+            if (currentGit.branch !== targetBranch || currentGit.repository !== targetRepository || currentGit.pullRequestLookupAt !== targetLookupAt) {
+              continue;
+            }
+
+            currentGit = {
+              ...currentGit,
+              ...pullRequest,
+            };
+            requestRender();
+          } while (!disposed && pullRequestRefreshQueued);
+        } finally {
+          pullRequestRefreshing = false;
+        }
       };
 
       const refreshGit = async () => {
@@ -96,10 +135,11 @@ export default function (pi: ExtensionAPI) {
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
-            const git = await collectGitInfo(pi, ctx.cwd);
+            const git = await collectGitInfo(pi, ctx.cwd, currentGit);
             if (disposed) return;
             currentGit = git;
             requestRender();
+            void refreshPullRequest();
           } while (!disposed && refreshQueued);
         } finally {
           refreshing = false;

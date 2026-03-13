@@ -14,7 +14,7 @@ footer.
 - Context window capacity and approximate usage
 - Context usage bar with compaction reserve tail
 - Total session cost
-- Repo / path, branch, commit
+- Repo / path, branch, commit, and open PR number
 - Git diff stats and ahead/behind status
 
 ## 📦 Install
@@ -94,6 +94,7 @@ Widget IDs:
 - `location`
 - `branch`
 - `commit`
+- `pull-request`
 - `diff-added`
 - `diff-removed`
 - `git-status`
@@ -101,6 +102,7 @@ Widget IDs:
 Notes:
 
 - Uses Nerd Font glyphs for best visuals.
+- The PR widget appears only for open GitHub pull requests and relies on the GitHub CLI (`gh`) being available and authenticated.
 - Reads compaction settings from:
   - `~/.pi/agent/settings.json`
   - `<project>/.pi/settings.json`

@@ -9,6 +9,7 @@ export const STATUSLINE_SYMBOLS = {
   path: "",
   branch: "",
   commit: "",
+  pullRequest: "",
   contextUsed: "■",
   contextFree: "□",
   contextReserved: "▣",
@@ -63,10 +64,18 @@ export interface GitCounts {
   behind: number;
 }
 
+export interface GitHubPullRequest {
+  number: number;
+  url: string;
+}
+
 export interface GitInfo {
   repository: string;
   branch: string;
   commit: string;
+  pullRequest: GitHubPullRequest | undefined;
+  pullRequestLookupEnabled: boolean;
+  pullRequestLookupAt: number;
   added: number;
   removed: number;
   counts: GitCounts;
@@ -76,6 +85,9 @@ export const EMPTY_GIT_INFO: GitInfo = {
   repository: "",
   branch: "",
   commit: "",
+  pullRequest: undefined,
+  pullRequestLookupEnabled: false,
+  pullRequestLookupAt: 0,
   added: 0,
   removed: 0,
   counts: {
@@ -112,6 +124,7 @@ export const FOOTER_WIDGET_IDS = [
   "location",
   "branch",
   "commit",
+  "pull-request",
   "diff-added",
   "diff-removed",
   "git-status",
@@ -148,6 +161,7 @@ export interface FooterMetrics {
   locationText: string;
   branch: string;
   commit: string;
+  pullRequestNumber: number;
   added: number;
   removed: number;
   gitStatusSymbol: string;
@@ -281,18 +295,23 @@ export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
     description: "Short git commit hash",
     settingIcon: STATUSLINE_SYMBOLS.commit,
   },
-  "diff-added": {
+  "pull-request": {
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
+    description: "Open GitHub pull request number for the current branch",
+    settingIcon: STATUSLINE_SYMBOLS.pullRequest,
+  },
+  "diff-added": {
+    defaults: { row: 1, position: 4, align: "left", fill: "none" },
     description: "Added lines in working tree",
     settingIcon: STATUSLINE_SYMBOLS.diffAdded,
   },
   "diff-removed": {
-    defaults: { row: 1, position: 4, align: "left", fill: "none" },
+    defaults: { row: 1, position: 5, align: "left", fill: "none" },
     description: "Removed lines in working tree",
     settingIcon: STATUSLINE_SYMBOLS.diffRemoved,
   },
   "git-status": {
-    defaults: { row: 1, position: 5, align: "left", fill: "none" },
+    defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Ahead/behind/diverged status",
     settingIcon: STATUSLINE_SYMBOLS.gitDiverged,
     hasFooterIcon: false,

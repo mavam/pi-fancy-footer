@@ -1,5 +1,54 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { EMPTY_GIT_INFO, type GitInfo, parseGitHubRemote, parseNumstat, toNumber } from "./shared.ts";
+import {
+  createGitHubRepositoryContext,
+  parsePullRequest,
+  selectPullRequestFromGraphQL,
+  splitGitHubRepository,
+} from "./pull-request.ts";
+import { EMPTY_GIT_INFO, type GitInfo, parseNumstat, toNumber } from "./shared.ts";
+
+interface ExecResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
+const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
+const PULL_REQUEST_REFRESH_MS = 60_000;
+const PULL_REQUEST_QUERY = [
+  "query($owner: String!, $name: String!, $branch: String!) {",
+  "  repository(owner: $owner, name: $name) {",
+  "    pullRequests(states: OPEN, headRefName: $branch, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) {",
+  "      nodes {",
+  "        number",
+  "        url",
+  "        headRepositoryOwner { login }",
+  "      }",
+  "    }",
+  "  }",
+  "}",
+].join(" ");
+
+async function execResult(
+  pi: ExtensionAPI,
+  command: string,
+  args: string[],
+  cwd: string,
+  timeout = DEFAULT_COMMAND_TIMEOUT_MS,
+): Promise<ExecResult> {
+  try {
+    const result = await pi.exec(command, args, { cwd, timeout });
+    return {
+      code: result.code,
+      // Keep leading whitespace (git porcelain uses it), only drop trailing newlines.
+      stdout: result.stdout.replace(/[\r\n]+$/, ""),
+      stderr: result.stderr.replace(/[\r\n]+$/, ""),
+    };
+  } catch {
+    return { code: -1, stdout: "", stderr: "" };
+  }
+}
 
 async function exec(
   pi: ExtensionAPI,
@@ -7,26 +56,131 @@ async function exec(
   args: string[],
   cwd: string,
 ): Promise<string> {
-  try {
-    const result = await pi.exec(command, args, { cwd, timeout: 2000 });
-    if (result.code !== 0) return "";
-    // Keep leading whitespace (git porcelain uses it), only drop trailing newlines.
-    return result.stdout.replace(/[\r\n]+$/, "");
-  } catch {
-    return "";
-  }
+  const result = await execResult(pi, command, args, cwd);
+  if (result.code !== 0) return "";
+  return result.stdout;
 }
 
-export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<GitInfo> {
-  const [porcelainV2, remoteUrl] = await Promise.all([
+async function collectPullRequestFromBaseRepository(
+  pi: ExtensionAPI,
+  cwd: string,
+  baseRepository: string,
+  branch: string,
+  headOwners: string[],
+): Promise<GitInfo["pullRequest"]> {
+  const repository = splitGitHubRepository(baseRepository);
+  if (!repository || !branch) return undefined;
+
+  const result = await execResult(
+    pi,
+    "gh",
+    [
+      "api",
+      "graphql",
+      "-f",
+      `query=${PULL_REQUEST_QUERY}`,
+      "-F",
+      `owner=${repository.owner}`,
+      "-F",
+      `name=${repository.name}`,
+      "-F",
+      `branch=${branch}`,
+    ],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
+  if (result.code !== 0 || !result.stdout) return undefined;
+
+  return selectPullRequestFromGraphQL(result.stdout, headOwners);
+}
+
+async function collectCurrentBranchPullRequest(
+  pi: ExtensionAPI,
+  cwd: string,
+): Promise<GitInfo["pullRequest"]> {
+  const result = await execResult(
+    pi,
+    "gh",
+    ["pr", "view", "--json", "number,url"],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
+  if (result.code !== 0 || !result.stdout) return undefined;
+
+  return parsePullRequest(result.stdout);
+}
+
+export function shouldRefreshPullRequest(
+  git: Pick<GitInfo, "branch" | "pullRequestLookupEnabled" | "pullRequestLookupAt">,
+): boolean {
+  return git.pullRequestLookupEnabled && !!git.branch && Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
+}
+
+export async function collectPullRequestInfo(
+  pi: ExtensionAPI,
+  cwd: string,
+  branch: string,
+): Promise<Pick<GitInfo, "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt">> {
+  if (!branch) {
+    return {
+      pullRequest: undefined,
+      pullRequestLookupEnabled: false,
+      pullRequestLookupAt: 0,
+    };
+  }
+
+  const [upstream, remoteUrls] = await Promise.all([
+    exec(pi, "git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd),
+    exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
+  ]);
+
+  const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
+  const plan = repositoryContext.pullRequestLookupPlan;
+  const pullRequestLookupAt = Date.now();
+  if (!plan) {
+    return {
+      pullRequest: undefined,
+      pullRequestLookupEnabled: repositoryContext.pullRequestLookupEnabled,
+      pullRequestLookupAt,
+    };
+  }
+
+  for (const baseRepository of plan.baseRepositories) {
+    const pullRequest = await collectPullRequestFromBaseRepository(pi, cwd, baseRepository, branch, plan.headOwners);
+    if (pullRequest) {
+      return {
+        pullRequest,
+        pullRequestLookupEnabled: true,
+        pullRequestLookupAt,
+      };
+    }
+  }
+
+  const fallbackPullRequest = plan.allowCurrentBranchFallback
+    ? await collectCurrentBranchPullRequest(pi, cwd)
+    : undefined;
+  return {
+    pullRequest: fallbackPullRequest,
+    pullRequestLookupEnabled: true,
+    pullRequestLookupAt,
+  };
+}
+
+export async function collectGitInfo(
+  pi: ExtensionAPI,
+  cwd: string,
+  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"> | undefined = undefined,
+): Promise<GitInfo> {
+  const [porcelainV2, remoteUrls] = await Promise.all([
     exec(pi, "git", ["status", "--porcelain=2", "--branch"], cwd),
-    exec(pi, "git", ["config", "--get", "remote.origin.url"], cwd),
+    exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
   ]);
 
   if (!porcelainV2) return { ...EMPTY_GIT_INFO };
 
   let branch = "";
   let commit = "";
+  let upstream = "";
   let staged = 0;
   let modified = 0;
   let untracked = 0;
@@ -45,6 +199,11 @@ export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<Git
     if (line.startsWith("# branch.oid ")) {
       const oid = line.slice("# branch.oid ".length).trim();
       if (oid && oid !== "(initial)") commit = oid.slice(0, 7);
+      continue;
+    }
+
+    if (line.startsWith("# branch.upstream ")) {
+      upstream = line.slice("# branch.upstream ".length).trim();
       continue;
     }
 
@@ -71,6 +230,11 @@ export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<Git
     }
   }
 
+  const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
+  const samePullRequestTarget = previousGit !== undefined
+    && previousGit.repository === repositoryContext.repository
+    && previousGit.branch === branch;
+
   let added = 0;
   let removed = 0;
 
@@ -91,9 +255,12 @@ export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<Git
   }
 
   return {
-    repository: parseGitHubRemote(remoteUrl),
+    repository: repositoryContext.repository,
     branch,
     commit,
+    pullRequest: samePullRequestTarget ? previousGit?.pullRequest : undefined,
+    pullRequestLookupEnabled: repositoryContext.pullRequestLookupEnabled,
+    pullRequestLookupAt: samePullRequestTarget ? previousGit?.pullRequestLookupAt ?? 0 : 0,
     added,
     removed,
     counts: {

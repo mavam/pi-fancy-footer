@@ -364,6 +364,7 @@ function computeFooterMetrics(
     locationText: git.repository || normalizePath(ctx.cwd),
     branch: git.branch,
     commit: git.commit,
+    pullRequestNumber: git.pullRequest?.number ?? 0,
     added: git.added,
     removed: git.removed,
     ...buildGitStatus(git.counts),
@@ -437,6 +438,11 @@ function buildFooterWidgets(): FooterWidget[] {
       ...baseWidgetDefaults("commit"),
       visible: ({ metrics }) => metrics.commit !== "",
       renderText: ({ metrics }) => metrics.commit,
+    },
+    {
+      ...baseWidgetDefaults("pull-request"),
+      visible: ({ metrics }) => metrics.pullRequestNumber > 0,
+      renderText: ({ metrics }) => `#${metrics.pullRequestNumber}`,
     },
     {
       ...baseWidgetDefaults("diff-added"),
