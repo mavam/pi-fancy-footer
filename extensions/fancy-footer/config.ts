@@ -7,6 +7,7 @@ import {
   DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   FOOTER_CONFIG_FILE,
+  FOOTER_ICON_FAMILIES,
   FOOTER_MIN_WIDTH_OPTIONS,
   FOOTER_POSITION_OPTIONS,
   FOOTER_REFRESH_OPTIONS,
@@ -21,6 +22,7 @@ import {
   MIN_FOOTER_REFRESH_MS,
   type CompactionSettingsSnapshot,
   type FooterConfigSnapshot,
+  type FooterIconFamily,
   type FooterWidgetAlign,
   type FooterWidgetColor,
   type FooterWidgetConfigOverride,
@@ -30,6 +32,8 @@ import {
   type FooterWidgetState,
   clampInt,
   getDefaultWidgetIcon,
+  getWidgetSettingIcon,
+  isFooterIconFamily,
   isFooterWidgetAlign,
   isFooterWidgetColor,
   isFooterWidgetFill,
@@ -121,7 +125,7 @@ function coerceFooterWidgetOverride(value: unknown): FooterWidgetConfigOverride 
   const minWidth = toBoundedNonNegativeInt(input.minWidth, MAX_WIDGET_MIN_WIDTH);
   if (minWidth !== undefined) out.minWidth = minWidth;
 
-  if (input.icon === "show" || input.icon === "hide") {
+  if (input.icon === "hide") {
     out.icon = input.icon;
   }
 
@@ -131,10 +135,11 @@ function coerceFooterWidgetOverride(value: unknown): FooterWidgetConfigOverride 
   return out;
 }
 
-function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
+export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
   const out: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
     showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
+    iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: {},
@@ -155,6 +160,10 @@ function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
     out.showPiBanner = input.showPiBanner;
   }
 
+  if (isFooterIconFamily(input.iconFamily)) {
+    out.iconFamily = input.iconFamily;
+  }
+
   if (isFooterWidgetColor(input.defaultTextColor)) {
     out.defaultTextColor = input.defaultTextColor;
   }
@@ -168,7 +177,7 @@ function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
     for (const [id, widgetValue] of Object.entries(widgetsRaw as Record<string, unknown>)) {
       if (!isFooterWidgetId(id)) continue;
       const coerced = coerceFooterWidgetOverride(widgetValue);
-      if (coerced) out.widgets[id] = coerced;
+      if (coerced && Object.keys(coerced).length > 0) out.widgets[id] = coerced;
     }
   }
 
@@ -206,6 +215,7 @@ export function cloneFooterConfig(config: FooterConfigSnapshot): FooterConfigSna
   return {
     refreshMs: config.refreshMs,
     showPiBanner: config.showPiBanner,
+    iconFamily: config.iconFamily,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
     widgets,
@@ -232,6 +242,7 @@ function toFooterConfigObject(config: FooterConfigSnapshot): Record<string, unkn
   const out: Record<string, unknown> = {
     refreshMs: clampInt(config.refreshMs, MIN_FOOTER_REFRESH_MS, MAX_FOOTER_REFRESH_MS),
     showPiBanner: config.showPiBanner,
+    iconFamily: config.iconFamily,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
   };
@@ -328,13 +339,11 @@ function setWidgetFillOverride(config: FooterConfigSnapshot, widgetId: FooterWid
 }
 
 function getWidgetIconMode(config: FooterConfigSnapshot, widgetId: FooterWidgetId): FooterWidgetIconMode {
-  const iconOverride = config.widgets[widgetId]?.icon;
-  if (iconOverride === "show" || iconOverride === "hide") return iconOverride;
-  return "default";
+  return config.widgets[widgetId]?.icon === "hide" ? "hide" : "default";
 }
 
 function setWidgetIconMode(config: FooterConfigSnapshot, widgetId: FooterWidgetId, value: string): void {
-  if (value !== "default" && value !== "show" && value !== "hide") return;
+  if (value !== "default" && value !== "hide") return;
 
   updateWidgetOverride(config, widgetId, (override) => {
     if (value === "default") {
@@ -404,8 +413,6 @@ export function widgetSummary(config: FooterConfigSnapshot, widgetId: FooterWidg
 
   if (override.icon === "hide") {
     parts.push("icon:off");
-  } else if (override.icon === "show") {
-    parts.push("icon:on");
   }
 
   if (override.iconColor !== undefined) {
@@ -427,7 +434,7 @@ function widgetDescription(widgetId: FooterWidgetId): string {
 }
 
 function widgetSettingLabel(widgetId: FooterWidgetId, theme: Theme, config: FooterConfigSnapshot): string {
-  const icon = FOOTER_WIDGET_META[widgetId].settingIcon;
+  const icon = getWidgetSettingIcon(widgetId, config.iconFamily);
 
   const iconMode = getWidgetIconMode(config, widgetId);
   if (iconMode === "hide") {
@@ -445,7 +452,7 @@ function widgetSettingLabel(widgetId: FooterWidgetId, theme: Theme, config: Foot
 function widgetSettingsItems(config: FooterConfigSnapshot, widgetId: FooterWidgetId): SettingItem[] {
   const override = config.widgets[widgetId];
   const iconMode = getWidgetIconMode(config, widgetId);
-  const defaultIcon = getDefaultWidgetIcon(widgetId);
+  const defaultIcon = getDefaultWidgetIcon(widgetId, config.iconFamily);
 
   return [
     {
@@ -459,17 +466,17 @@ function widgetSettingsItems(config: FooterConfigSnapshot, widgetId: FooterWidge
       id: "icon",
       label: "icon",
       currentValue: iconMode,
-      values: ["default", "show", "hide"],
+      values: ["default", "hide"],
       description: defaultIcon
-        ? `Default icon: ${defaultIcon.text}`
-        : "This widget has no built-in icon; show only applies if a custom/default icon exists.",
+        ? `Default icon (${config.iconFamily}): ${defaultIcon.text}`
+        : "This widget has no built-in footer icon.",
     },
     {
       id: "iconColor",
       label: "icon color",
       currentValue: getWidgetIconColorValue(config, widgetId),
       values: ["default", ...FOOTER_WIDGET_COLORS],
-      description: "Color used for the icon when shown",
+      description: "Color used for the icon when visible",
     },
     {
       id: "textColor",
@@ -597,6 +604,13 @@ export function rootFooterSettingsItems(
       description: "Show rainbow pi banner in the header.",
     },
     {
+      id: "iconFamily",
+      label: "icon family",
+      currentValue: draft.iconFamily,
+      values: [...FOOTER_ICON_FAMILIES],
+      description: "Choose the global icon palette used by the footer and the configuration UI.",
+    },
+    {
       id: "defaultTextColor",
       label: "default text color",
       currentValue: draft.defaultTextColor,
@@ -633,5 +647,10 @@ export function coerceRefreshMs(value: string): number | undefined {
 
 export function coerceWidgetColor(value: string): FooterWidgetColor | undefined {
   if (!isFooterWidgetColor(value)) return undefined;
+  return value;
+}
+
+export function coerceIconFamily(value: string): FooterIconFamily | undefined {
+  if (!isFooterIconFamily(value)) return undefined;
   return value;
 }

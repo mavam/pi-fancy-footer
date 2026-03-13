@@ -4,9 +4,11 @@ A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 extension that replaces the default footer with a compact, two-line fancy status
 footer.
 
+<!-- markdownlint-disable MD033 -->
 <p align="center">
   <img src="screenshot.png" alt="screenshot" />
 </p>
+<!-- markdownlint-enable MD033 -->
 
 ## 📊 What it shows
 
@@ -31,7 +33,7 @@ pi install npm:pi-fancy-footer
   - all widgets are listed directly (with icon prefixes)
   - select a widget and press Enter for detailed settings
   - in widget settings, adjust row/position/align/fill/min-width, visibility,
-    icon show/hide, icon color, and text color
+    icon hide, icon color, and text color
   - use Enter/Space to cycle values
 
 ## ⚙️ Configuration
@@ -42,6 +44,7 @@ Create `~/.pi/agent/fancy-footer.json`:
 {
   "refreshMs": 3000,
   "showPiBanner": true,
+  "iconFamily": "unicode",
   "defaultTextColor": "dim",
   "defaultIconColor": "text",
   "widgets": {
@@ -56,8 +59,7 @@ Create `~/.pi/agent/fancy-footer.json`:
       "enabled": false
     },
     "branch": {
-      "icon": "show",
-      "iconColor": "text",
+      "icon": "hide",
       "textColor": "muted"
     }
   }
@@ -68,8 +70,12 @@ Top-level settings:
 
 - `refreshMs` (number)
 - `showPiBanner` (boolean)
-- `defaultTextColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
-- `defaultIconColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `iconFamily`
+  (`nerd` | `emoji` | `unicode` | `ascii`)
+- `defaultTextColor`
+  (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `defaultIconColor`
+  (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 
 Supported per-widget overrides:
 
@@ -79,9 +85,11 @@ Supported per-widget overrides:
 - `align` (`left` | `middle` | `right`)
 - `fill` (`none` | `grow`)
 - `minWidth` (number)
-- `icon` (`default` | `show` | `hide`)
-- `iconColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
-- `textColor` (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `icon` (`default` | `hide`)
+- `iconColor`
+  (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `textColor`
+  (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 
 Widget IDs:
 
@@ -99,10 +107,48 @@ Widget IDs:
 - `diff-removed`
 - `git-status`
 
+## 🔣 Icon families
+
+The following table shows the symbol used by each widget for each icon family.
+For `context-bar` and `git-status`, the table shows the rendered bar/status
+symbols rather than a leading widget icon.
+
+> [!NOTE]
+> Some glyphs, especially in the `nerd` family, may not render in your browser.
+> If a cell looks blank or shows a replacement box, check the table in a
+> terminal with the relevant font installed.
+
+<!-- markdownlint-disable MD013 MD060 -->
+| Widget             | nerd      | emoji      | unicode  | ascii    |
+| ------------------ | --------- | ---------  | -------  | -------- |
+| `model`            | `󰧑`       | `🤖`       | `◉`      | `M`      |
+| `thinking`         | `󰭻`       | `🧠`       | `✦`      | `T`      |
+| `context-capacity` | ``       | `💾`       | `◫`      | `[]`     |
+| `context-bar`      | `■/□/▣`   | `■/□/▣`    | `■/□/▣`  | `#/-/:`  |
+| `context-usage`    | ``       | `📈`       | `↺`      | `~`      |
+| `total-cost`       | `$`       | `💲`       | `$`      | `$`      |
+| `location`         | ``       | `📁`       | `⌂`      | `/`      |
+| `branch`           | ``       | `🌿`       | `⎇`      | `*`      |
+| `commit`           | ``       | `🔖`       | `#`      | `@`      |
+| `pull-request`     | ``       | `🔀`       | `⇄`      | `#`      |
+| `diff-added`       | `↗`       | `➕`       | `+`      | `+`      |
+| `diff-removed`     | `↘`       | `➖`       | `−`      | `-`      |
+| `git-status`       | `//`   | `🔼/🔽/🔀` | `↑/↓/↕`  | `^/v/<>` |
+<!-- markdownlint-enable MD013 MD060 -->
+
 Notes:
 
-- Uses Nerd Font glyphs for best visuals.
-- The PR widget appears only for open GitHub pull requests and relies on the GitHub CLI (`gh`) being available and authenticated.
+- Most widgets use a leading icon.
+- `context-bar` uses symbols for used / free / reserved cells.
+- `git-status` uses symbols for ahead / behind / diverged status.
+- `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
+  `ascii` palettes.
+- `nerd` keeps the original Nerd Font look. `emoji`, `unicode`, and `ascii`
+  work better in terminals that don't use a Nerd Font.
+- Per-widget icon overrides only let you hide the icon. The selected
+  `iconFamily` controls which icon each widget uses.
+- The PR widget appears only for open GitHub pull requests and relies on the
+  GitHub CLI (`gh`) being available and authenticated.
 - Reads compaction settings from:
   - `~/.pi/agent/settings.json`
   - `<project>/.pi/settings.json`

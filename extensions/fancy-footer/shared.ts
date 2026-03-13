@@ -2,26 +2,90 @@ import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
-export const THINKING_ICON = "󰭻";
+export const FOOTER_ICON_FAMILIES = ["nerd", "emoji", "unicode", "ascii"] as const;
+
+export type FooterIconFamily = (typeof FOOTER_ICON_FAMILIES)[number];
 
 export const STATUSLINE_SYMBOLS = {
-  model: "󰧑",
-  path: "",
-  branch: "",
-  commit: "",
-  pullRequest: "",
-  contextUsed: "■",
-  contextFree: "□",
-  contextReserved: "▣",
-  contextCapacityMarker: "",
-  contextUsageMarker: "",
-  gitAhead: "",
-  gitBehind: "",
-  gitDiverged: "",
-  diffAdded: "↗",
-  diffRemoved: "↘",
-  currency: "$",
+  nerd: {
+    thinking: "󰭻",
+    model: "󰧑",
+    path: "",
+    branch: "",
+    commit: "",
+    pullRequest: "",
+    contextUsed: "■",
+    contextFree: "□",
+    contextReserved: "▣",
+    contextCapacityMarker: "",
+    contextUsageMarker: "",
+    gitAhead: "",
+    gitBehind: "",
+    gitDiverged: "",
+    diffAdded: "↗",
+    diffRemoved: "↘",
+    currency: "$",
+  },
+  emoji: {
+    thinking: "🧠",
+    model: "🤖",
+    path: "📁",
+    branch: "🌿",
+    commit: "🔖",
+    pullRequest: "🔀",
+    contextUsed: "■",
+    contextFree: "□",
+    contextReserved: "▣",
+    contextCapacityMarker: "💾",
+    contextUsageMarker: "📈",
+    gitAhead: "🔼",
+    gitBehind: "🔽",
+    gitDiverged: "🔀",
+    diffAdded: "➕",
+    diffRemoved: "➖",
+    currency: "💲",
+  },
+  unicode: {
+    thinking: "✦",
+    model: "◉",
+    path: "⌂",
+    branch: "⎇",
+    commit: "#",
+    pullRequest: "⇄",
+    contextUsed: "■",
+    contextFree: "□",
+    contextReserved: "▣",
+    contextCapacityMarker: "◫",
+    contextUsageMarker: "↺",
+    gitAhead: "↑",
+    gitBehind: "↓",
+    gitDiverged: "↕",
+    diffAdded: "+",
+    diffRemoved: "−",
+    currency: "$",
+  },
+  ascii: {
+    thinking: "T",
+    model: "M",
+    path: "/",
+    branch: "*",
+    commit: "@",
+    pullRequest: "#",
+    contextUsed: "#",
+    contextFree: "-",
+    contextReserved: ":",
+    contextCapacityMarker: "[]",
+    contextUsageMarker: "~",
+    gitAhead: "^",
+    gitBehind: "v",
+    gitDiverged: "<>",
+    diffAdded: "+",
+    diffRemoved: "-",
+    currency: "$",
+  },
 } as const;
+
+export type StatuslineSymbols = (typeof STATUSLINE_SYMBOLS)[FooterIconFamily];
 
 export const GIT_REFRESH_MS = 5000;
 export const MIN_FOOTER_REFRESH_MS = 250;
@@ -138,7 +202,7 @@ export const FOOTER_POSITION_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
 export const FOOTER_MIN_WIDTH_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32] as const;
 
 export type FooterWidgetState = "default" | "enabled" | "disabled";
-export type FooterWidgetIconMode = "default" | "show" | "hide";
+export type FooterWidgetIconMode = "default" | "hide";
 
 export interface FooterWidgetLocation {
   row: number;
@@ -221,6 +285,7 @@ export interface FooterWidgetConfigOverride {
 export interface FooterConfigSnapshot {
   refreshMs: number;
   showPiBanner: boolean;
+  iconFamily: FooterIconFamily;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
   widgets: Partial<Record<FooterWidgetId, FooterWidgetConfigOverride>>;
@@ -229,6 +294,7 @@ export interface FooterConfigSnapshot {
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
   showPiBanner: true,
+  iconFamily: "nerd",
   defaultTextColor: "dim",
   defaultIconColor: "text",
   widgets: {},
@@ -244,7 +310,7 @@ export interface FooterWidgetEditorDefaults {
 export interface FooterWidgetMeta {
   defaults: FooterWidgetEditorDefaults;
   description: string;
-  settingIcon: string;
+  symbolKey: keyof StatuslineSymbols;
   hasFooterIcon?: boolean;
 }
 
@@ -252,68 +318,68 @@ export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
   model: {
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
     description: "Active model name",
-    settingIcon: STATUSLINE_SYMBOLS.model,
+    symbolKey: "model",
   },
   thinking: {
     defaults: { row: 1, position: 7, align: "right", fill: "none" },
     description: "Thinking level indicator",
-    settingIcon: THINKING_ICON,
+    symbolKey: "thinking",
   },
   "context-capacity": {
     defaults: { row: 0, position: 2, align: "left", fill: "none" },
     description: "Context window size (k tokens)",
-    settingIcon: STATUSLINE_SYMBOLS.contextCapacityMarker,
+    symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
     defaults: { row: 0, position: 0, align: "middle", fill: "grow" },
     description: "Visual context usage bar",
-    settingIcon: STATUSLINE_SYMBOLS.contextUsed,
+    symbolKey: "contextUsed",
     hasFooterIcon: false,
   },
   "context-usage": {
     defaults: { row: 0, position: 0, align: "right", fill: "none" },
     description: "Used context tokens (k)",
-    settingIcon: STATUSLINE_SYMBOLS.contextUsageMarker,
+    symbolKey: "contextUsageMarker",
   },
   "total-cost": {
     defaults: { row: 0, position: 1, align: "right", fill: "none" },
     description: "Accumulated session cost",
-    settingIcon: STATUSLINE_SYMBOLS.currency,
+    symbolKey: "currency",
   },
   location: {
     defaults: { row: 1, position: 0, align: "left", fill: "none" },
     description: "Repository name or current path",
-    settingIcon: STATUSLINE_SYMBOLS.path,
+    symbolKey: "path",
   },
   branch: {
     defaults: { row: 1, position: 1, align: "left", fill: "none" },
     description: "Git branch name",
-    settingIcon: STATUSLINE_SYMBOLS.branch,
+    symbolKey: "branch",
   },
   commit: {
     defaults: { row: 1, position: 2, align: "left", fill: "none" },
     description: "Short git commit hash",
-    settingIcon: STATUSLINE_SYMBOLS.commit,
+    symbolKey: "commit",
   },
   "pull-request": {
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
     description: "Open GitHub pull request number for the current branch",
-    settingIcon: STATUSLINE_SYMBOLS.pullRequest,
+    symbolKey: "pullRequest",
   },
   "diff-added": {
     defaults: { row: 1, position: 4, align: "left", fill: "none" },
     description: "Added lines in working tree",
-    settingIcon: STATUSLINE_SYMBOLS.diffAdded,
+    symbolKey: "diffAdded",
   },
   "diff-removed": {
     defaults: { row: 1, position: 5, align: "left", fill: "none" },
     description: "Removed lines in working tree",
-    settingIcon: STATUSLINE_SYMBOLS.diffRemoved,
+    symbolKey: "diffRemoved",
   },
   "git-status": {
     defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Ahead/behind/diverged status",
-    settingIcon: STATUSLINE_SYMBOLS.gitDiverged,
+    symbolKey: "gitDiverged",
     hasFooterIcon: false,
   },
 };
@@ -329,6 +395,14 @@ export function clampInt(value: number, min: number, max: number): number {
 
 export function isFooterWidgetColor(value: unknown): value is FooterWidgetColor {
   return typeof value === "string" && (FOOTER_WIDGET_COLORS as readonly string[]).includes(value);
+}
+
+export function isFooterIconFamily(value: unknown): value is FooterIconFamily {
+  return typeof value === "string" && (FOOTER_ICON_FAMILIES as readonly string[]).includes(value);
+}
+
+export function getStatuslineSymbols(iconFamily: FooterIconFamily): StatuslineSymbols {
+  return STATUSLINE_SYMBOLS[iconFamily];
 }
 
 export function isFooterWidgetAlign(value: unknown): value is FooterWidgetAlign {
@@ -408,8 +482,15 @@ export function parseNumstat(output: string): { added: number; removed: number }
   return { added, removed };
 }
 
-export function getDefaultWidgetIcon(widgetId: FooterWidgetId): FooterWidgetIcon | undefined {
+export function getWidgetSettingIcon(widgetId: FooterWidgetId, iconFamily: FooterIconFamily): string {
+  return getStatuslineSymbols(iconFamily)[FOOTER_WIDGET_META[widgetId].symbolKey];
+}
+
+export function getDefaultWidgetIcon(
+  widgetId: FooterWidgetId,
+  iconFamily: FooterIconFamily,
+): FooterWidgetIcon | undefined {
   const meta = FOOTER_WIDGET_META[widgetId];
   if (meta.hasFooterIcon === false) return undefined;
-  return { text: meta.settingIcon, color: "text" };
+  return { text: getWidgetSettingIcon(widgetId, iconFamily), color: "text" };
 }
