@@ -1,0 +1,5 @@
+created: 2026-03-13
+title: 'Fix duplicate # in pull-request widget with ascii icon family'
+intro: >-
+  Fixes a visual glitch in the pull-request widget where the ascii icon family caused
+  a duplicate # to appear before the PR number, rendering as # #4 instead of # 4.
