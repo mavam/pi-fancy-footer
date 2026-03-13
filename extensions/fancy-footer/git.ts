@@ -7,9 +7,34 @@ interface ExecResult {
   stderr: string;
 }
 
+interface GitHubRemote {
+  name: string;
+  repository: string;
+  owner: string;
+}
+
+interface PullRequestCandidate {
+  number: number;
+  url: string;
+  headOwner: string;
+}
+
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
 const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
 const PULL_REQUEST_REFRESH_MS = 60_000;
+const PULL_REQUEST_QUERY = [
+  "query($owner: String!, $name: String!, $branch: String!) {",
+  "  repository(owner: $owner, name: $name) {",
+  "    pullRequests(states: OPEN, headRefName: $branch, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) {",
+  "      nodes {",
+  "        number",
+  "        url",
+  "        headRepositoryOwner { login }",
+  "      }",
+  "    }",
+  "  }",
+  "}",
+].join(" ");
 
 async function execResult(
   pi: ExtensionAPI,
@@ -62,40 +87,107 @@ function parseRemoteName(ref: string): string {
   return ref.slice(0, slash);
 }
 
-function selectGitHubRepository(remoteUrls: string, preferredRemote: string): string {
-  const remotes = parseRemoteUrls(remoteUrls);
-  const candidateNames = [preferredRemote, "origin", "upstream", ...remotes.keys()];
-  const seen = new Set<string>();
-
-  for (const candidate of candidateNames) {
-    if (!candidate || seen.has(candidate)) continue;
-    seen.add(candidate);
-    const repository = parseGitHubRemote(remotes.get(candidate) ?? "");
-    if (repository) return repository;
-  }
-
-  return "";
+function parseRepositoryOwner(repository: string): string {
+  const slash = repository.indexOf("/");
+  if (slash <= 0) return "";
+  return repository.slice(0, slash);
 }
 
-async function collectPullRequest(
-  pi: ExtensionAPI,
-  cwd: string,
-  repository: string,
-  branch: string,
-): Promise<GitInfo["pullRequest"]> {
-  if (!repository || !branch) return undefined;
+function splitRepository(repository: string): { owner: string; name: string } | undefined {
+  const slash = repository.indexOf("/");
+  if (slash <= 0 || slash >= repository.length - 1) return undefined;
+  return {
+    owner: repository.slice(0, slash),
+    name: repository.slice(slash + 1),
+  };
+}
 
-  const result = await execResult(
-    pi,
-    "gh",
-    ["pr", "view", branch, "--repo", repository, "--json", "number,url"],
-    cwd,
-    GITHUB_COMMAND_TIMEOUT_MS,
-  );
-  if (result.code !== 0 || !result.stdout) return undefined;
+function parseGitHubRemotes(remoteUrls: string): GitHubRemote[] {
+  const remotes: GitHubRemote[] = [];
 
+  for (const [name, url] of parseRemoteUrls(remoteUrls)) {
+    const repository = parseGitHubRemote(url);
+    if (!repository) continue;
+    const owner = parseRepositoryOwner(repository);
+    if (!owner) continue;
+    remotes.push({ name, repository, owner });
+  }
+
+  return remotes;
+}
+
+function orderedRemoteValues<T>(
+  remotes: GitHubRemote[],
+  preferredNames: string[],
+  pick: (remote: GitHubRemote) => T,
+): T[] {
+  const byName = new Map(remotes.map((remote) => [remote.name, remote]));
+  const ordered: T[] = [];
+  const seen = new Set<string>();
+
+  for (const remoteName of [...preferredNames, ...remotes.map((remote) => remote.name)]) {
+    if (!remoteName) continue;
+    const remote = byName.get(remoteName);
+    if (!remote) continue;
+    const value = pick(remote);
+    const key = String(value);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(value);
+  }
+
+  return ordered;
+}
+
+function selectGitHubRepository(remotes: GitHubRemote[], preferredRemote: string): string {
+  return orderedRemoteValues(remotes, [preferredRemote, "origin", "upstream"], (remote) => remote.repository)[0] ?? "";
+}
+
+function selectPullRequestBaseRepositories(remotes: GitHubRemote[], preferredRemote: string): string[] {
+  // PRs often live in the upstream repo even when the branch tracks a fork remote.
+  return orderedRemoteValues(remotes, ["upstream", preferredRemote, "origin"], (remote) => remote.repository);
+}
+
+function selectPullRequestHeadOwners(remotes: GitHubRemote[], preferredRemote: string): string[] {
+  return orderedRemoteValues(remotes, [preferredRemote, "origin", "upstream"], (remote) => remote.owner);
+}
+
+function selectPullRequest(candidates: PullRequestCandidate[], headOwners: string[]): GitInfo["pullRequest"] {
+  if (candidates.length === 0) return undefined;
+
+  let bestCandidate: PullRequestCandidate | undefined;
+  let bestRank = Number.POSITIVE_INFINITY;
+
+  for (const candidate of candidates) {
+    const rank = headOwners.indexOf(candidate.headOwner);
+    if (rank >= 0 && rank < bestRank) {
+      bestCandidate = candidate;
+      bestRank = rank;
+    }
+  }
+
+  if (bestCandidate) {
+    return {
+      number: bestCandidate.number,
+      url: bestCandidate.url,
+    };
+  }
+
+  if (candidates.length === 1) {
+    const [candidate] = candidates;
+    if (!candidate) return undefined;
+    return {
+      number: candidate.number,
+      url: candidate.url,
+    };
+  }
+
+  return undefined;
+}
+
+function parsePullRequest(output: string): GitInfo["pullRequest"] {
   try {
-    const parsed = JSON.parse(result.stdout) as { number?: unknown; url?: unknown };
+    const parsed = JSON.parse(output) as { number?: unknown; url?: unknown };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
     if (number <= 0 || !url) return undefined;
@@ -103,6 +195,133 @@ async function collectPullRequest(
   } catch {
     return undefined;
   }
+}
+
+function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
+  try {
+    const parsed = JSON.parse(output) as {
+      data?: {
+        repository?: {
+          pullRequests?: {
+            nodes?: Array<{
+              number?: unknown;
+              url?: unknown;
+              headRepositoryOwner?: { login?: unknown } | null;
+            }>;
+          };
+        } | null;
+      };
+    };
+
+    const nodes = parsed?.data?.repository?.pullRequests?.nodes;
+    if (!Array.isArray(nodes)) return [];
+
+    const candidates: PullRequestCandidate[] = [];
+    for (const node of nodes) {
+      const number = Math.max(0, Math.floor(toNumber(node?.number)));
+      const url = typeof node?.url === "string" ? node.url : "";
+      const headOwner = typeof node?.headRepositoryOwner?.login === "string" ? node.headRepositoryOwner.login : "";
+      if (number <= 0 || !url) continue;
+      candidates.push({ number, url, headOwner });
+    }
+
+    return candidates;
+  } catch {
+    return [];
+  }
+}
+
+async function collectPullRequestFromBaseRepository(
+  pi: ExtensionAPI,
+  cwd: string,
+  baseRepository: string,
+  branch: string,
+  headOwners: string[],
+): Promise<GitInfo["pullRequest"]> {
+  const repository = splitRepository(baseRepository);
+  if (!repository || !branch) return undefined;
+
+  const result = await execResult(
+    pi,
+    "gh",
+    [
+      "api",
+      "graphql",
+      "-f",
+      `query=${PULL_REQUEST_QUERY}`,
+      "-F",
+      `owner=${repository.owner}`,
+      "-F",
+      `name=${repository.name}`,
+      "-F",
+      `branch=${branch}`,
+    ],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
+  if (result.code !== 0 || !result.stdout) return undefined;
+
+  return selectPullRequest(parsePullRequestCandidates(result.stdout), headOwners);
+}
+
+async function collectCurrentBranchPullRequest(
+  pi: ExtensionAPI,
+  cwd: string,
+): Promise<GitInfo["pullRequest"]> {
+  const result = await execResult(
+    pi,
+    "gh",
+    ["pr", "view", "--json", "number,url"],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
+  if (result.code !== 0 || !result.stdout) return undefined;
+
+  return parsePullRequest(result.stdout);
+}
+
+export function shouldRefreshPullRequest(git: Pick<GitInfo, "branch" | "pullRequestLookupAt">): boolean {
+  return !!git.branch && Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
+}
+
+export async function collectPullRequestInfo(
+  pi: ExtensionAPI,
+  cwd: string,
+  branch: string,
+): Promise<Pick<GitInfo, "pullRequest" | "pullRequestLookupAt">> {
+  if (!branch) {
+    return {
+      pullRequest: undefined,
+      pullRequestLookupAt: 0,
+    };
+  }
+
+  const [upstream, remoteUrls] = await Promise.all([
+    exec(pi, "git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd),
+    exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
+  ]);
+
+  const preferredRemote = parseRemoteName(upstream);
+  const remotes = parseGitHubRemotes(remoteUrls);
+  const baseRepositories = selectPullRequestBaseRepositories(remotes, preferredRemote);
+  const headOwners = selectPullRequestHeadOwners(remotes, preferredRemote);
+  const pullRequestLookupAt = Date.now();
+
+  for (const baseRepository of baseRepositories) {
+    const pullRequest = await collectPullRequestFromBaseRepository(pi, cwd, baseRepository, branch, headOwners);
+    if (pullRequest) {
+      return {
+        pullRequest,
+        pullRequestLookupAt,
+      };
+    }
+  }
+
+  const fallbackPullRequest = await collectCurrentBranchPullRequest(pi, cwd);
+  return {
+    pullRequest: fallbackPullRequest,
+    pullRequestLookupAt,
+  };
 }
 
 export async function collectGitInfo(
@@ -169,27 +388,11 @@ export async function collectGitInfo(
     }
   }
 
-  const repository = selectGitHubRepository(remoteUrls, parseRemoteName(upstream));
+  const remotes = parseGitHubRemotes(remoteUrls);
+  const repository = selectGitHubRepository(remotes, parseRemoteName(upstream));
   const samePullRequestTarget = previousGit !== undefined
     && previousGit.repository === repository
     && previousGit.branch === branch;
-
-  let pullRequest: GitInfo["pullRequest"] = undefined;
-  let pullRequestLookupAt = 0;
-
-  if (repository && branch) {
-    const pullRequestCacheFresh = samePullRequestTarget
-      && previousGit !== undefined
-      && Date.now() - previousGit.pullRequestLookupAt < PULL_REQUEST_REFRESH_MS;
-
-    if (pullRequestCacheFresh && previousGit !== undefined) {
-      pullRequest = previousGit.pullRequest;
-      pullRequestLookupAt = previousGit.pullRequestLookupAt;
-    } else {
-      pullRequest = await collectPullRequest(pi, cwd, repository, branch);
-      pullRequestLookupAt = Date.now();
-    }
-  }
 
   let added = 0;
   let removed = 0;
@@ -214,8 +417,8 @@ export async function collectGitInfo(
     repository,
     branch,
     commit,
-    pullRequest,
-    pullRequestLookupAt,
+    pullRequest: samePullRequestTarget ? previousGit?.pullRequest : undefined,
+    pullRequestLookupAt: samePullRequestTarget ? previousGit?.pullRequestLookupAt ?? 0 : 0,
     added,
     removed,
     counts: {
