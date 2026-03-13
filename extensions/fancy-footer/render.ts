@@ -1,5 +1,9 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import type { ExtensionContext, SessionEntry, Theme } from "@mariozechner/pi-coding-agent";
+import type {
+  ExtensionContext,
+  SessionEntry,
+  Theme,
+} from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
   FOOTER_WIDGET_META,
@@ -52,7 +56,9 @@ function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
   return { latest, totalCost };
 }
 
-export function collectSessionUsageMetrics(ctx: ExtensionContext): SessionUsageMetrics {
+export function collectSessionUsageMetrics(
+  ctx: ExtensionContext,
+): SessionUsageMetrics {
   return getUsageData(ctx.sessionManager.getBranch());
 }
 
@@ -68,10 +74,15 @@ function buildBricks(
   if (n === 0) return "";
 
   const total = Math.max(1, Math.floor(totalTokens));
-  const clampedUsedTokens = Math.max(0, Math.min(total, Math.floor(usedTokens)));
+  const clampedUsedTokens = Math.max(
+    0,
+    Math.min(total, Math.floor(usedTokens)),
+  );
   const symbols = getStatuslineSymbols(iconFamily);
 
-  const reserveTokens = settings.enabled ? Math.max(0, Math.floor(settings.reserveTokens)) : 0;
+  const reserveTokens = settings.enabled
+    ? Math.max(0, Math.floor(settings.reserveTokens))
+    : 0;
   const safeTokens = Math.max(0, Math.min(total, total - reserveTokens));
 
   let safeCells = Math.floor((safeTokens * n) / total);
@@ -109,13 +120,22 @@ function buildGitStatus(
   const symbols = getStatuslineSymbols(iconFamily);
 
   if (counts.ahead > 0 && counts.behind > 0) {
-    return { gitStatusSymbol: symbols.gitDiverged, gitStatusText: `${counts.ahead}/${counts.behind}` };
+    return {
+      gitStatusSymbol: symbols.gitDiverged,
+      gitStatusText: `${counts.ahead}/${counts.behind}`,
+    };
   }
   if (counts.ahead > 0) {
-    return { gitStatusSymbol: symbols.gitAhead, gitStatusText: `${counts.ahead}` };
+    return {
+      gitStatusSymbol: symbols.gitAhead,
+      gitStatusText: `${counts.ahead}`,
+    };
   }
   if (counts.behind > 0) {
-    return { gitStatusSymbol: symbols.gitBehind, gitStatusText: `${counts.behind}` };
+    return {
+      gitStatusSymbol: symbols.gitBehind,
+      gitStatusText: `${counts.behind}`,
+    };
   }
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
@@ -129,7 +149,8 @@ function resolveGitStatusSymbolColor(
 
   const symbols = getStatuslineSymbols(iconFamily);
   if (symbol === symbols.gitBehind) return "warning";
-  if (symbol === symbols.gitAhead || symbol === symbols.gitDiverged) return "accent";
+  if (symbol === symbols.gitAhead || symbol === symbols.gitDiverged)
+    return "accent";
   return configuredColor;
 }
 
@@ -137,7 +158,10 @@ function widgetKey(widget: FooterWidget): string {
   return `${widget.location.row}:${widget.id}`;
 }
 
-function resolveWidgetSize(size: FooterWidgetSize | undefined, renderCtx: WidgetRenderContext): number {
+function resolveWidgetSize(
+  size: FooterWidgetSize | undefined,
+  renderCtx: WidgetRenderContext,
+): number {
   if (typeof size === "number") {
     return clampInt(size, 0, MAX_WIDGET_MIN_WIDTH);
   }
@@ -147,7 +171,10 @@ function resolveWidgetSize(size: FooterWidgetSize | undefined, renderCtx: Widget
   return 0;
 }
 
-function isWidgetVisible(widget: FooterWidget, renderCtx: WidgetRenderContext): boolean {
+function isWidgetVisible(
+  widget: FooterWidget,
+  renderCtx: WidgetRenderContext,
+): boolean {
   if (!widget.visible) return true;
   return widget.visible(renderCtx);
 }
@@ -163,19 +190,24 @@ function renderWidget(
   const iconText = widget.icon?.text ?? "";
   const iconWidth = hasIcon ? visibleWidth(iconText) : 0;
 
-  const maxTotalWidth = allocatedWidth === undefined ? undefined : Math.max(0, Math.floor(allocatedWidth));
-  const contentWidth = maxTotalWidth === undefined
-    ? undefined
-    : Math.max(0, maxTotalWidth - iconWidth);
+  const maxTotalWidth =
+    allocatedWidth === undefined
+      ? undefined
+      : Math.max(0, Math.floor(allocatedWidth));
+  const contentWidth =
+    maxTotalWidth === undefined
+      ? undefined
+      : Math.max(0, maxTotalWidth - iconWidth);
 
   const rawText = widget.renderText(renderCtx, contentWidth);
   const styledText = widget.styled
     ? rawText
     : renderCtx.theme.fg(widget.textColor ?? "dim", rawText);
 
-  const styledIcon = hasIcon && widget.icon
-    ? renderCtx.theme.fg(widget.icon.color, iconText)
-    : "";
+  const styledIcon =
+    hasIcon && widget.icon
+      ? renderCtx.theme.fg(widget.icon.color, iconText)
+      : "";
 
   const combined = `${styledIcon}${styledText}`;
   if (maxTotalWidth === undefined) return combined;
@@ -186,7 +218,9 @@ function prepareWidgetGroup(
   widgets: FooterWidget[],
   renderCtx: WidgetRenderContext,
 ): PreparedWidgetGroup {
-  const sorted = [...widgets].sort((a, b) => a.location.position - b.location.position);
+  const sorted = [...widgets].sort(
+    (a, b) => a.location.position - b.location.position,
+  );
   const prepared: PreparedWidget[] = [];
 
   for (const widget of sorted) {
@@ -269,7 +303,11 @@ function composeAlignedRow(
     if (left && right) {
       if (leftWidth + rightWidth + 1 > width) return fallback();
       const gap = Math.max(1, width - leftWidth - rightWidth);
-      return truncateToWidth(`${left}${" ".repeat(gap)}${right}`, width, theme.fg("dim", "..."));
+      return truncateToWidth(
+        `${left}${" ".repeat(gap)}${right}`,
+        width,
+        theme.fg("dim", "..."),
+      );
     }
 
     if (left) return truncateToWidth(left, width, theme.fg("dim", "..."));
@@ -283,7 +321,11 @@ function composeAlignedRow(
   if (!left && !right) {
     if (middleWidth > width) return fallback();
     const start = Math.max(0, Math.floor((width - middleWidth) / 2));
-    return truncateToWidth(`${" ".repeat(start)}${middle}`, width, theme.fg("dim", "..."));
+    return truncateToWidth(
+      `${" ".repeat(start)}${middle}`,
+      width,
+      theme.fg("dim", "..."),
+    );
   }
 
   const gapLeftMiddle = left ? 1 : 0;
@@ -300,10 +342,14 @@ function composeAlignedRow(
   }
 
   const middleTextWidth = visibleWidth(middleText);
-  const middleStart = leftBoundary + Math.max(0, Math.floor((slotWidth - middleTextWidth) / 2));
+  const middleStart =
+    leftBoundary + Math.max(0, Math.floor((slotWidth - middleTextWidth) / 2));
 
   const preMiddleSpaces = Math.max(0, middleStart - leftBoundary);
-  const postMiddleSpaces = Math.max(0, rightBoundary - (middleStart + middleTextWidth));
+  const postMiddleSpaces = Math.max(
+    0,
+    rightBoundary - (middleStart + middleTextWidth),
+  );
 
   let out = "";
   if (left) {
@@ -333,18 +379,32 @@ function computeFooterMetrics(
   const contextUsage = ctx.getContextUsage();
   const totalTokens = Math.max(
     1,
-    Math.floor(toNumber(contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 200_000)),
+    Math.floor(
+      toNumber(
+        contextUsage?.contextWindow ?? ctx.model?.contextWindow ?? 200_000,
+      ),
+    ),
   );
 
   const contextTokensRaw = contextUsage?.tokens;
-  const contextTokensKnown = typeof contextTokensRaw === "number" && Number.isFinite(contextTokensRaw);
-  const contextTokens = contextTokensKnown ? Math.max(0, Math.floor(contextTokensRaw)) : 0;
+  const contextTokensKnown =
+    typeof contextTokensRaw === "number" && Number.isFinite(contextTokensRaw);
+  const contextTokens = contextTokensKnown
+    ? Math.max(0, Math.floor(contextTokensRaw))
+    : 0;
 
   const usedRaw = Number(contextUsage?.percent);
   const hasUsedPercent = Number.isFinite(usedRaw) && usedRaw >= 0;
   const usedPct = Math.max(
     0,
-    Math.min(100, Math.round(hasUsedPercent ? usedRaw : (contextTokens * 100) / Math.max(1, totalTokens))),
+    Math.min(
+      100,
+      Math.round(
+        hasUsedPercent
+          ? usedRaw
+          : (contextTokens * 100) / Math.max(1, totalTokens),
+      ),
+    ),
   );
 
   let inputTokens = latest ? latest.input : contextTokens;
@@ -356,8 +416,12 @@ function computeFooterMetrics(
   }
 
   const usageFromLatest = Math.max(0, Math.floor(inputTokens + cacheTokens));
-  const usageFromPercent = hasUsedPercent ? Math.floor((usedPct * totalTokens) / 100) : 0;
-  const usedTokensForBar = contextTokensKnown ? contextTokens : Math.max(usageFromPercent, usageFromLatest);
+  const usageFromPercent = hasUsedPercent
+    ? Math.floor((usedPct * totalTokens) / 100)
+    : 0;
+  const usedTokensForBar = contextTokensKnown
+    ? contextTokens
+    : Math.max(usageFromPercent, usageFromLatest);
 
   const model = normalizeModel(ctx.model?.name || ctx.model?.id || "Claude");
   const thinking = formatThinkingLevel(thinkingLevel);
@@ -386,7 +450,10 @@ function computeFooterMetrics(
 function baseWidgetDefaults(
   widgetId: FooterWidgetId,
   iconFamily: FooterIconFamily,
-): Pick<FooterWidget, "id" | "location" | "align" | "fill" | "icon" | "textColor"> {
+): Pick<
+  FooterWidget,
+  "id" | "location" | "align" | "fill" | "icon" | "textColor"
+> {
   const defaults = FOOTER_WIDGET_META[widgetId].defaults;
 
   return {
@@ -421,7 +488,10 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
       ...baseWidgetDefaults("context-bar", iconFamily),
       minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
-      renderText: ({ metrics, compactionSettings, theme }, availableWidth = 0) =>
+      renderText: (
+        { metrics, compactionSettings, theme },
+        availableWidth = 0,
+      ) =>
         buildBricks(
           Math.max(0, Math.floor(availableWidth)),
           metrics.totalTokens,
@@ -458,7 +528,7 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
     {
       ...baseWidgetDefaults("pull-request", iconFamily),
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
-      renderText: ({ metrics }) => `#${metrics.pullRequestNumber}`,
+      renderText: ({ metrics }) => `${metrics.pullRequestNumber}`,
     },
     {
       ...baseWidgetDefaults("diff-added", iconFamily),
@@ -475,7 +545,11 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
       styled: true,
       visible: ({ metrics }) => metrics.gitStatusSymbol !== "",
       renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) => {
-        const symbolColor = resolveGitStatusSymbolColor(metrics.gitStatusSymbol, defaultIconColor, iconFamily);
+        const symbolColor = resolveGitStatusSymbolColor(
+          metrics.gitStatusSymbol,
+          defaultIconColor,
+          iconFamily,
+        );
         return `${theme.fg(symbolColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`;
       },
     },
@@ -494,7 +568,11 @@ function applyWidgetConfigOverrides(
 
     const location = {
       row: clampInt(override.row ?? widget.location.row, 0, MAX_WIDGET_ROW),
-      position: clampInt(override.position ?? widget.location.position, 0, MAX_WIDGET_POSITION),
+      position: clampInt(
+        override.position ?? widget.location.position,
+        0,
+        MAX_WIDGET_POSITION,
+      ),
     };
 
     const textColor = override.textColor ?? defaultTextColor;
@@ -545,9 +623,10 @@ function applyWidgetConfigOverrides(
       location,
       align: override.align ?? widget.align,
       fill: override.fill ?? widget.fill,
-      minWidth: override.minWidth !== undefined
-        ? clampInt(override.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
-        : widget.minWidth,
+      minWidth:
+        override.minWidth !== undefined
+          ? clampInt(override.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
+          : widget.minWidth,
       icon,
       textColor,
       visible,
@@ -563,7 +642,9 @@ function renderWidgetRow(
 ): string {
   if (width <= 0 || rowWidgets.length === 0) return "";
 
-  const visibleWidgets = rowWidgets.filter((widget) => isWidgetVisible(widget, renderCtx));
+  const visibleWidgets = rowWidgets.filter((widget) =>
+    isWidgetVisible(widget, renderCtx),
+  );
   if (visibleWidgets.length === 0) return "";
 
   const leftGroup = prepareWidgetGroup(
@@ -583,7 +664,8 @@ function renderWidgetRow(
   const occupiedGroups = groups.filter((group) => group.widgets.length > 0);
   const interGroupGaps = Math.max(0, occupiedGroups.length - 1);
 
-  const minRequiredWidth = groups.reduce((acc, group) => acc + group.minWidth, 0) + interGroupGaps;
+  const minRequiredWidth =
+    groups.reduce((acc, group) => acc + group.minWidth, 0) + interGroupGaps;
 
   const fillExtras = new Map<string, number>();
 
@@ -609,11 +691,19 @@ function renderWidgetRow(
   const rightText = renderGroup(rightGroup, renderCtx, fillExtras);
 
   if (minRequiredWidth > width) {
-    const fallback = [leftText, middleText, rightText].filter((part) => part).join(" ");
+    const fallback = [leftText, middleText, rightText]
+      .filter((part) => part)
+      .join(" ");
     return truncateToWidth(fallback, width, renderCtx.theme.fg("dim", "..."));
   }
 
-  return composeAlignedRow(width, leftText, middleText, rightText, renderCtx.theme);
+  return composeAlignedRow(
+    width,
+    leftText,
+    middleText,
+    rightText,
+    renderCtx.theme,
+  );
 }
 
 export function renderFooterLines(
@@ -628,7 +718,13 @@ export function renderFooterLines(
 ): string[] {
   if (width <= 0) return ["", ""];
 
-  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics, footerConfig.iconFamily);
+  const metrics = computeFooterMetrics(
+    ctx,
+    git,
+    thinkingLevel,
+    usageMetrics,
+    footerConfig.iconFamily,
+  );
   const renderCtx: WidgetRenderContext = {
     width,
     theme,
