@@ -24,6 +24,9 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "scripts": {
+    "test": "node --test --experimental-strip-types extensions/fancy-footer/*.test.ts"
+  },
   "publishConfig": {
     "access": "public"
   },

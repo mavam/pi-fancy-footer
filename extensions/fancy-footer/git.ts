@@ -19,6 +19,12 @@ interface PullRequestCandidate {
   headOwner: string;
 }
 
+interface PullRequestLookupPlan {
+  baseRepositories: string[];
+  headOwners: string[];
+  allowCurrentBranchFallback: boolean;
+}
+
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
 const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
 const PULL_REQUEST_REFRESH_MS = 60_000;
@@ -152,8 +158,20 @@ function selectPullRequestHeadOwners(remotes: GitHubRemote[], preferredRemote: s
   return orderedRemoteValues(remotes, [preferredRemote, "origin", "upstream"], (remote) => remote.owner);
 }
 
+function createPullRequestLookupPlan(remoteUrls: string, upstream: string): PullRequestLookupPlan | undefined {
+  const preferredRemote = parseRemoteName(upstream);
+  const remotes = parseGitHubRemotes(remoteUrls);
+  if (remotes.length === 0) return undefined;
+
+  return {
+    baseRepositories: selectPullRequestBaseRepositories(remotes, preferredRemote),
+    headOwners: selectPullRequestHeadOwners(remotes, preferredRemote),
+    allowCurrentBranchFallback: true,
+  };
+}
+
 function selectPullRequest(candidates: PullRequestCandidate[], headOwners: string[]): GitInfo["pullRequest"] {
-  if (candidates.length === 0) return undefined;
+  if (candidates.length === 0 || headOwners.length === 0) return undefined;
 
   let bestCandidate: PullRequestCandidate | undefined;
   let bestRank = Number.POSITIVE_INFINITY;
@@ -166,23 +184,12 @@ function selectPullRequest(candidates: PullRequestCandidate[], headOwners: strin
     }
   }
 
-  if (bestCandidate) {
-    return {
-      number: bestCandidate.number,
-      url: bestCandidate.url,
-    };
-  }
+  if (!bestCandidate) return undefined;
 
-  if (candidates.length === 1) {
-    const [candidate] = candidates;
-    if (!candidate) return undefined;
-    return {
-      number: candidate.number,
-      url: candidate.url,
-    };
-  }
-
-  return undefined;
+  return {
+    number: bestCandidate.number,
+    url: bestCandidate.url,
+  };
 }
 
 function parsePullRequest(output: string): GitInfo["pullRequest"] {
@@ -280,18 +287,21 @@ async function collectCurrentBranchPullRequest(
   return parsePullRequest(result.stdout);
 }
 
-export function shouldRefreshPullRequest(git: Pick<GitInfo, "branch" | "pullRequestLookupAt">): boolean {
-  return !!git.branch && Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
+export function shouldRefreshPullRequest(
+  git: Pick<GitInfo, "branch" | "pullRequestLookupEnabled" | "pullRequestLookupAt">,
+): boolean {
+  return git.pullRequestLookupEnabled && !!git.branch && Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
 }
 
 export async function collectPullRequestInfo(
   pi: ExtensionAPI,
   cwd: string,
   branch: string,
-): Promise<Pick<GitInfo, "pullRequest" | "pullRequestLookupAt">> {
+): Promise<Pick<GitInfo, "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt">> {
   if (!branch) {
     return {
       pullRequest: undefined,
+      pullRequestLookupEnabled: false,
       pullRequestLookupAt: 0,
     };
   }
@@ -301,25 +311,33 @@ export async function collectPullRequestInfo(
     exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
   ]);
 
-  const preferredRemote = parseRemoteName(upstream);
-  const remotes = parseGitHubRemotes(remoteUrls);
-  const baseRepositories = selectPullRequestBaseRepositories(remotes, preferredRemote);
-  const headOwners = selectPullRequestHeadOwners(remotes, preferredRemote);
+  const plan = createPullRequestLookupPlan(remoteUrls, upstream);
   const pullRequestLookupAt = Date.now();
+  if (!plan) {
+    return {
+      pullRequest: undefined,
+      pullRequestLookupEnabled: false,
+      pullRequestLookupAt,
+    };
+  }
 
-  for (const baseRepository of baseRepositories) {
-    const pullRequest = await collectPullRequestFromBaseRepository(pi, cwd, baseRepository, branch, headOwners);
+  for (const baseRepository of plan.baseRepositories) {
+    const pullRequest = await collectPullRequestFromBaseRepository(pi, cwd, baseRepository, branch, plan.headOwners);
     if (pullRequest) {
       return {
         pullRequest,
+        pullRequestLookupEnabled: true,
         pullRequestLookupAt,
       };
     }
   }
 
-  const fallbackPullRequest = await collectCurrentBranchPullRequest(pi, cwd);
+  const fallbackPullRequest = plan.allowCurrentBranchFallback
+    ? await collectCurrentBranchPullRequest(pi, cwd)
+    : undefined;
   return {
     pullRequest: fallbackPullRequest,
+    pullRequestLookupEnabled: true,
     pullRequestLookupAt,
   };
 }
@@ -327,7 +345,7 @@ export async function collectPullRequestInfo(
 export async function collectGitInfo(
   pi: ExtensionAPI,
   cwd: string,
-  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest" | "pullRequestLookupAt"> | undefined = undefined,
+  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"> | undefined = undefined,
 ): Promise<GitInfo> {
   const [porcelainV2, remoteUrls] = await Promise.all([
     exec(pi, "git", ["status", "--porcelain=2", "--branch"], cwd),
@@ -390,6 +408,7 @@ export async function collectGitInfo(
 
   const remotes = parseGitHubRemotes(remoteUrls);
   const repository = selectGitHubRepository(remotes, parseRemoteName(upstream));
+  const pullRequestLookupEnabled = remotes.length > 0;
   const samePullRequestTarget = previousGit !== undefined
     && previousGit.repository === repository
     && previousGit.branch === branch;
@@ -418,6 +437,7 @@ export async function collectGitInfo(
     branch,
     commit,
     pullRequest: samePullRequestTarget ? previousGit?.pullRequest : undefined,
+    pullRequestLookupEnabled,
     pullRequestLookupAt: samePullRequestTarget ? previousGit?.pullRequestLookupAt ?? 0 : 0,
     added,
     removed,
