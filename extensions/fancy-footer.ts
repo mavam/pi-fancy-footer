@@ -83,9 +83,11 @@ export default function (pi: ExtensionAPI) {
         tui.requestRender();
       };
 
+      const isPullRequestWidgetEnabled = () => footerConfig.widgets["pull-request"]?.enabled !== false;
+
       // Keep networked PR discovery off the local git refresh path.
       const refreshPullRequest = async () => {
-        if (disposed || !shouldRefreshPullRequest(currentGit)) return;
+        if (disposed || !isPullRequestWidgetEnabled() || !shouldRefreshPullRequest(currentGit)) return;
         if (pullRequestRefreshing) {
           pullRequestRefreshQueued = true;
           return;
@@ -96,7 +98,7 @@ export default function (pi: ExtensionAPI) {
           do {
             pullRequestRefreshQueued = false;
 
-            if (!shouldRefreshPullRequest(currentGit)) continue;
+            if (!isPullRequestWidgetEnabled() || !shouldRefreshPullRequest(currentGit)) continue;
 
             const targetBranch = currentGit.branch;
             const targetRepository = currentGit.repository;
