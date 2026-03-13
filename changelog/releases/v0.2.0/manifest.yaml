@@ -1,0 +1,7 @@
+created: 2026-03-13
+title: Configurable icon families and GitHub PR widget
+intro: >-
+  Adds four icon families (nerd, emoji, unicode, and ascii) so the footer renders
+  correctly in any terminal regardless of installed fonts, with live preview in the
+  settings UI. Also introduces a new pull request widget that shows the open GitHub
+  PR number for the current branch after the commit SHA.
