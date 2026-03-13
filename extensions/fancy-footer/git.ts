@@ -7,14 +7,19 @@ interface ExecResult {
   stderr: string;
 }
 
+const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
+const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
+const PULL_REQUEST_REFRESH_MS = 60_000;
+
 async function execResult(
   pi: ExtensionAPI,
   command: string,
   args: string[],
   cwd: string,
+  timeout = DEFAULT_COMMAND_TIMEOUT_MS,
 ): Promise<ExecResult> {
   try {
-    const result = await pi.exec(command, args, { cwd, timeout: 2000 });
+    const result = await pi.exec(command, args, { cwd, timeout });
     return {
       code: result.code,
       // Keep leading whitespace (git porcelain uses it), only drop trailing newlines.
@@ -80,7 +85,13 @@ async function collectPullRequest(
 ): Promise<GitInfo["pullRequest"]> {
   if (!repository || !branch) return undefined;
 
-  const result = await execResult(pi, "gh", ["pr", "view", branch, "--json", "number,url"], cwd);
+  const result = await execResult(
+    pi,
+    "gh",
+    ["pr", "view", branch, "--repo", repository, "--json", "number,url"],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
   if (result.code !== 0 || !result.stdout) return undefined;
 
   try {
@@ -97,7 +108,7 @@ async function collectPullRequest(
 export async function collectGitInfo(
   pi: ExtensionAPI,
   cwd: string,
-  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest"> | undefined = undefined,
+  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest" | "pullRequestLookupAt"> | undefined = undefined,
 ): Promise<GitInfo> {
   const [porcelainV2, remoteUrls] = await Promise.all([
     exec(pi, "git", ["status", "--porcelain=2", "--branch"], cwd),
@@ -159,9 +170,26 @@ export async function collectGitInfo(
   }
 
   const repository = selectGitHubRepository(remoteUrls, parseRemoteName(upstream));
-  const pullRequest = previousGit && previousGit.repository === repository && previousGit.branch === branch
-    ? previousGit.pullRequest
-    : await collectPullRequest(pi, cwd, repository, branch);
+  const samePullRequestTarget = previousGit !== undefined
+    && previousGit.repository === repository
+    && previousGit.branch === branch;
+
+  let pullRequest: GitInfo["pullRequest"] = undefined;
+  let pullRequestLookupAt = 0;
+
+  if (repository && branch) {
+    const pullRequestCacheFresh = samePullRequestTarget
+      && previousGit !== undefined
+      && Date.now() - previousGit.pullRequestLookupAt < PULL_REQUEST_REFRESH_MS;
+
+    if (pullRequestCacheFresh && previousGit !== undefined) {
+      pullRequest = previousGit.pullRequest;
+      pullRequestLookupAt = previousGit.pullRequestLookupAt;
+    } else {
+      pullRequest = await collectPullRequest(pi, cwd, repository, branch);
+      pullRequestLookupAt = Date.now();
+    }
+  }
 
   let added = 0;
   let removed = 0;
@@ -187,6 +215,7 @@ export async function collectGitInfo(
     branch,
     commit,
     pullRequest,
+    pullRequestLookupAt,
     added,
     removed,
     counts: {

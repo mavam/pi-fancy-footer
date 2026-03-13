@@ -34,8 +34,6 @@ interface ActiveFooterControls {
   applyHeader: () => void;
 }
 
-const PULL_REQUEST_REFRESH_MS = 60_000;
-
 export default function (pi: ExtensionAPI) {
   let compactionSettings: CompactionSettingsSnapshot = { ...DEFAULT_COMPACTION_SETTINGS };
   let footerConfig: FooterConfigSnapshot = {
@@ -77,7 +75,6 @@ export default function (pi: ExtensionAPI) {
       let refreshQueued = false;
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-      let lastPullRequestLookupAt = 0;
 
       const requestRender = () => {
         if (disposed) return;
@@ -99,15 +96,8 @@ export default function (pi: ExtensionAPI) {
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
-            const pullRequestCacheExpired = Date.now() - lastPullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
-            const cachedGit = pullRequestCacheExpired ? undefined : currentGit;
-            const previousRepository = currentGit.repository;
-            const previousBranch = currentGit.branch;
-            const git = await collectGitInfo(pi, ctx.cwd, cachedGit);
+            const git = await collectGitInfo(pi, ctx.cwd, currentGit);
             if (disposed) return;
-            if (cachedGit === undefined || git.repository !== previousRepository || git.branch !== previousBranch) {
-              lastPullRequestLookupAt = Date.now();
-            }
             currentGit = git;
             requestRender();
           } while (!disposed && refreshQueued);

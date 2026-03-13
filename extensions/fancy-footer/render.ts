@@ -442,7 +442,7 @@ function buildFooterWidgets(): FooterWidget[] {
     {
       ...baseWidgetDefaults("pull-request"),
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
-      renderText: ({ metrics }) => `${metrics.pullRequestNumber}`,
+      renderText: ({ metrics }) => `#${metrics.pullRequestNumber}`,
     },
     {
       ...baseWidgetDefaults("diff-added"),

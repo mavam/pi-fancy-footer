@@ -74,6 +74,7 @@ export interface GitInfo {
   branch: string;
   commit: string;
   pullRequest: GitHubPullRequest | undefined;
+  pullRequestLookupAt: number;
   added: number;
   removed: number;
   counts: GitCounts;
@@ -84,6 +85,7 @@ export const EMPTY_GIT_INFO: GitInfo = {
   branch: "",
   commit: "",
   pullRequest: undefined,
+  pullRequestLookupAt: 0,
   added: 0,
   removed: 0,
   counts: {
