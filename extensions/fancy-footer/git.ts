@@ -17,6 +17,34 @@ async function exec(
   }
 }
 
+async function collectPullRequest(
+  pi: ExtensionAPI,
+  cwd: string,
+  repository: string,
+  branch: string,
+): Promise<GitInfo["pullRequest"]> {
+  if (!repository || !branch) return undefined;
+
+  const output = await exec(
+    pi,
+    "gh",
+    ["pr", "list", "--repo", repository, "--head", branch, "--state", "open", "--limit", "1", "--json", "number,url"],
+    cwd,
+  );
+  if (!output) return undefined;
+
+  try {
+    const parsed = JSON.parse(output) as Array<{ number?: unknown; url?: unknown }>;
+    const first = Array.isArray(parsed) ? parsed[0] : undefined;
+    const number = Math.max(0, Math.floor(toNumber(first?.number)));
+    const url = typeof first?.url === "string" ? first.url : "";
+    if (number <= 0) return undefined;
+    return { number, url };
+  } catch {
+    return undefined;
+  }
+}
+
 export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<GitInfo> {
   const [porcelainV2, remoteUrl] = await Promise.all([
     exec(pi, "git", ["status", "--porcelain=2", "--branch"], cwd),
@@ -71,6 +99,9 @@ export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<Git
     }
   }
 
+  const repository = parseGitHubRemote(remoteUrl);
+  const pullRequestPromise = collectPullRequest(pi, cwd, repository, branch);
+
   let added = 0;
   let removed = 0;
 
@@ -91,9 +122,10 @@ export async function collectGitInfo(pi: ExtensionAPI, cwd: string): Promise<Git
   }
 
   return {
-    repository: parseGitHubRemote(remoteUrl),
+    repository,
     branch,
     commit,
+    pullRequest: await pullRequestPromise,
     added,
     removed,
     counts: {
