@@ -7,9 +7,9 @@ import {
   MAX_WIDGET_MIN_WIDTH,
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
-  STATUSLINE_SYMBOLS,
   type CompactionSettingsSnapshot,
   type FooterConfigSnapshot,
+  type FooterIconFamily,
   type FooterMetrics,
   type FooterWidget,
   type FooterWidgetId,
@@ -23,6 +23,7 @@ import {
   clampInt,
   formatThinkingLevel,
   getDefaultWidgetIcon,
+  getStatuslineSymbols,
   normalizeModel,
   normalizePath,
   toNumber,
@@ -61,12 +62,14 @@ function buildBricks(
   usedTokens: number,
   settings: CompactionSettingsSnapshot,
   theme: Theme,
+  iconFamily: FooterIconFamily,
 ): string {
   const n = clampInt(cells, 0, MAX_CONTEXT_BAR_CELLS);
   if (n === 0) return "";
 
   const total = Math.max(1, Math.floor(totalTokens));
   const clampedUsedTokens = Math.max(0, Math.min(total, Math.floor(usedTokens)));
+  const symbols = getStatuslineSymbols(iconFamily);
 
   const reserveTokens = settings.enabled ? Math.max(0, Math.floor(settings.reserveTokens)) : 0;
   const safeTokens = Math.max(0, Math.min(total, total - reserveTokens));
@@ -85,29 +88,34 @@ function buildBricks(
   let out = "";
 
   for (let i = 0; i < usedCells; i++) {
-    out += theme.fg("dim", STATUSLINE_SYMBOLS.contextUsed);
+    out += theme.fg("dim", symbols.contextUsed);
   }
 
   for (let i = usedCells; i < safeCells; i++) {
-    out += theme.fg("dim", STATUSLINE_SYMBOLS.contextFree);
+    out += theme.fg("dim", symbols.contextFree);
   }
 
   for (let i = Math.max(usedCells, safeCells); i < n; i++) {
-    out += theme.fg("dim", STATUSLINE_SYMBOLS.contextReserved);
+    out += theme.fg("dim", symbols.contextReserved);
   }
 
   return out;
 }
 
-function buildGitStatus(counts: GitCounts): Pick<FooterMetrics, "gitStatusSymbol" | "gitStatusText"> {
+function buildGitStatus(
+  counts: GitCounts,
+  iconFamily: FooterIconFamily,
+): Pick<FooterMetrics, "gitStatusSymbol" | "gitStatusText"> {
+  const symbols = getStatuslineSymbols(iconFamily);
+
   if (counts.ahead > 0 && counts.behind > 0) {
-    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitDiverged, gitStatusText: `${counts.ahead}/${counts.behind}` };
+    return { gitStatusSymbol: symbols.gitDiverged, gitStatusText: `${counts.ahead}/${counts.behind}` };
   }
   if (counts.ahead > 0) {
-    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitAhead, gitStatusText: `${counts.ahead}` };
+    return { gitStatusSymbol: symbols.gitAhead, gitStatusText: `${counts.ahead}` };
   }
   if (counts.behind > 0) {
-    return { gitStatusSymbol: STATUSLINE_SYMBOLS.gitBehind, gitStatusText: `${counts.behind}` };
+    return { gitStatusSymbol: symbols.gitBehind, gitStatusText: `${counts.behind}` };
   }
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
@@ -115,10 +123,13 @@ function buildGitStatus(counts: GitCounts): Pick<FooterMetrics, "gitStatusSymbol
 function resolveGitStatusSymbolColor(
   symbol: string,
   configuredColor: FooterConfigSnapshot["defaultIconColor"],
+  iconFamily: FooterIconFamily,
 ): FooterConfigSnapshot["defaultIconColor"] {
   if (configuredColor !== "text") return configuredColor;
-  if (symbol === STATUSLINE_SYMBOLS.gitBehind) return "warning";
-  if (symbol === STATUSLINE_SYMBOLS.gitAhead || symbol === STATUSLINE_SYMBOLS.gitDiverged) return "accent";
+
+  const symbols = getStatuslineSymbols(iconFamily);
+  if (symbol === symbols.gitBehind) return "warning";
+  if (symbol === symbols.gitAhead || symbol === symbols.gitDiverged) return "accent";
   return configuredColor;
 }
 
@@ -315,6 +326,7 @@ function computeFooterMetrics(
   git: GitInfo,
   thinkingLevel: string,
   usageMetrics: SessionUsageMetrics,
+  iconFamily: FooterIconFamily,
 ): FooterMetrics {
   const { latest, totalCost } = usageMetrics;
 
@@ -367,11 +379,14 @@ function computeFooterMetrics(
     pullRequestNumber: git.pullRequest?.number ?? 0,
     added: git.added,
     removed: git.removed,
-    ...buildGitStatus(git.counts),
+    ...buildGitStatus(git.counts, iconFamily),
   };
 }
 
-function baseWidgetDefaults(widgetId: FooterWidgetId): Pick<FooterWidget, "id" | "location" | "align" | "fill" | "icon" | "textColor"> {
+function baseWidgetDefaults(
+  widgetId: FooterWidgetId,
+  iconFamily: FooterIconFamily,
+): Pick<FooterWidget, "id" | "location" | "align" | "fill" | "icon" | "textColor"> {
   const defaults = FOOTER_WIDGET_META[widgetId].defaults;
 
   return {
@@ -382,28 +397,28 @@ function baseWidgetDefaults(widgetId: FooterWidgetId): Pick<FooterWidget, "id" |
     },
     align: defaults.align,
     fill: defaults.fill,
-    icon: getDefaultWidgetIcon(widgetId),
+    icon: getDefaultWidgetIcon(widgetId, iconFamily),
     textColor: "dim",
   };
 }
 
-function buildFooterWidgets(): FooterWidget[] {
+function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
   return [
     {
-      ...baseWidgetDefaults("model"),
+      ...baseWidgetDefaults("model", iconFamily),
       renderText: ({ metrics }) => metrics.model,
     },
     {
-      ...baseWidgetDefaults("thinking"),
+      ...baseWidgetDefaults("thinking", iconFamily),
       visible: ({ metrics }) => metrics.thinking !== "",
       renderText: ({ metrics }) => metrics.thinking,
     },
     {
-      ...baseWidgetDefaults("context-capacity"),
+      ...baseWidgetDefaults("context-capacity", iconFamily),
       renderText: ({ metrics }) => `${metrics.totalK}k`,
     },
     {
-      ...baseWidgetDefaults("context-bar"),
+      ...baseWidgetDefaults("context-bar", iconFamily),
       minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
       renderText: ({ metrics, compactionSettings, theme }, availableWidth = 0) =>
@@ -413,53 +428,54 @@ function buildFooterWidgets(): FooterWidget[] {
           metrics.usedTokensForBar,
           compactionSettings,
           theme,
+          iconFamily,
         ),
     },
     {
-      ...baseWidgetDefaults("context-usage"),
+      ...baseWidgetDefaults("context-usage", iconFamily),
       visible: ({ width }) => width >= 40,
       renderText: ({ metrics }) => `${metrics.usedK}k`,
     },
     {
-      ...baseWidgetDefaults("total-cost"),
+      ...baseWidgetDefaults("total-cost", iconFamily),
       visible: ({ width, metrics }) => width >= 60 && metrics.totalCost > 0,
       renderText: ({ metrics }) => metrics.totalCost.toFixed(2),
     },
     {
-      ...baseWidgetDefaults("location"),
+      ...baseWidgetDefaults("location", iconFamily),
       renderText: ({ metrics }) => metrics.locationText,
     },
     {
-      ...baseWidgetDefaults("branch"),
+      ...baseWidgetDefaults("branch", iconFamily),
       visible: ({ metrics }) => metrics.branch !== "",
       renderText: ({ metrics }) => metrics.branch,
     },
     {
-      ...baseWidgetDefaults("commit"),
+      ...baseWidgetDefaults("commit", iconFamily),
       visible: ({ metrics }) => metrics.commit !== "",
       renderText: ({ metrics }) => metrics.commit,
     },
     {
-      ...baseWidgetDefaults("pull-request"),
+      ...baseWidgetDefaults("pull-request", iconFamily),
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
       renderText: ({ metrics }) => `#${metrics.pullRequestNumber}`,
     },
     {
-      ...baseWidgetDefaults("diff-added"),
+      ...baseWidgetDefaults("diff-added", iconFamily),
       visible: ({ metrics }) => metrics.added > 0,
       renderText: ({ metrics }) => `${metrics.added}`,
     },
     {
-      ...baseWidgetDefaults("diff-removed"),
+      ...baseWidgetDefaults("diff-removed", iconFamily),
       visible: ({ metrics }) => metrics.removed > 0,
       renderText: ({ metrics }) => `${metrics.removed}`,
     },
     {
-      ...baseWidgetDefaults("git-status"),
+      ...baseWidgetDefaults("git-status", iconFamily),
       styled: true,
       visible: ({ metrics }) => metrics.gitStatusSymbol !== "",
       renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) => {
-        const symbolColor = resolveGitStatusSymbolColor(metrics.gitStatusSymbol, defaultIconColor);
+        const symbolColor = resolveGitStatusSymbolColor(metrics.gitStatusSymbol, defaultIconColor, iconFamily);
         return `${theme.fg(symbolColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`;
       },
     },
@@ -471,6 +487,7 @@ function applyWidgetConfigOverrides(
   overrides: FooterConfigSnapshot["widgets"],
   defaultTextColor: FooterConfigSnapshot["defaultTextColor"],
   defaultIconColor: FooterConfigSnapshot["defaultIconColor"],
+  iconFamily: FooterIconFamily,
 ): FooterWidget[] {
   return widgets.map((widget) => {
     const override = overrides[widget.id] ?? {};
@@ -486,8 +503,8 @@ function applyWidgetConfigOverrides(
     let icon = widget.icon;
     if (override.icon === "hide") {
       icon = undefined;
-    } else if (override.icon === "show") {
-      icon = widget.icon ?? getDefaultWidgetIcon(widget.id);
+    } else if (!icon) {
+      icon = getDefaultWidgetIcon(widget.id, iconFamily);
     }
 
     if (icon) {
@@ -611,7 +628,7 @@ export function renderFooterLines(
 ): string[] {
   if (width <= 0) return ["", ""];
 
-  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics);
+  const metrics = computeFooterMetrics(ctx, git, thinkingLevel, usageMetrics, footerConfig.iconFamily);
   const renderCtx: WidgetRenderContext = {
     width,
     theme,
@@ -623,10 +640,11 @@ export function renderFooterLines(
   };
 
   const widgets = applyWidgetConfigOverrides(
-    buildFooterWidgets(),
+    buildFooterWidgets(footerConfig.iconFamily),
     footerConfig.widgets,
     footerConfig.defaultTextColor,
     footerConfig.defaultIconColor,
+    footerConfig.iconFamily,
   );
   const highestRow = clampInt(
     Math.max(1, ...widgets.map((widget) => widget.location.row)),

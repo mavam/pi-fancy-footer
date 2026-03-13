@@ -15,6 +15,7 @@ import {
 import {
   cloneFooterConfig,
   coerceCompactionSettings,
+  coerceIconFamily,
   coerceRefreshMs,
   coerceWidgetColor,
   getFooterConfigPath,
@@ -39,6 +40,7 @@ export default function (pi: ExtensionAPI) {
   let footerConfig: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
     showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
+    iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
@@ -231,8 +233,22 @@ export default function (pi: ExtensionAPI) {
 
         let settingsList: SettingsList;
         const syncRootValues = () => {
+          const refreshedItems = rootFooterSettingsItems(draft, theme, () => {
+            applyDraft();
+            syncRootValues();
+            tui.requestRender();
+          });
+
+          for (let i = 0; i < Math.min(items.length, refreshedItems.length); i++) {
+            const currentItem = items[i];
+            const refreshedItem = refreshedItems[i];
+            if (!currentItem || !refreshedItem) continue;
+            Object.assign(currentItem, refreshedItem);
+          }
+
           settingsList.updateValue("refreshMs", String(draft.refreshMs));
           settingsList.updateValue("showPiBanner", draft.showPiBanner ? "on" : "off");
+          settingsList.updateValue("iconFamily", draft.iconFamily);
           settingsList.updateValue("defaultTextColor", draft.defaultTextColor);
           settingsList.updateValue("defaultIconColor", draft.defaultIconColor);
           for (const widgetId of FOOTER_WIDGET_IDS) {
@@ -261,6 +277,13 @@ export default function (pi: ExtensionAPI) {
             } else if (id === "showPiBanner") {
               if (newValue === "on" || newValue === "off") {
                 draft.showPiBanner = newValue === "on";
+                applyDraft();
+                syncRootValues();
+              }
+            } else if (id === "iconFamily") {
+              const iconFamily = coerceIconFamily(newValue);
+              if (iconFamily) {
+                draft.iconFamily = iconFamily;
                 applyDraft();
                 syncRootValues();
               }
