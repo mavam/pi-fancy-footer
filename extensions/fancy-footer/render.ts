@@ -31,6 +31,7 @@ import {
   normalizeModel,
   normalizePath,
   toNumber,
+  formatTerminalHyperlink,
 } from "./shared.ts";
 
 function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
@@ -441,6 +442,7 @@ function computeFooterMetrics(
     branch: git.branch,
     commit: git.commit,
     pullRequestNumber: git.pullRequest?.number ?? 0,
+    pullRequestUrl: git.pullRequest?.url ?? "",
     added: git.added,
     removed: git.removed,
     ...buildGitStatus(git.counts, iconFamily),
@@ -528,7 +530,11 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
     {
       ...baseWidgetDefaults("pull-request", iconFamily),
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
-      renderText: ({ metrics }) => `${metrics.pullRequestNumber}`,
+      renderText: ({ metrics }) =>
+        formatTerminalHyperlink(
+          metrics.pullRequestUrl,
+          `${metrics.pullRequestNumber}`,
+        ),
     },
     {
       ...baseWidgetDefaults("diff-added", iconFamily),

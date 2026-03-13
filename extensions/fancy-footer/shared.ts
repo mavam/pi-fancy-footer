@@ -1,8 +1,19 @@
 import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 
-export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ThinkingLevel =
+  | "off"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
 
-export const FOOTER_ICON_FAMILIES = ["nerd", "emoji", "unicode", "ascii"] as const;
+export const FOOTER_ICON_FAMILIES = [
+  "nerd",
+  "emoji",
+  "unicode",
+  "ascii",
+] as const;
 
 export type FooterIconFamily = (typeof FOOTER_ICON_FAMILIES)[number];
 
@@ -196,10 +207,18 @@ export const FOOTER_WIDGET_IDS = [
 
 export type FooterWidgetId = (typeof FOOTER_WIDGET_IDS)[number];
 
-export const FOOTER_REFRESH_OPTIONS = [250, 500, 1000, 2000, 3000, 5000, 10000] as const;
-export const FOOTER_ROW_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
-export const FOOTER_POSITION_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
-export const FOOTER_MIN_WIDTH_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32] as const;
+export const FOOTER_REFRESH_OPTIONS = [
+  250, 500, 1000, 2000, 3000, 5000, 10000,
+] as const;
+export const FOOTER_ROW_OPTIONS = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+] as const;
+export const FOOTER_POSITION_OPTIONS = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+] as const;
+export const FOOTER_MIN_WIDTH_OPTIONS = [
+  0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32,
+] as const;
 
 export type FooterWidgetState = "default" | "enabled" | "disabled";
 export type FooterWidgetIconMode = "default" | "hide";
@@ -226,6 +245,7 @@ export interface FooterMetrics {
   branch: string;
   commit: string;
   pullRequestNumber: number;
+  pullRequestUrl: string;
   added: number;
   removed: number;
   gitStatusSymbol: string;
@@ -393,19 +413,31 @@ export function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
-export function isFooterWidgetColor(value: unknown): value is FooterWidgetColor {
-  return typeof value === "string" && (FOOTER_WIDGET_COLORS as readonly string[]).includes(value);
+export function isFooterWidgetColor(
+  value: unknown,
+): value is FooterWidgetColor {
+  return (
+    typeof value === "string" &&
+    (FOOTER_WIDGET_COLORS as readonly string[]).includes(value)
+  );
 }
 
 export function isFooterIconFamily(value: unknown): value is FooterIconFamily {
-  return typeof value === "string" && (FOOTER_ICON_FAMILIES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (FOOTER_ICON_FAMILIES as readonly string[]).includes(value)
+  );
 }
 
-export function getStatuslineSymbols(iconFamily: FooterIconFamily): StatuslineSymbols {
+export function getStatuslineSymbols(
+  iconFamily: FooterIconFamily,
+): StatuslineSymbols {
   return STATUSLINE_SYMBOLS[iconFamily];
 }
 
-export function isFooterWidgetAlign(value: unknown): value is FooterWidgetAlign {
+export function isFooterWidgetAlign(
+  value: unknown,
+): value is FooterWidgetAlign {
   return value === "left" || value === "middle" || value === "right";
 }
 
@@ -417,7 +449,10 @@ export function isFooterWidgetId(value: string): value is FooterWidgetId {
   return (FOOTER_WIDGET_IDS as readonly string[]).includes(value);
 }
 
-export function toBoundedNonNegativeInt(value: unknown, max: number): number | undefined {
+export function toBoundedNonNegativeInt(
+  value: unknown,
+  max: number,
+): number | undefined {
   const n = Number(value);
   if (!Number.isFinite(n)) return undefined;
   return clampInt(n, 0, max);
@@ -464,7 +499,15 @@ export function parseGitHubRemote(url: string): string {
   return match?.[1] ?? "";
 }
 
-export function parseNumstat(output: string): { added: number; removed: number } {
+export function formatTerminalHyperlink(url: string, text: string): string {
+  if (!url) return text;
+  return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
+}
+
+export function parseNumstat(output: string): {
+  added: number;
+  removed: number;
+} {
   let added = 0;
   let removed = 0;
 
@@ -482,8 +525,13 @@ export function parseNumstat(output: string): { added: number; removed: number }
   return { added, removed };
 }
 
-export function getWidgetSettingIcon(widgetId: FooterWidgetId, iconFamily: FooterIconFamily): string {
-  return getStatuslineSymbols(iconFamily)[FOOTER_WIDGET_META[widgetId].symbolKey];
+export function getWidgetSettingIcon(
+  widgetId: FooterWidgetId,
+  iconFamily: FooterIconFamily,
+): string {
+  return getStatuslineSymbols(iconFamily)[
+    FOOTER_WIDGET_META[widgetId].symbolKey
+  ];
 }
 
 export function getDefaultWidgetIcon(

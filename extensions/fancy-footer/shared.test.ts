@@ -4,6 +4,7 @@ import {
   DEFAULT_FOOTER_CONFIG,
   FOOTER_ICON_FAMILIES,
   FOOTER_WIDGET_IDS,
+  formatTerminalHyperlink,
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
   isFooterIconFamily,
@@ -55,4 +56,12 @@ test("every widget returns a non-empty icon for every icon family", () => {
 
 test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.equal(DEFAULT_FOOTER_CONFIG.iconFamily, "nerd");
+});
+
+test("formatTerminalHyperlink wraps text in an OSC 8 hyperlink", () => {
+  assert.equal(
+    formatTerminalHyperlink("https://github.com/org/repo/pull/42", "42"),
+    "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+  );
+  assert.equal(formatTerminalHyperlink("", "42"), "42");
 });
