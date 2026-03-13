@@ -310,7 +310,7 @@ export interface FooterWidgetEditorDefaults {
 export interface FooterWidgetMeta {
   defaults: FooterWidgetEditorDefaults;
   description: string;
-  settingIcon: string;
+  symbolKey: keyof StatuslineSymbols;
   hasFooterIcon?: boolean;
 }
 
@@ -318,68 +318,68 @@ export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
   model: {
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
     description: "Active model name",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.model,
+    symbolKey: "model",
   },
   thinking: {
     defaults: { row: 1, position: 7, align: "right", fill: "none" },
     description: "Thinking level indicator",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.thinking,
+    symbolKey: "thinking",
   },
   "context-capacity": {
     defaults: { row: 0, position: 2, align: "left", fill: "none" },
     description: "Context window size (k tokens)",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.contextCapacityMarker,
+    symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
     defaults: { row: 0, position: 0, align: "middle", fill: "grow" },
     description: "Visual context usage bar",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.contextUsed,
+    symbolKey: "contextUsed",
     hasFooterIcon: false,
   },
   "context-usage": {
     defaults: { row: 0, position: 0, align: "right", fill: "none" },
     description: "Used context tokens (k)",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.contextUsageMarker,
+    symbolKey: "contextUsageMarker",
   },
   "total-cost": {
     defaults: { row: 0, position: 1, align: "right", fill: "none" },
     description: "Accumulated session cost",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.currency,
+    symbolKey: "currency",
   },
   location: {
     defaults: { row: 1, position: 0, align: "left", fill: "none" },
     description: "Repository name or current path",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.path,
+    symbolKey: "path",
   },
   branch: {
     defaults: { row: 1, position: 1, align: "left", fill: "none" },
     description: "Git branch name",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.branch,
+    symbolKey: "branch",
   },
   commit: {
     defaults: { row: 1, position: 2, align: "left", fill: "none" },
     description: "Short git commit hash",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.commit,
+    symbolKey: "commit",
   },
   "pull-request": {
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
     description: "Open GitHub pull request number for the current branch",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.pullRequest,
+    symbolKey: "pullRequest",
   },
   "diff-added": {
     defaults: { row: 1, position: 4, align: "left", fill: "none" },
     description: "Added lines in working tree",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.diffAdded,
+    symbolKey: "diffAdded",
   },
   "diff-removed": {
     defaults: { row: 1, position: 5, align: "left", fill: "none" },
     description: "Removed lines in working tree",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.diffRemoved,
+    symbolKey: "diffRemoved",
   },
   "git-status": {
     defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Ahead/behind/diverged status",
-    settingIcon: STATUSLINE_SYMBOLS.nerd.gitDiverged,
+    symbolKey: "gitDiverged",
     hasFooterIcon: false,
   },
 };
@@ -483,36 +483,7 @@ export function parseNumstat(output: string): { added: number; removed: number }
 }
 
 export function getWidgetSettingIcon(widgetId: FooterWidgetId, iconFamily: FooterIconFamily): string {
-  const symbols = getStatuslineSymbols(iconFamily);
-
-  switch (widgetId) {
-    case "model":
-      return symbols.model;
-    case "thinking":
-      return symbols.thinking;
-    case "context-capacity":
-      return symbols.contextCapacityMarker;
-    case "context-bar":
-      return symbols.contextUsed;
-    case "context-usage":
-      return symbols.contextUsageMarker;
-    case "total-cost":
-      return symbols.currency;
-    case "location":
-      return symbols.path;
-    case "branch":
-      return symbols.branch;
-    case "commit":
-      return symbols.commit;
-    case "pull-request":
-      return symbols.pullRequest;
-    case "diff-added":
-      return symbols.diffAdded;
-    case "diff-removed":
-      return symbols.diffRemoved;
-    case "git-status":
-      return symbols.gitDiverged;
-  }
+  return getStatuslineSymbols(iconFamily)[FOOTER_WIDGET_META[widgetId].symbolKey];
 }
 
 export function getDefaultWidgetIcon(
