@@ -3,8 +3,9 @@ title: Configurable icon families for the footer
 type: feature
 authors:
   - mavam
-  - claude
+  - codex
 created: 2026-03-13T16:33:40.757224Z
+pr: 2
 ---
 
 The footer now supports four icon palettes—`nerd`, `emoji`, `unicode`, and
@@ -20,21 +21,23 @@ determines which glyph each widget displays.
 The following table shows the symbols used by each widget in every icon family:
 
 <!-- markdownlint-disable MD013 MD060 -->
-| Widget             | nerd      | emoji      | unicode  | ascii    |
-| ------------------ | --------- | ---------  | -------  | -------- |
-| `model`            | `󰧑`       | `🤖`       | `◉`      | `M`      |
-| `thinking`         | `󰭻`       | `🧠`       | `✦`      | `T`      |
-| `context-capacity` | ``       | `💾`       | `◫`      | `[]`     |
-| `context-bar`      | `■/□/▣`   | `■/□/▣`    | `■/□/▣`  | `#/-/:`  |
-| `context-usage`    | ``       | `📈`       | `↺`      | `~`      |
-| `total-cost`       | `$`       | `💲`       | `$`      | `$`      |
-| `location`         | ``       | `📁`       | `⌂`      | `/`      |
-| `branch`           | ``       | `🌿`       | `⎇`      | `*`      |
-| `commit`           | ``       | `🔖`       | `#`      | `@`      |
-| `pull-request`     | ``       | `🔀`       | `⇄`      | `#`      |
-| `diff-added`       | `↗`       | `➕`       | `+`      | `+`      |
-| `diff-removed`     | `↘`       | `➖`       | `−`      | `-`      |
-| `git-status`       | `//`   | `🔼/🔽/🔀` | `↑/↓/↕`  | `^/v/<>` |
+
+| Widget             | nerd    | emoji      | unicode | ascii    |
+| ------------------ | ------- | ---------- | ------- | -------- |
+| `model`            | `󰧑`     | `🤖`       | `◉`     | `M`      |
+| `thinking`         | `󰭻`     | `🧠`       | `✦`     | `T`      |
+| `context-capacity` | ``     | `💾`       | `◫`     | `[]`     |
+| `context-bar`      | `■/□/▣` | `■/□/▣`    | `■/□/▣` | `#/-/:`  |
+| `context-usage`    | ``     | `📈`       | `↺`     | `~`      |
+| `total-cost`       | `$`     | `💲`       | `$`     | `$`      |
+| `location`         | ``     | `📁`       | `⌂`     | `/`      |
+| `branch`           | ``     | `🌿`       | `⎇`     | `*`      |
+| `commit`           | ``     | `🔖`       | `#`     | `@`      |
+| `pull-request`     | ``     | `🔀`       | `⇄`     | `#`      |
+| `diff-added`       | `↗`     | `➕`       | `+`     | `+`      |
+| `diff-removed`     | `↘`     | `➖`       | `−`     | `-`      |
+| `git-status`       | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/v/<>` |
+
 <!-- markdownlint-enable MD013 MD060 -->
 
 Some glyphs, especially in the `nerd` family, may not render in a browser. If
