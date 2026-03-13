@@ -25,13 +25,14 @@ import {
   type SessionUsageMetrics,
   type WidgetRenderContext,
   clampInt,
+  closeOpenTerminalHyperlinks,
   formatThinkingLevel,
+  formatTerminalHyperlink,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
   normalizeModel,
   normalizePath,
   toNumber,
-  formatTerminalHyperlink,
 } from "./shared.ts";
 
 function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
@@ -155,6 +156,17 @@ function resolveGitStatusSymbolColor(
   return configuredColor;
 }
 
+function truncateFooterText(
+  text: string,
+  maxWidth: number,
+  ellipsis = "...",
+): string {
+  return closeOpenTerminalHyperlinks(
+    truncateToWidth(text, maxWidth, ellipsis),
+    `\x1b[0m${ellipsis}`,
+  );
+}
+
 function widgetKey(widget: FooterWidget): string {
   return `${widget.location.row}:${widget.id}`;
 }
@@ -212,7 +224,7 @@ function renderWidget(
 
   const combined = `${styledIcon}${styledText}`;
   if (maxTotalWidth === undefined) return combined;
-  return truncateToWidth(combined, maxTotalWidth, "");
+  return truncateFooterText(combined, maxTotalWidth, "");
 }
 
 function prepareWidgetGroup(
@@ -293,7 +305,7 @@ function composeAlignedRow(
 ): string {
   const fallback = () => {
     const joined = [left, middle, right].filter((part) => part).join(" ");
-    return truncateToWidth(joined, width, theme.fg("dim", "..."));
+    return truncateFooterText(joined, width, theme.fg("dim", "..."));
   };
 
   const leftWidth = visibleWidth(left);
@@ -304,14 +316,14 @@ function composeAlignedRow(
     if (left && right) {
       if (leftWidth + rightWidth + 1 > width) return fallback();
       const gap = Math.max(1, width - leftWidth - rightWidth);
-      return truncateToWidth(
+      return truncateFooterText(
         `${left}${" ".repeat(gap)}${right}`,
         width,
         theme.fg("dim", "..."),
       );
     }
 
-    if (left) return truncateToWidth(left, width, theme.fg("dim", "..."));
+    if (left) return truncateFooterText(left, width, theme.fg("dim", "..."));
     if (right) {
       if (rightWidth > width) return fallback();
       return `${" ".repeat(width - rightWidth)}${right}`;
@@ -322,7 +334,7 @@ function composeAlignedRow(
   if (!left && !right) {
     if (middleWidth > width) return fallback();
     const start = Math.max(0, Math.floor((width - middleWidth) / 2));
-    return truncateToWidth(
+    return truncateFooterText(
       `${" ".repeat(start)}${middle}`,
       width,
       theme.fg("dim", "..."),
@@ -339,7 +351,7 @@ function composeAlignedRow(
   const slotWidth = rightBoundary - leftBoundary;
   let middleText = middle;
   if (middleWidth > slotWidth) {
-    middleText = truncateToWidth(middleText, slotWidth, "");
+    middleText = truncateFooterText(middleText, slotWidth, "");
   }
 
   const middleTextWidth = visibleWidth(middleText);
@@ -365,7 +377,7 @@ function composeAlignedRow(
     out += right;
   }
 
-  return truncateToWidth(out, width, theme.fg("dim", "..."));
+  return truncateFooterText(out, width, theme.fg("dim", "..."));
 }
 
 function computeFooterMetrics(
@@ -700,7 +712,11 @@ function renderWidgetRow(
     const fallback = [leftText, middleText, rightText]
       .filter((part) => part)
       .join(" ");
-    return truncateToWidth(fallback, width, renderCtx.theme.fg("dim", "..."));
+    return truncateFooterText(
+      fallback,
+      width,
+      renderCtx.theme.fg("dim", "..."),
+    );
   }
 
   return composeAlignedRow(
@@ -758,7 +774,9 @@ export function renderFooterLines(
   for (let row = 0; row <= highestRow; row++) {
     const rowWidgets = widgets.filter((widget) => widget.location.row === row);
     const line = renderWidgetRow(width, rowWidgets, renderCtx);
-    rows.push(truncateToWidth(line.trimEnd(), width, theme.fg("dim", "...")));
+    rows.push(
+      truncateFooterText(line.trimEnd(), width, theme.fg("dim", "...")),
+    );
   }
 
   while (rows.length < 2) rows.push("");

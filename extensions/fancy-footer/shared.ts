@@ -504,6 +504,46 @@ export function formatTerminalHyperlink(url: string, text: string): string {
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
 }
 
+export function closeOpenTerminalHyperlinks(text: string, suffix = ""): string {
+  let open = 0;
+
+  for (let i = 0; i < text.length; i++) {
+    if (!text.startsWith("\x1b]8;;", i)) continue;
+
+    const valueStart = i + "\x1b]8;;".length;
+    let end = valueStart;
+    let terminatorLength = 0;
+
+    while (end < text.length) {
+      if (text[end] === "\x07") {
+        terminatorLength = 1;
+        break;
+      }
+      if (text[end] === "\x1b" && text[end + 1] === "\\") {
+        terminatorLength = 2;
+        break;
+      }
+      end += 1;
+    }
+
+    if (terminatorLength === 0) break;
+
+    const value = text.slice(valueStart, end);
+    open += value ? 1 : -1;
+    open = Math.max(0, open);
+    i = end + terminatorLength - 1;
+  }
+
+  if (open === 0) return text;
+
+  const closeSequence = "\x1b]8;;\x07".repeat(open);
+  if (!suffix) return `${text}${closeSequence}`;
+
+  const suffixStart = text.lastIndexOf(suffix);
+  if (suffixStart < 0) return `${text}${closeSequence}`;
+  return `${text.slice(0, suffixStart)}${closeSequence}${text.slice(suffixStart)}`;
+}
+
 export function parseNumstat(output: string): {
   added: number;
   removed: number;
