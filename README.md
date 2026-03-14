@@ -4,25 +4,15 @@ A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 extension that replaces the default footer with a compact, two-line fancy status
 footer.
 
-<!-- markdownlint-disable MD033 -->
 <p align="center">
   <img src="screenshots/screenshot.png" alt="screenshot" />
 </p>
 
-<p align="center">
-  <img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="700" /><br/>
-  <img src="screenshots/light-bars.png" alt="light theme – bars style" width="700" /><br/>
-  <img src="screenshots/light-circles.png" alt="light theme – circles style" width="700" /><br/>
-  <img src="screenshots/light-stars.png" alt="light theme – stars style" width="700" />
-</p>
+## 📦 Install
 
-<p align="center">
-  <img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" width="700" /><br/>
-  <img src="screenshots/dark-blue.png" alt="dark theme – blue accent" width="700" /><br/>
-  <img src="screenshots/dark-green.png" alt="dark theme – green accent" width="700" /><br/>
-  <img src="screenshots/dark-red.png" alt="dark theme – red accent" width="700" />
-</p>
-<!-- markdownlint-enable MD033 -->
+```bash
+pi install npm:pi-fancy-footer
+```
 
 ## 📊 What it shows
 
@@ -33,13 +23,21 @@ footer.
 - Repo / path, branch, commit, and open PR number
 - Git diff stats and ahead/behind status
 
-## 📦 Install
+## 📸 Screenshots
 
-Install as a pi package:
+<p align="center">
+  <img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="600" /><br/>
+  <img src="screenshots/light-bars.png" alt="light theme – bars style" width="600" /><br/>
+  <img src="screenshots/light-circles.png" alt="light theme – circles style" width="600" /><br/>
+  <img src="screenshots/light-stars.png" alt="light theme – stars style" width="600" />
+</p>
 
-```bash
-pi install npm:pi-fancy-footer
-```
+<p align="center">
+  <img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" width="600" /><br/>
+  <img src="screenshots/dark-blue.png" alt="dark theme – blue accent" width="600" /><br/>
+  <img src="screenshots/dark-green.png" alt="dark theme – green accent" width="600" /><br/>
+  <img src="screenshots/dark-red.png" alt="dark theme – red accent" width="600" />
+</p>
 
 ## 🎮 Commands
 
@@ -138,21 +136,21 @@ leading widget icon.
 
 <!-- markdownlint-disable MD013 MD060 -->
 
-| Widget             | nerd    | emoji      | unicode | ascii    |
-| ------------------ | ------- | ---------- | ------- | -------- |
-| `model`            | `󰧑`     | `🤖`       | `◉`     | `%`      |
-| `thinking`         | `󰭻`     | `🧠`       | `✦`     | `?`      |
-| `context-capacity` | ``     | `💾`       | `□`     | `[]`     |
-| `context-bar`      | `󰾆`     | `🔋`       | `◧`     | `\|`     |
-| `context-usage`    | ``     | `📈`       | `■`     | `~`      |
-| `total-cost`       | `$`     | `💲`       | `$`     | `$`      |
-| `location`         | ``     | `📁`       | `⌂`     | `/`      |
-| `branch`           | ``     | `🌿`       | `⎇`     | `*`      |
-| `commit`           | ``     | `🔖`       | `#`     | `#`      |
-| `pull-request`     | ``     | `🔀`       | `⇄`     | `@`      |
-| `diff-added`       | `↗`     | `➕`       | `+`     | `+`      |
-| `diff-removed`     | `↘`     | `➖`       | `−`     | `-`      |
-| `git-status`       | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+| Widget             | nerd | emoji      | unicode | ascii    |
+| ------------------ | ---- | ---------- | ------- | -------- |
+| `model`            | `󰧑`  | `🤖`       | `◉`     | `%`      |
+| `thinking`         | `󰭻`  | `🧠`       | `✦`     | `?`      |
+| `context-capacity` | ``   | `💾`       | `□`     | `[]`     |
+| `context-bar`      | `󰾆`  | `🔋`       | `◧`     | `\|`     |
+| `context-usage`    | ``   | `📈`       | `■`     | `~`      |
+| `total-cost`       | `$`  | `💲`       | `$`     | `$`      |
+| `location`         | ``   | `📁`       | `⌂`     | `/`      |
+| `branch`           | ``   | `🌿`       | `⎇`     | `*`      |
+| `commit`           | ``   | `🔖`       | `#`     | `#`      |
+| `pull-request`     | ``   | `🔀`       | `⇄`     | `@`      |
+| `diff-added`       | `↗`  | `➕`       | `+`     | `+`      |
+| `diff-removed`     | `↘`  | `➖`       | `−`     | `-`      |
+| `git-status`       | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
 
 <!-- markdownlint-enable MD013 MD060 -->
 
