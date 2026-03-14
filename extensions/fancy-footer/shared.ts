@@ -118,7 +118,7 @@ export const CONTEXT_BAR_STYLES = [
   { label: "parallelograms", used: "▰", free: "▱", reserved: "▰" },
   { label: "diamonds", used: "◆", free: "◇", reserved: "❖" },
   { label: "bars", used: "█", free: "░", reserved: "▒" },
-  { label: "stars", used: "★", free: "☆", reserved: "★" },
+  { label: "stars", used: "★", free: "☆", reserved: "✭" },
   { label: "specks", used: "•", free: "◦", reserved: "•" },
 ] as const satisfies readonly ContextBarStyleDef[];
 

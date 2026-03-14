@@ -176,7 +176,7 @@ widget. Each style defines three symbols for used, free, and reserved cells:
 | `parallelograms`   | `▰`  | `▱`  | `▰`      |
 | `diamonds`         | `◆`  | `◇`  | `❖`      |
 | `bars`             | `█`  | `░`  | `▒`      |
-| `stars`            | `★`  | `☆`  | `★`      |
+| `stars`            | `★`  | `☆`  | `✭`      |
 | `specks`           | `•`  | `◦`  | `•`      |
 
 <!-- markdownlint-enable MD013 MD060 -->
