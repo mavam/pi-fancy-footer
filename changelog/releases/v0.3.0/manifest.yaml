@@ -1,0 +1,6 @@
+created: 2026-03-14
+title: Configurable context bar styles
+intro: "The context bar widget now supports eight visual styles\u2014blocks, lines,\
+  \ circles, parallelograms, diamonds, bars, stars, and specks\u2014letting you match\
+  \ its look to your terminal aesthetic. The configuration screen is reorganized into\
+  \ Banner, General, and Widgets sections with tab navigation for faster access."
