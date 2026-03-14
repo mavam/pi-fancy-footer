@@ -337,68 +337,69 @@ export interface FooterWidgetMeta {
 export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
   model: {
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
-    description: "Active model name",
+    description: "Shows the active model.",
     symbolKey: "model",
   },
   thinking: {
     defaults: { row: 1, position: 7, align: "right", fill: "none" },
-    description: "Thinking level indicator",
+    description: "Shows the current thinking level.",
     symbolKey: "thinking",
   },
   "context-capacity": {
     defaults: { row: 0, position: 2, align: "left", fill: "none" },
-    description: "Context window size (k tokens)",
+    description: "Shows the total context window in thousands of tokens.",
     symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
     defaults: { row: 0, position: 0, align: "middle", fill: "grow" },
-    description: "Visual context usage bar",
+    description: "Shows a bar for current context usage.",
     symbolKey: "contextUsed",
     hasFooterIcon: false,
   },
   "context-usage": {
     defaults: { row: 0, position: 0, align: "right", fill: "none" },
-    description: "Used context tokens (k)",
+    description: "Shows used context in thousands of tokens.",
     symbolKey: "contextUsageMarker",
   },
   "total-cost": {
     defaults: { row: 0, position: 1, align: "right", fill: "none" },
-    description: "Accumulated session cost",
+    description: "Shows the total session cost.",
     symbolKey: "currency",
   },
   location: {
     defaults: { row: 1, position: 0, align: "left", fill: "none" },
-    description: "Repository name or current path",
+    description: "Shows the repository name or current path.",
     symbolKey: "path",
   },
   branch: {
     defaults: { row: 1, position: 1, align: "left", fill: "none" },
-    description: "Git branch name",
+    description: "Shows the current Git branch.",
     symbolKey: "branch",
   },
   commit: {
     defaults: { row: 1, position: 2, align: "left", fill: "none" },
-    description: "Short git commit hash",
+    description: "Shows the short Git commit hash.",
     symbolKey: "commit",
   },
   "pull-request": {
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
-    description: "Open GitHub pull request number for the current branch",
+    description:
+      "Shows the open GitHub pull request number for the current branch.",
     symbolKey: "pullRequest",
   },
   "diff-added": {
     defaults: { row: 1, position: 4, align: "left", fill: "none" },
-    description: "Added lines in working tree",
+    description: "Shows added lines in your working tree.",
     symbolKey: "diffAdded",
   },
   "diff-removed": {
     defaults: { row: 1, position: 5, align: "left", fill: "none" },
-    description: "Removed lines in working tree",
+    description: "Shows removed lines in your working tree.",
     symbolKey: "diffRemoved",
   },
   "git-status": {
     defaults: { row: 1, position: 6, align: "left", fill: "none" },
-    description: "Ahead/behind/diverged status",
+    description: "Shows whether your branch is ahead, behind, or diverged.",
     symbolKey: "gitDiverged",
     hasFooterIcon: false,
   },
