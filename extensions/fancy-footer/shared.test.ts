@@ -4,6 +4,8 @@ import {
   DEFAULT_FOOTER_CONFIG,
   FOOTER_ICON_FAMILIES,
   FOOTER_WIDGET_IDS,
+  closeOpenTerminalHyperlinks,
+  formatTerminalHyperlink,
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
   isFooterIconFamily,
@@ -55,4 +57,28 @@ test("every widget returns a non-empty icon for every icon family", () => {
 
 test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.equal(DEFAULT_FOOTER_CONFIG.iconFamily, "nerd");
+});
+
+test("formatTerminalHyperlink wraps text in an OSC 8 hyperlink", () => {
+  assert.equal(
+    formatTerminalHyperlink("https://github.com/org/repo/pull/42", "42"),
+    "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+  );
+  assert.equal(formatTerminalHyperlink("", "42"), "42");
+});
+
+test("closeOpenTerminalHyperlinks closes truncated OSC 8 links before the suffix", () => {
+  assert.equal(
+    closeOpenTerminalHyperlinks(
+      "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b[0m...",
+      "\x1b[0m...",
+    ),
+    "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07\x1b[0m...",
+  );
+  assert.equal(
+    closeOpenTerminalHyperlinks(
+      "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+    ),
+    "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+  );
 });
