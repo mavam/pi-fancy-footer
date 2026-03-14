@@ -4,9 +4,7 @@ A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 extension that replaces the default footer with a compact, two-line fancy status
 footer.
 
-<p align="center">
-  <img src="screenshots/screenshot.png" alt="screenshot" />
-</p>
+![screenshot](screenshots/screenshot.png)
 
 ## 📦 Install
 
@@ -25,19 +23,19 @@ pi install npm:pi-fancy-footer
 
 ## 📸 Screenshots
 
-<p align="center">
-  <img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="600" /><br/>
-  <img src="screenshots/light-bars.png" alt="light theme – bars style" width="600" /><br/>
-  <img src="screenshots/light-circles.png" alt="light theme – circles style" width="600" /><br/>
-  <img src="screenshots/light-stars.png" alt="light theme – stars style" width="600" />
-</p>
+<!-- markdownlint-disable MD033 -->
 
-<p align="center">
-  <img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" width="600" /><br/>
-  <img src="screenshots/dark-blue.png" alt="dark theme – blue accent" width="600" /><br/>
-  <img src="screenshots/dark-green.png" alt="dark theme – green accent" width="600" /><br/>
-  <img src="screenshots/dark-red.png" alt="dark theme – red accent" width="600" />
-</p>
+<img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="600" /><br/>
+<img src="screenshots/light-bars.png" alt="light theme – bars style" width="600" /><br/>
+<img src="screenshots/light-circles.png" alt="light theme – circles style" width="600" /><br/>
+<img src="screenshots/light-stars.png" alt="light theme – stars style" width="600" />
+
+<img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" width="600" /><br/>
+<img src="screenshots/dark-blue.png" alt="dark theme – blue accent" width="600" /><br/>
+<img src="screenshots/dark-green.png" alt="dark theme – green accent" width="600" /><br/>
+<img src="screenshots/dark-red.png" alt="dark theme – red accent" width="600" />
+
+<!-- markdownlint-enable MD033 -->
 
 ## 🎮 Commands
 
