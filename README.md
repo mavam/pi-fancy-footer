@@ -10,17 +10,17 @@ footer.
 </p>
 
 <p align="center">
-  <img src="screenshots/light-blocks.png" alt="light theme – blocks style" /><br/>
-  <img src="screenshots/light-bars.png" alt="light theme – bars style" /><br/>
-  <img src="screenshots/light-circles.png" alt="light theme – circles style" /><br/>
-  <img src="screenshots/light-stars.png" alt="light theme – stars style" />
+  <img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="700" /><br/>
+  <img src="screenshots/light-bars.png" alt="light theme – bars style" width="700" /><br/>
+  <img src="screenshots/light-circles.png" alt="light theme – circles style" width="700" /><br/>
+  <img src="screenshots/light-stars.png" alt="light theme – stars style" width="700" />
 </p>
 
 <p align="center">
-  <img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" /><br/>
-  <img src="screenshots/dark-blue.png" alt="dark theme – blue accent" /><br/>
-  <img src="screenshots/dark-green.png" alt="dark theme – green accent" /><br/>
-  <img src="screenshots/dark-red.png" alt="dark theme – red accent" />
+  <img src="screenshots/dark-yellow.png" alt="dark theme – yellow accent" width="700" /><br/>
+  <img src="screenshots/dark-blue.png" alt="dark theme – blue accent" width="700" /><br/>
+  <img src="screenshots/dark-green.png" alt="dark theme – green accent" width="700" /><br/>
+  <img src="screenshots/dark-red.png" alt="dark theme – red accent" width="700" />
 </p>
 <!-- markdownlint-enable MD033 -->
 
