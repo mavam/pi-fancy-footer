@@ -24,10 +24,13 @@ import {
   type PreparedWidgetGroup,
   type SessionUsageMetrics,
   type WidgetRenderContext,
+  type ContextBarStyleDef,
+  type ContextBarStyleId,
   clampInt,
   closeOpenTerminalHyperlinks,
   formatThinkingLevel,
   formatTerminalHyperlink,
+  getContextBarStyle,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
   normalizeModel,
@@ -70,7 +73,8 @@ function buildBricks(
   usedTokens: number,
   settings: CompactionSettingsSnapshot,
   theme: Theme,
-  iconFamily: FooterIconFamily,
+  usedColor: FooterConfigSnapshot["defaultIconColor"],
+  barStyle: ContextBarStyleDef,
 ): string {
   const n = clampInt(cells, 0, MAX_CONTEXT_BAR_CELLS);
   if (n === 0) return "";
@@ -80,7 +84,6 @@ function buildBricks(
     0,
     Math.min(total, Math.floor(usedTokens)),
   );
-  const symbols = getStatuslineSymbols(iconFamily);
 
   const reserveTokens = settings.enabled
     ? Math.max(0, Math.floor(settings.reserveTokens))
@@ -101,15 +104,15 @@ function buildBricks(
   let out = "";
 
   for (let i = 0; i < usedCells; i++) {
-    out += theme.fg("dim", symbols.contextUsed);
+    out += theme.fg(usedColor, barStyle.used);
   }
 
   for (let i = usedCells; i < safeCells; i++) {
-    out += theme.fg("dim", symbols.contextFree);
+    out += theme.fg("dim", barStyle.free);
   }
 
   for (let i = Math.max(usedCells, safeCells); i < n; i++) {
-    out += theme.fg("dim", symbols.contextReserved);
+    out += theme.fg("dim", barStyle.reserved);
   }
 
   return out;
@@ -483,7 +486,10 @@ function baseWidgetDefaults(
   };
 }
 
-function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
+function buildFooterWidgets(
+  iconFamily: FooterIconFamily,
+  barStyle: ContextBarStyleDef,
+): FooterWidget[] {
   return [
     {
       ...baseWidgetDefaults("model", iconFamily),
@@ -503,7 +509,7 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
       minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
       renderText: (
-        { metrics, compactionSettings, theme },
+        { metrics, compactionSettings, theme, defaultIconColor },
         availableWidth = 0,
       ) =>
         buildBricks(
@@ -512,7 +518,8 @@ function buildFooterWidgets(iconFamily: FooterIconFamily): FooterWidget[] {
           metrics.usedTokensForBar,
           compactionSettings,
           theme,
-          iconFamily,
+          defaultIconColor,
+          barStyle,
         ),
     },
     {
@@ -757,8 +764,9 @@ export function renderFooterLines(
     defaultTextColor: footerConfig.defaultTextColor,
   };
 
+  const barStyle = getContextBarStyle(footerConfig.contextBarStyle);
   const widgets = applyWidgetConfigOverrides(
-    buildFooterWidgets(footerConfig.iconFamily),
+    buildFooterWidgets(footerConfig.iconFamily, barStyle),
     footerConfig.widgets,
     footerConfig.defaultTextColor,
     footerConfig.defaultIconColor,

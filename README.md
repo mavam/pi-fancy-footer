@@ -45,6 +45,7 @@ Create `~/.pi/agent/fancy-footer.json`:
   "refreshMs": 3000,
   "showPiBanner": true,
   "iconFamily": "unicode",
+  "contextBarStyle": "blocks",
   "defaultTextColor": "dim",
   "defaultIconColor": "text",
   "widgets": {
@@ -72,6 +73,9 @@ Top-level settings:
 - `showPiBanner` (boolean)
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
+- `contextBarStyle`
+  (`blocks` | `lines` | `circles` | `parallelograms` | `diamonds` | `bars` |
+  `stars` | `specks`)
 - `defaultTextColor`
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 - `defaultIconColor`
@@ -110,8 +114,8 @@ Widget IDs:
 ## 🔣 Icon families
 
 The following table shows the symbol used by each widget for each icon family.
-For `context-bar` and `git-status`, the table shows the rendered bar/status
-symbols rather than a leading widget icon.
+For `git-status`, the table shows the rendered status symbols rather than a
+leading widget icon.
 
 > [!NOTE]
 > Some glyphs, especially in the `nerd` family, may not render in your browser.
@@ -119,27 +123,31 @@ symbols rather than a leading widget icon.
 > terminal with the relevant font installed.
 
 <!-- markdownlint-disable MD013 MD060 -->
-| Widget             | nerd      | emoji      | unicode  | ascii    |
-| ------------------ | --------- | ---------  | -------  | -------- |
-| `model`            | `󰧑`       | `🤖`       | `◉`      | `M`      |
-| `thinking`         | `󰭻`       | `🧠`       | `✦`      | `T`      |
-| `context-capacity` | ``       | `💾`       | `◫`      | `[]`     |
-| `context-bar`      | `■/□/▣`   | `■/□/▣`    | `■/□/▣`  | `#/-/:`  |
-| `context-usage`    | ``       | `📈`       | `↺`      | `~`      |
-| `total-cost`       | `$`       | `💲`       | `$`      | `$`      |
-| `location`         | ``       | `📁`       | `⌂`      | `/`      |
-| `branch`           | ``       | `🌿`       | `⎇`      | `*`      |
-| `commit`           | ``       | `🔖`       | `#`      | `@`      |
-| `pull-request`     | ``       | `🔀`       | `⇄`      | `#`      |
-| `diff-added`       | `↗`       | `➕`       | `+`      | `+`      |
-| `diff-removed`     | `↘`       | `➖`       | `−`      | `-`      |
-| `git-status`       | `//`   | `🔼/🔽/🔀` | `↑/↓/↕`  | `^/v/<>` |
+
+| Widget             | nerd    | emoji      | unicode | ascii    |
+| ------------------ | ------- | ---------- | ------- | -------- |
+| `model`            | `󰧑`     | `🤖`       | `◉`     | `%`      |
+| `thinking`         | `󰭻`     | `🧠`       | `✦`     | `?`      |
+| `context-capacity` | ``     | `💾`       | `□`     | `[]`     |
+| `context-bar`      | `󰾆`     | `🔋`       | `◧`     | `\|`     |
+| `context-usage`    | ``     | `📈`       | `■`     | `~`      |
+| `total-cost`       | `$`     | `💲`       | `$`     | `$`      |
+| `location`         | ``     | `📁`       | `⌂`     | `/`      |
+| `branch`           | ``     | `🌿`       | `⎇`     | `*`      |
+| `commit`           | ``     | `🔖`       | `#`     | `@`      |
+| `pull-request`     | ``     | `🔀`       | `⇄`     | `#`      |
+| `diff-added`       | `↗`     | `➕`       | `+`     | `+`      |
+| `diff-removed`     | `↘`     | `➖`       | `−`     | `-`      |
+| `git-status`       | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+
 <!-- markdownlint-enable MD013 MD060 -->
 
 Notes:
 
 - Most widgets use a leading icon.
-- `context-bar` uses symbols for used / free / reserved cells.
+- `context-bar` renders a bar whose characters are controlled by
+  `contextBarStyle`, not `iconFamily`. Used cells are colored with the widget
+  icon color; free and reserved cells stay dim.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
   `ascii` palettes.
@@ -152,6 +160,26 @@ Notes:
 - Reads compaction settings from:
   - `~/.pi/agent/settings.json`
   - `<project>/.pi/settings.json`
+
+## 🧱 Context bar styles
+
+The `contextBarStyle` setting controls the characters used by the `context-bar`
+widget. Each style defines three symbols for used, free, and reserved cells:
+
+<!-- markdownlint-disable MD013 MD060 -->
+
+| Style              | Used | Free | Reserved |
+| ------------------ | ---- | ---- | -------- |
+| `blocks` (default) | `■`  | `□`  | `▨`      |
+| `lines`            | `━`  | `─`  | `┄`      |
+| `circles`          | `●`  | `○`  | `◎`      |
+| `parallelograms`   | `▰`  | `▱`  | `▰`      |
+| `diamonds`         | `◆`  | `◇`  | `❖`      |
+| `bars`             | `█`  | `░`  | `▒`      |
+| `stars`            | `★`  | `☆`  | `★`      |
+| `specks`           | `•`  | `◦`  | `•`      |
+
+<!-- markdownlint-enable MD013 MD060 -->
 
 ## 📄 License
 

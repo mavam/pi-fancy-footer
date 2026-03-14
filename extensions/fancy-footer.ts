@@ -27,6 +27,7 @@ import {
   bannerFooterSettingsItems,
   cloneFooterConfig,
   coerceCompactionSettings,
+  coerceContextBarStyleValue,
   coerceIconFamily,
   coerceRefreshMs,
   coerceWidgetColor,
@@ -62,6 +63,7 @@ export default function (pi: ExtensionAPI) {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
     showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
+    contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
@@ -345,6 +347,12 @@ export default function (pi: ExtensionAPI) {
             const iconFamily = coerceIconFamily(newValue);
             if (iconFamily) {
               draft.iconFamily = iconFamily;
+              applyDraft();
+            }
+          } else if (id === "contextBarStyle") {
+            const contextBarStyle = coerceContextBarStyleValue(newValue);
+            if (contextBarStyle) {
+              draft.contextBarStyle = contextBarStyle;
               applyDraft();
             }
           } else if (id === "defaultTextColor") {

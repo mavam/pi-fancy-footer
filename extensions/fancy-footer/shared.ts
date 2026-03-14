@@ -25,9 +25,10 @@ export const STATUSLINE_SYMBOLS = {
     branch: "",
     commit: "",
     pullRequest: "",
-    contextUsed: "■",
-    contextFree: "□",
-    contextReserved: "▣",
+    contextUsed: "━",
+    contextFree: "─",
+    contextReserved: "┄",
+    contextBarMarker: "󰾆",
     contextCapacityMarker: "",
     contextUsageMarker: "",
     gitAhead: "",
@@ -47,6 +48,7 @@ export const STATUSLINE_SYMBOLS = {
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
+    contextBarMarker: "🔋",
     contextCapacityMarker: "💾",
     contextUsageMarker: "📈",
     gitAhead: "🔼",
@@ -66,8 +68,9 @@ export const STATUSLINE_SYMBOLS = {
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
-    contextCapacityMarker: "◫",
-    contextUsageMarker: "↺",
+    contextBarMarker: "◧",
+    contextCapacityMarker: "□",
+    contextUsageMarker: "■",
     gitAhead: "↑",
     gitBehind: "↓",
     gitDiverged: "↕",
@@ -76,8 +79,8 @@ export const STATUSLINE_SYMBOLS = {
     currency: "$",
   },
   ascii: {
-    thinking: "T",
-    model: "M",
+    thinking: "?",
+    model: "%",
     path: "/",
     branch: "*",
     commit: "@",
@@ -85,10 +88,11 @@ export const STATUSLINE_SYMBOLS = {
     contextUsed: "#",
     contextFree: "-",
     contextReserved: ":",
+    contextBarMarker: "|",
     contextCapacityMarker: "[]",
     contextUsageMarker: "~",
     gitAhead: "^",
-    gitBehind: "v",
+    gitBehind: "_",
     gitDiverged: "<>",
     diffAdded: "+",
     diffRemoved: "-",
@@ -97,6 +101,49 @@ export const STATUSLINE_SYMBOLS = {
 } as const;
 
 export type StatuslineSymbols = (typeof STATUSLINE_SYMBOLS)[FooterIconFamily];
+
+// ── Context bar styles ─────────────────────────────────────────────────
+
+export interface ContextBarStyleDef {
+  readonly label: string;
+  readonly used: string;
+  readonly free: string;
+  readonly reserved: string;
+}
+
+export const CONTEXT_BAR_STYLES = [
+  { label: "blocks", used: "■", free: "□", reserved: "▨" },
+  { label: "lines", used: "━", free: "─", reserved: "┄" },
+  { label: "circles", used: "●", free: "○", reserved: "◎" },
+  { label: "parallelograms", used: "▰", free: "▱", reserved: "▰" },
+  { label: "diamonds", used: "◆", free: "◇", reserved: "❖" },
+  { label: "bars", used: "█", free: "░", reserved: "▒" },
+  { label: "stars", used: "★", free: "☆", reserved: "★" },
+  { label: "specks", used: "•", free: "◦", reserved: "•" },
+] as const satisfies readonly ContextBarStyleDef[];
+
+export type ContextBarStyleId = (typeof CONTEXT_BAR_STYLES)[number]["label"];
+
+export const CONTEXT_BAR_STYLE_IDS = CONTEXT_BAR_STYLES.map(
+  (s) => s.label,
+) as readonly ContextBarStyleId[];
+
+export const DEFAULT_CONTEXT_BAR_STYLE: ContextBarStyleId = "blocks";
+
+export function isContextBarStyleId(
+  value: unknown,
+): value is ContextBarStyleId {
+  return (
+    typeof value === "string" &&
+    (CONTEXT_BAR_STYLE_IDS as readonly string[]).includes(value)
+  );
+}
+
+export function getContextBarStyle(id: ContextBarStyleId): ContextBarStyleDef {
+  return (
+    CONTEXT_BAR_STYLES.find((s) => s.label === id) ?? CONTEXT_BAR_STYLES[0]
+  );
+}
 
 export const GIT_REFRESH_MS = 5000;
 export const MIN_FOOTER_REFRESH_MS = 250;
@@ -306,6 +353,7 @@ export interface FooterConfigSnapshot {
   refreshMs: number;
   showPiBanner: boolean;
   iconFamily: FooterIconFamily;
+  contextBarStyle: ContextBarStyleId;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
   widgets: Partial<Record<FooterWidgetId, FooterWidgetConfigOverride>>;
@@ -315,6 +363,7 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
   showPiBanner: true,
   iconFamily: "nerd",
+  contextBarStyle: DEFAULT_CONTEXT_BAR_STYLE,
   defaultTextColor: "dim",
   defaultIconColor: "text",
   widgets: {},
@@ -353,8 +402,7 @@ export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
   "context-bar": {
     defaults: { row: 0, position: 0, align: "middle", fill: "grow" },
     description: "Shows a bar for current context usage.",
-    symbolKey: "contextUsed",
-    hasFooterIcon: false,
+    symbolKey: "contextBarMarker",
   },
   "context-usage": {
     defaults: { row: 0, position: 0, align: "right", fill: "none" },

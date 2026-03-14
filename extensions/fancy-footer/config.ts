@@ -13,6 +13,8 @@ import {
 } from "@mariozechner/pi-tui";
 import {
   DEFAULT_COMPACTION_SETTINGS,
+  CONTEXT_BAR_STYLE_IDS,
+  CONTEXT_BAR_STYLES,
   DEFAULT_FOOTER_CONFIG,
   FOOTER_CONFIG_FILE,
   FOOTER_ICON_FAMILIES,
@@ -29,6 +31,7 @@ import {
   MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
   type CompactionSettingsSnapshot,
+  type ContextBarStyleId,
   type FooterConfigSnapshot,
   type FooterIconFamily,
   type FooterWidgetAlign,
@@ -39,8 +42,10 @@ import {
   type FooterWidgetId,
   type FooterWidgetState,
   clampInt,
+  getContextBarStyle,
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
+  isContextBarStyleId,
   isFooterIconFamily,
   isFooterWidgetAlign,
   isFooterWidgetColor,
@@ -161,6 +166,7 @@ export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
     showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
+    contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: {},
@@ -186,6 +192,12 @@ export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
 
   if (isFooterIconFamily(input.iconFamily)) {
     out.iconFamily = input.iconFamily;
+  }
+
+  if (input.contextBarStyle === "heavy") {
+    out.contextBarStyle = "lines";
+  } else if (isContextBarStyleId(input.contextBarStyle)) {
+    out.contextBarStyle = input.contextBarStyle;
   }
 
   if (isFooterWidgetColor(input.defaultTextColor)) {
@@ -251,6 +263,7 @@ export function cloneFooterConfig(
     refreshMs: config.refreshMs,
     showPiBanner: config.showPiBanner,
     iconFamily: config.iconFamily,
+    contextBarStyle: config.contextBarStyle,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
     widgets,
@@ -288,6 +301,7 @@ function toFooterConfigObject(
     ),
     showPiBanner: config.showPiBanner,
     iconFamily: config.iconFamily,
+    contextBarStyle: config.contextBarStyle,
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
   };
@@ -721,6 +735,25 @@ function createWidgetSettingsSubmenu(
   };
 }
 
+function formatContextBarStyleValue(value: ContextBarStyleId): string {
+  const style = getContextBarStyle(value);
+  return `${style.label} ${style.used}${style.free}${style.reserved}`;
+}
+
+export function coerceContextBarStyleValue(
+  value: string,
+): ContextBarStyleId | undefined {
+  if (isContextBarStyleId(value)) return value;
+
+  for (const styleId of CONTEXT_BAR_STYLE_IDS) {
+    if (formatContextBarStyleValue(styleId) === value) {
+      return styleId;
+    }
+  }
+
+  return undefined;
+}
+
 export function bannerFooterSettingsItems(
   draft: FooterConfigSnapshot,
 ): SettingItem[] {
@@ -761,6 +794,17 @@ export function genericFooterSettingsItems(
       values: [...FOOTER_ICON_FAMILIES],
       description:
         "Choose the icon style used across the footer and this configuration screen.",
+    },
+    {
+      id: "contextBarStyle",
+      label: "context bar style",
+      currentValue: formatContextBarStyleValue(draft.contextBarStyle),
+      values: CONTEXT_BAR_STYLE_IDS.map(formatContextBarStyleValue),
+      description: "Choose the character style for the context usage bar: " +
+        CONTEXT_BAR_STYLES.map((s, i) => {
+          const repr = s.label + " " + s.used + s.free + s.reserved;
+          return i === CONTEXT_BAR_STYLES.length - 1 ? "or " + repr : repr;
+        }).join(", ") + ".",
     },
     {
       id: "defaultTextColor",
