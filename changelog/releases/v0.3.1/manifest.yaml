@@ -1,0 +1,4 @@
+created: 2026-03-17
+title: Fix Git lock contention during background polling
+intro: "Background Git polling no longer creates `.git/index.lock` files, reducing\
+  \ conflicts when multiple pi agents run in the same repository."
