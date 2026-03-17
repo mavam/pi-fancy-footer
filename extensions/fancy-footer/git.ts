@@ -5,7 +5,12 @@ import {
   selectPullRequestFromGraphQL,
   splitGitHubRepository,
 } from "./pull-request.ts";
-import { EMPTY_GIT_INFO, type GitInfo, parseNumstat, toNumber } from "./shared.ts";
+import {
+  EMPTY_GIT_INFO,
+  type GitInfo,
+  parseNumstat,
+  toNumber,
+} from "./shared.ts";
 
 interface ExecResult {
   code: number;
@@ -16,6 +21,7 @@ interface ExecResult {
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
 const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
 const PULL_REQUEST_REFRESH_MS = 60_000;
+const GIT_NO_OPTIONAL_LOCKS_ARG = "--no-optional-locks";
 const PULL_REQUEST_QUERY = [
   "query($owner: String!, $name: String!, $branch: String!) {",
   "  repository(owner: $owner, name: $name) {",
@@ -57,6 +63,31 @@ async function exec(
   cwd: string,
 ): Promise<string> {
   const result = await execResult(pi, command, args, cwd);
+  if (result.code !== 0) return "";
+  return result.stdout;
+}
+
+async function execGitResult(
+  pi: ExtensionAPI,
+  args: string[],
+  cwd: string,
+  timeout = DEFAULT_COMMAND_TIMEOUT_MS,
+): Promise<ExecResult> {
+  return execResult(
+    pi,
+    "git",
+    [GIT_NO_OPTIONAL_LOCKS_ARG, ...args],
+    cwd,
+    timeout,
+  );
+}
+
+async function execGit(
+  pi: ExtensionAPI,
+  args: string[],
+  cwd: string,
+): Promise<string> {
+  const result = await execGitResult(pi, args, cwd);
   if (result.code !== 0) return "";
   return result.stdout;
 }
@@ -111,16 +142,28 @@ async function collectCurrentBranchPullRequest(
 }
 
 export function shouldRefreshPullRequest(
-  git: Pick<GitInfo, "branch" | "pullRequestLookupEnabled" | "pullRequestLookupAt">,
+  git: Pick<
+    GitInfo,
+    "branch" | "pullRequestLookupEnabled" | "pullRequestLookupAt"
+  >,
 ): boolean {
-  return git.pullRequestLookupEnabled && !!git.branch && Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS;
+  return (
+    git.pullRequestLookupEnabled &&
+    !!git.branch &&
+    Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS
+  );
 }
 
 export async function collectPullRequestInfo(
   pi: ExtensionAPI,
   cwd: string,
   branch: string,
-): Promise<Pick<GitInfo, "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt">> {
+): Promise<
+  Pick<
+    GitInfo,
+    "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"
+  >
+> {
   if (!branch) {
     return {
       pullRequest: undefined,
@@ -130,8 +173,12 @@ export async function collectPullRequestInfo(
   }
 
   const [upstream, remoteUrls] = await Promise.all([
-    exec(pi, "git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], cwd),
-    exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
+    execGit(
+      pi,
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
+      cwd,
+    ),
+    execGit(pi, ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
   ]);
 
   const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
@@ -146,7 +193,13 @@ export async function collectPullRequestInfo(
   }
 
   for (const baseRepository of plan.baseRepositories) {
-    const pullRequest = await collectPullRequestFromBaseRepository(pi, cwd, baseRepository, branch, plan.headOwners);
+    const pullRequest = await collectPullRequestFromBaseRepository(
+      pi,
+      cwd,
+      baseRepository,
+      branch,
+      plan.headOwners,
+    );
     if (pullRequest) {
       return {
         pullRequest,
@@ -169,11 +222,20 @@ export async function collectPullRequestInfo(
 export async function collectGitInfo(
   pi: ExtensionAPI,
   cwd: string,
-  previousGit: Pick<GitInfo, "repository" | "branch" | "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"> | undefined = undefined,
+  previousGit:
+    | Pick<
+        GitInfo,
+        | "repository"
+        | "branch"
+        | "pullRequest"
+        | "pullRequestLookupEnabled"
+        | "pullRequestLookupAt"
+      >
+    | undefined = undefined,
 ): Promise<GitInfo> {
   const [porcelainV2, remoteUrls] = await Promise.all([
-    exec(pi, "git", ["status", "--porcelain=2", "--branch"], cwd),
-    exec(pi, "git", ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
+    execGit(pi, ["status", "--porcelain=2", "--branch"], cwd),
+    execGit(pi, ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
   ]);
 
   if (!porcelainV2) return { ...EMPTY_GIT_INFO };
@@ -221,7 +283,11 @@ export async function collectGitInfo(
       continue;
     }
 
-    if (line.startsWith("1 ") || line.startsWith("2 ") || line.startsWith("u ")) {
+    if (
+      line.startsWith("1 ") ||
+      line.startsWith("2 ") ||
+      line.startsWith("u ")
+    ) {
       const xy = line.split(" ")[1] || "..";
       const x = xy[0] || ".";
       const y = xy[1] || ".";
@@ -231,22 +297,23 @@ export async function collectGitInfo(
   }
 
   const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
-  const samePullRequestTarget = previousGit !== undefined
-    && previousGit.repository === repositoryContext.repository
-    && previousGit.branch === branch;
+  const samePullRequestTarget =
+    previousGit !== undefined &&
+    previousGit.repository === repositoryContext.repository &&
+    previousGit.branch === branch;
 
   let added = 0;
   let removed = 0;
 
-  const headDiff = await exec(pi, "git", ["diff", "--numstat", "HEAD"], cwd);
+  const headDiff = await execGit(pi, ["diff", "--numstat", "HEAD"], cwd);
   if (headDiff) {
     const stats = parseNumstat(headDiff);
     added = stats.added;
     removed = stats.removed;
   } else {
     const [stagedDiff, unstagedDiff] = await Promise.all([
-      exec(pi, "git", ["diff", "--numstat", "--cached"], cwd),
-      exec(pi, "git", ["diff", "--numstat"], cwd),
+      execGit(pi, ["diff", "--numstat", "--cached"], cwd),
+      execGit(pi, ["diff", "--numstat"], cwd),
     ]);
     const stagedStats = parseNumstat(stagedDiff);
     const unstagedStats = parseNumstat(unstagedDiff);
@@ -260,7 +327,9 @@ export async function collectGitInfo(
     commit,
     pullRequest: samePullRequestTarget ? previousGit?.pullRequest : undefined,
     pullRequestLookupEnabled: repositoryContext.pullRequestLookupEnabled,
-    pullRequestLookupAt: samePullRequestTarget ? previousGit?.pullRequestLookupAt ?? 0 : 0,
+    pullRequestLookupAt: samePullRequestTarget
+      ? (previousGit?.pullRequestLookupAt ?? 0)
+      : 0,
     added,
     removed,
     counts: {

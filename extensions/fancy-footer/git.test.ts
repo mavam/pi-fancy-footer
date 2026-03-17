@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectGitInfo, collectPullRequestInfo, shouldRefreshPullRequest } from "./git.ts";
+import {
+  collectGitInfo,
+  collectPullRequestInfo,
+  shouldRefreshPullRequest,
+} from "./git.ts";
 
 interface ExecInvocation {
   command: string;
@@ -15,30 +19,49 @@ interface ExecResult {
   stderr: string;
 }
 
-function createPi(execImpl: (call: ExecInvocation) => ExecResult | Promise<ExecResult>) {
+function gitSubcommand(args: string[]): string {
+  return args[0] === "--no-optional-locks" ? (args[1] ?? "") : (args[0] ?? "");
+}
+
+function createPi(
+  execImpl: (call: ExecInvocation) => ExecResult | Promise<ExecResult>,
+) {
   const calls: ExecInvocation[] = [];
 
   return {
     calls,
     pi: {
-      async exec(command: string, args: string[], options: { cwd: string; timeout?: number }) {
-        const call = { command, args, cwd: options.cwd, timeout: options.timeout };
+      async exec(
+        command: string,
+        args: string[],
+        options: { cwd: string; timeout?: number },
+      ) {
+        const call = {
+          command,
+          args,
+          cwd: options.cwd,
+          timeout: options.timeout,
+        };
         calls.push(call);
         return await execImpl(call);
       },
     } as {
-      exec(command: string, args: string[], options: { cwd: string; timeout?: number }): Promise<ExecResult>;
+      exec(
+        command: string,
+        args: string[],
+        options: { cwd: string; timeout?: number },
+      ): Promise<ExecResult>;
     },
   };
 }
 
 test("collectPullRequestInfo ignores foreign branch-name matches and falls back to gh pr view", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && args[0] === "rev-parse") {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
       return { code: 0, stdout: "origin/fix-ci\n", stderr: "" };
     }
 
-    if (command === "git" && args[0] === "config") {
+    if (command === "git" && gitSubcommand(args) === "config") {
       return {
         code: 0,
         stdout: [
@@ -110,18 +133,29 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   assert.equal(result.pullRequestLookupEnabled, true);
   assert.notEqual(result.pullRequestLookupAt, 0);
   assert.equal(
-    calls.some((call) => call.command === "gh" && call.args[0] === "pr" && call.args[1] === "view"),
+    calls.some(
+      (call) =>
+        call.command === "gh" &&
+        call.args[0] === "pr" &&
+        call.args[1] === "view",
+    ),
+    true,
+  );
+  assert.equal(
+    calls
+      .filter((call) => call.command === "git")
+      .every((call) => call.args[0] === "--no-optional-locks"),
     true,
   );
 });
 
 test("collectPullRequestInfo skips GitHub CLI lookups when the repository has no GitHub remote", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && args[0] === "rev-parse") {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
       return { code: 0, stdout: "origin/main\n", stderr: "" };
     }
 
-    if (command === "git" && args[0] === "config") {
+    if (command === "git" && gitSubcommand(args) === "config") {
       return {
         code: 0,
         stdout: "remote.origin.url ssh://git.example.com/team/repo.git",
@@ -136,12 +170,19 @@ test("collectPullRequestInfo skips GitHub CLI lookups when the repository has no
 
   assert.equal(result.pullRequest, undefined);
   assert.equal(result.pullRequestLookupEnabled, false);
-  assert.equal(calls.every((call) => call.command === "git"), true);
+  assert.equal(
+    calls.every((call) => call.command === "git"),
+    true,
+  );
+  assert.equal(
+    calls.every((call) => call.args[0] === "--no-optional-locks"),
+    true,
+  );
 });
 
 test("collectGitInfo disables periodic PR refreshes for non-GitHub repositories", async () => {
-  const { pi } = createPi(({ command, args }) => {
-    if (command === "git" && args[0] === "status") {
+  const { pi, calls } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "status") {
       return {
         code: 0,
         stdout: [
@@ -154,7 +195,7 @@ test("collectGitInfo disables periodic PR refreshes for non-GitHub repositories"
       };
     }
 
-    if (command === "git" && args[0] === "config") {
+    if (command === "git" && gitSubcommand(args) === "config") {
       return {
         code: 0,
         stdout: "remote.origin.url ssh://git.example.com/team/repo.git",
@@ -162,7 +203,7 @@ test("collectGitInfo disables periodic PR refreshes for non-GitHub repositories"
       };
     }
 
-    if (command === "git" && args[0] === "diff") {
+    if (command === "git" && gitSubcommand(args) === "diff") {
       return { code: 0, stdout: "", stderr: "" };
     }
 
@@ -173,4 +214,8 @@ test("collectGitInfo disables periodic PR refreshes for non-GitHub repositories"
 
   assert.equal(git.pullRequestLookupEnabled, false);
   assert.equal(shouldRefreshPullRequest(git), false);
+  assert.equal(
+    calls.every((call) => call.args[0] === "--no-optional-locks"),
+    true,
+  );
 });
