@@ -21,6 +21,8 @@ on:
 jobs:
   release:
     uses: tenzir/ship/.github/workflows/reusable-release.yaml@main
+    permissions:
+      contents: write
     with:
       intro: ${{ inputs.intro }}
       title: ${{ inputs.title }}
