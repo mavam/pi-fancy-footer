@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  getAgentDir,
   getSettingsListTheme,
   type Theme,
 } from "@mariozechner/pi-coding-agent";
@@ -65,20 +65,6 @@ function readJsonObject(filePath: string): Record<string, unknown> | undefined {
   } catch {
     return undefined;
   }
-}
-
-function expandHome(pathValue: string): string {
-  if (pathValue === "~") return homedir();
-  if (pathValue.startsWith("~/") || pathValue.startsWith("~\\")) {
-    return join(homedir(), pathValue.slice(2));
-  }
-  return pathValue;
-}
-
-function getAgentDir(): string {
-  return process.env.PI_CODING_AGENT_DIR
-    ? expandHome(process.env.PI_CODING_AGENT_DIR)
-    : join(homedir(), ".pi", "agent");
 }
 
 export function coerceCompactionSettings(
@@ -800,11 +786,13 @@ export function genericFooterSettingsItems(
       label: "context bar style",
       currentValue: formatContextBarStyleValue(draft.contextBarStyle),
       values: CONTEXT_BAR_STYLE_IDS.map(formatContextBarStyleValue),
-      description: "Choose the character style for the context usage bar: " +
+      description:
+        "Choose the character style for the context usage bar: " +
         CONTEXT_BAR_STYLES.map((s, i) => {
           const repr = s.label + " " + s.used + s.free + s.reserved;
           return i === CONTEXT_BAR_STYLES.length - 1 ? "or " + repr : repr;
-        }).join(", ") + ".",
+        }).join(", ") +
+        ".",
     },
     {
       id: "defaultTextColor",

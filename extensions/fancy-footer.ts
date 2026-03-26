@@ -4,7 +4,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import {
   Key,
-  getEditorKeybindings,
+  getKeybindings,
   matchesKey,
   truncateToWidth,
   visibleWidth,
@@ -543,19 +543,19 @@ export default function (pi: ExtensionAPI) {
               return;
             }
 
-            const kb = getEditorKeybindings();
+            const kb = getKeybindings();
 
-            if (kb.matches(data, "selectUp")) {
+            if (kb.matches(data, "tui.select.up")) {
               if (getActiveSectionItems().length > 0) moveSelection(-1);
-            } else if (kb.matches(data, "selectDown")) {
+            } else if (kb.matches(data, "tui.select.down")) {
               if (getActiveSectionItems().length > 0) moveSelection(1);
             } else if (matchesKey(data, Key.tab)) {
               moveSection(1);
             } else if (matchesKey(data, Key.shift("tab"))) {
               moveSection(-1);
-            } else if (kb.matches(data, "selectConfirm") || data === " ") {
+            } else if (kb.matches(data, "tui.select.confirm") || data === " ") {
               activateCurrentItem();
-            } else if (kb.matches(data, "selectCancel")) {
+            } else if (kb.matches(data, "tui.select.cancel")) {
               done(undefined);
               return;
             }
