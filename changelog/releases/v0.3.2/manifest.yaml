@@ -1,0 +1,9 @@
+created: 2026-03-26
+title: Compatibility fix for recent pi extension API changes
+intro: >-
+  Fixes compatibility with recent pi releases where the extension API changed, restoring
+  the /fancy-footer configuration screen and ensuring custom agent directory setups
+  continue to work.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.3.1
