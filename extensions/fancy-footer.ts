@@ -24,7 +24,6 @@ import {
   type SessionUsageMetrics,
 } from "./fancy-footer/shared.ts";
 import {
-  bannerFooterSettingsItems,
   cloneFooterConfig,
   coerceCompactionSettings,
   coerceContextBarStyleValue,
@@ -47,12 +46,10 @@ import {
   collectSessionUsageMetrics,
   renderFooterLines,
 } from "./fancy-footer/render.ts";
-import { renderBannerLines } from "./fancy-footer/banner.ts";
 
 interface ActiveFooterControls {
   requestRender: () => void;
   reschedule: () => void;
-  applyHeader: () => void;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -61,7 +58,6 @@ export default function (pi: ExtensionAPI) {
   };
   let footerConfig: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
-    showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
     contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
@@ -76,22 +72,6 @@ export default function (pi: ExtensionAPI) {
 
     compactionSettings = loadCompactionSettings(ctx.cwd);
     footerConfig = loadFooterConfig();
-
-    const applyHeader = () => {
-      if (!footerConfig.showPiBanner) {
-        ctx.ui.setHeader(undefined);
-        return;
-      }
-
-      ctx.ui.setHeader((_tui, theme) => ({
-        render(width: number): string[] {
-          return renderBannerLines(theme, width);
-        },
-        invalidate() {},
-      }));
-    };
-
-    applyHeader();
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       let currentGit = { ...EMPTY_GIT_INFO };
@@ -214,7 +194,6 @@ export default function (pi: ExtensionAPI) {
       activeFooterControls = {
         requestRender,
         reschedule: scheduleRefresh,
-        applyHeader,
       };
 
       void refreshGit();
@@ -263,7 +242,6 @@ export default function (pi: ExtensionAPI) {
           try {
             writeFooterConfigSnapshot(draft);
             footerConfig = loadFooterConfig();
-            activeFooterControls?.applyHeader();
             activeFooterControls?.reschedule();
             activeFooterControls?.requestRender();
           } catch (error) {
@@ -272,20 +250,16 @@ export default function (pi: ExtensionAPI) {
           }
         };
 
-        type ConfigSection = "banner" | "generic" | "widgets";
+        type ConfigSection = "generic" | "widgets";
 
-        let activeSection: ConfigSection = "banner";
+        let activeSection: ConfigSection = "generic";
         const selection: Record<ConfigSection, number> = {
-          banner: 0,
           generic: 0,
           widgets: 0,
         };
         let submenu: Component | undefined;
 
         const getSectionItems = (section: ConfigSection): SettingItem[] => {
-          if (section === "banner") {
-            return bannerFooterSettingsItems(draft);
-          }
           if (section === "generic") {
             return genericFooterSettingsItems(draft);
           }
@@ -318,11 +292,7 @@ export default function (pi: ExtensionAPI) {
           return items[selection[activeSection]];
         };
 
-        const orderedSections: ConfigSection[] = [
-          "banner",
-          "generic",
-          "widgets",
-        ];
+        const orderedSections: ConfigSection[] = ["generic", "widgets"];
 
         const getFlatSelections = () => {
           return orderedSections.flatMap((section) => {
@@ -336,11 +306,6 @@ export default function (pi: ExtensionAPI) {
             const refreshMs = coerceRefreshMs(newValue);
             if (refreshMs !== undefined) {
               draft.refreshMs = refreshMs;
-              applyDraft();
-            }
-          } else if (id === "showPiBanner") {
-            if (newValue === "on" || newValue === "off") {
-              draft.showPiBanner = newValue === "on";
               applyDraft();
             }
           } else if (id === "iconFamily") {
@@ -501,8 +466,6 @@ export default function (pi: ExtensionAPI) {
                 width,
               ),
               truncateToWidth(theme.fg("dim", configPath), width),
-              "",
-              ...renderSection(width, "Banner", "banner"),
               "",
               ...renderSection(width, "General", "generic"),
               "",

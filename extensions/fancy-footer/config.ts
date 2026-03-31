@@ -150,7 +150,6 @@ function coerceFooterWidgetOverride(
 export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
   const out: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
-    showPiBanner: DEFAULT_FOOTER_CONFIG.showPiBanner,
     iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
     contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
@@ -170,10 +169,6 @@ export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
   );
   if (refreshMs !== undefined) {
     out.refreshMs = Math.max(MIN_FOOTER_REFRESH_MS, refreshMs);
-  }
-
-  if (typeof input.showPiBanner === "boolean") {
-    out.showPiBanner = input.showPiBanner;
   }
 
   if (isFooterIconFamily(input.iconFamily)) {
@@ -247,7 +242,6 @@ export function cloneFooterConfig(
 
   return {
     refreshMs: config.refreshMs,
-    showPiBanner: config.showPiBanner,
     iconFamily: config.iconFamily,
     contextBarStyle: config.contextBarStyle,
     defaultTextColor: config.defaultTextColor,
@@ -285,7 +279,6 @@ function toFooterConfigObject(
       MIN_FOOTER_REFRESH_MS,
       MAX_FOOTER_REFRESH_MS,
     ),
-    showPiBanner: config.showPiBanner,
     iconFamily: config.iconFamily,
     contextBarStyle: config.contextBarStyle,
     defaultTextColor: config.defaultTextColor,
@@ -740,20 +733,6 @@ export function coerceContextBarStyleValue(
   return undefined;
 }
 
-export function bannerFooterSettingsItems(
-  draft: FooterConfigSnapshot,
-): SettingItem[] {
-  return [
-    {
-      id: "showPiBanner",
-      label: "show π banner",
-      currentValue: draft.showPiBanner ? "on" : "off",
-      values: ["on", "off"],
-      description: "Show the rainbow π banner in the header.",
-    },
-  ];
-}
-
 export function genericFooterSettingsItems(
   draft: FooterConfigSnapshot,
 ): SettingItem[] {
@@ -833,7 +812,6 @@ export function rootFooterSettingsItems(
   applyDraft: () => void,
 ): SettingItem[] {
   return [
-    ...bannerFooterSettingsItems(draft),
     ...genericFooterSettingsItems(draft),
     ...widgetFooterSettingsItems(draft, theme, applyDraft),
   ];

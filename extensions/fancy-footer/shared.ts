@@ -351,7 +351,6 @@ export interface FooterWidgetConfigOverride {
 
 export interface FooterConfigSnapshot {
   refreshMs: number;
-  showPiBanner: boolean;
   iconFamily: FooterIconFamily;
   contextBarStyle: ContextBarStyleId;
   defaultTextColor: FooterWidgetColor;
@@ -361,7 +360,6 @@ export interface FooterConfigSnapshot {
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
-  showPiBanner: true,
   iconFamily: "nerd",
   contextBarStyle: DEFAULT_CONTEXT_BAR_STYLE,
   defaultTextColor: "dim",

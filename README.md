@@ -23,6 +23,9 @@ pi install npm:pi-fancy-footer
 
 ## 📸 Screenshots
 
+> [!NOTE]
+> Some screenshots include `pi-banner`, which is now a separate extension.
+
 <!-- markdownlint-disable MD033 -->
 
 <img src="screenshots/light-blocks.png" alt="light theme – blocks style" width="600" /><br/>
@@ -40,6 +43,7 @@ pi install npm:pi-fancy-footer
 ## 🎮 Commands
 
 - `/fancy-footer` - open interactive footer config editor (small TUI)
+  - settings are grouped into General and Widgets sections
   - all widgets are listed directly (with icon prefixes)
   - select a widget and press Enter for detailed settings
   - in widget settings, adjust row/position/align/fill/min-width, visibility,
@@ -53,7 +57,6 @@ Create `~/.pi/agent/fancy-footer.json`:
 ```json
 {
   "refreshMs": 3000,
-  "showPiBanner": true,
   "iconFamily": "unicode",
   "contextBarStyle": "blocks",
   "defaultTextColor": "dim",
@@ -80,7 +83,6 @@ Create `~/.pi/agent/fancy-footer.json`:
 Top-level settings:
 
 - `refreshMs` (number)
-- `showPiBanner` (boolean)
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
 - `contextBarStyle`
