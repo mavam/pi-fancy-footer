@@ -1,0 +1,8 @@
+created: 2026-03-31
+title: Banner moved to standalone pi-banner package
+intro: >-
+  The startup banner has been extracted into its own pi-banner package, keeping pi-fancy-footer
+  focused on the footer. Users who relied on the banner must install pi-banner separately.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.3.2
