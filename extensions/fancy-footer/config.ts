@@ -1,5 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Type } from "@sinclair/typebox";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   getAgentDir,
   getSettingsListTheme,
@@ -51,22 +53,143 @@ import {
   isFooterWidgetAlign,
   isFooterWidgetColor,
   isFooterWidgetFill,
-  isFooterWidgetId,
   toBoundedNonNegativeInt,
   widgetSummary,
 } from "./shared.ts";
 
-function readJsonObject(filePath: string): Record<string, unknown> | undefined {
+const footerWidgetColorSchema = Type.Union(
+  FOOTER_WIDGET_COLORS.map((value) => Type.Literal(value)),
+);
+const footerIconFamilySchema = Type.Union(
+  FOOTER_ICON_FAMILIES.map((value) => Type.Literal(value)),
+);
+const contextBarStyleSchema = Type.Union(
+  CONTEXT_BAR_STYLE_IDS.map((value) => Type.Literal(value)),
+);
+const footerWidgetAlignSchema = Type.Union([
+  Type.Literal("left"),
+  Type.Literal("middle"),
+  Type.Literal("right"),
+]);
+const footerWidgetFillSchema = Type.Union([
+  Type.Literal("none"),
+  Type.Literal("grow"),
+]);
+const footerWidgetIconModeSchema = Type.Union([
+  Type.Literal("default"),
+  Type.Literal("hide"),
+]);
+
+const FooterWidgetConfigOverrideSchema = Type.Object(
+  {
+    enabled: Type.Optional(Type.Boolean()),
+    row: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW })),
+    position: Type.Optional(
+      Type.Integer({ minimum: 0, maximum: MAX_WIDGET_POSITION }),
+    ),
+    align: Type.Optional(footerWidgetAlignSchema),
+    fill: Type.Optional(footerWidgetFillSchema),
+    minWidth: Type.Optional(
+      Type.Integer({ minimum: 0, maximum: MAX_WIDGET_MIN_WIDTH }),
+    ),
+    icon: Type.Optional(footerWidgetIconModeSchema),
+    iconColor: Type.Optional(footerWidgetColorSchema),
+    textColor: Type.Optional(footerWidgetColorSchema),
+  },
+  { additionalProperties: false },
+);
+
+const FooterConfigFileSchema = Type.Object(
+  {
+    refreshMs: Type.Optional(
+      Type.Integer({
+        minimum: MIN_FOOTER_REFRESH_MS,
+        maximum: MAX_FOOTER_REFRESH_MS,
+      }),
+    ),
+    iconFamily: Type.Optional(footerIconFamilySchema),
+    contextBarStyle: Type.Optional(contextBarStyleSchema),
+    defaultTextColor: Type.Optional(footerWidgetColorSchema),
+    defaultIconColor: Type.Optional(footerWidgetColorSchema),
+    widgets: Type.Optional(
+      Type.Object(
+        Object.fromEntries(
+          FOOTER_WIDGET_IDS.map((widgetId) => [
+            widgetId,
+            Type.Optional(FooterWidgetConfigOverrideSchema),
+          ]),
+        ),
+        { additionalProperties: false },
+      ),
+    ),
+    extensionWidgets: Type.Optional(
+      Type.Record(
+        Type.String({ minLength: 1 }),
+        FooterWidgetConfigOverrideSchema,
+      ),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+const validateFooterConfigFile = TypeCompiler.Compile(FooterConfigFileSchema);
+let lastFooterConfigError: string | undefined;
+
+function parseJsonFile(filePath: string): unknown | undefined {
+  if (!existsSync(filePath)) return undefined;
+  const content = readFileSync(filePath, "utf8");
   try {
-    if (!existsSync(filePath)) return undefined;
-    const content = readFileSync(filePath, "utf8");
-    const parsed = JSON.parse(content);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-      return undefined;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return undefined;
+    return JSON.parse(content);
+  } catch (error) {
+    throw new Error(`Failed to parse ${filePath}: ${error}`);
   }
+}
+
+function defaultFooterConfig(): FooterConfigSnapshot {
+  return structuredClone(DEFAULT_FOOTER_CONFIG);
+}
+
+function pruneWidgetOverrides(
+  overrides: Record<string, FooterWidgetConfigOverride> | undefined,
+): Record<string, FooterWidgetConfigOverride> {
+  if (!overrides) return {};
+
+  const pruned: Record<string, FooterWidgetConfigOverride> = {};
+  for (const [widgetId, override] of Object.entries(overrides)) {
+    if (!override || Object.keys(override).length === 0) continue;
+    pruned[widgetId] = structuredClone(override);
+  }
+  return pruned;
+}
+
+function parseFooterConfig(
+  filePath: string,
+  value: unknown,
+): FooterConfigSnapshot {
+  if (value === undefined) return defaultFooterConfig();
+
+  if (!validateFooterConfigFile.Check(value)) {
+    const errors = Array.from(validateFooterConfigFile.Errors(value))
+      .map((error) => `  - ${error.path || "/"}: ${error.message}`)
+      .join("\n");
+    throw new Error(`Invalid ${filePath}:\n${errors}`);
+  }
+
+  const input = value as FooterConfigSnapshot;
+  return {
+    refreshMs: input.refreshMs ?? DEFAULT_FOOTER_CONFIG.refreshMs,
+    iconFamily: input.iconFamily ?? DEFAULT_FOOTER_CONFIG.iconFamily,
+    contextBarStyle:
+      input.contextBarStyle ?? DEFAULT_FOOTER_CONFIG.contextBarStyle,
+    defaultTextColor:
+      input.defaultTextColor ?? DEFAULT_FOOTER_CONFIG.defaultTextColor,
+    defaultIconColor:
+      input.defaultIconColor ?? DEFAULT_FOOTER_CONFIG.defaultIconColor,
+    widgets: pruneWidgetOverrides(
+      input.widgets as Record<string, FooterWidgetConfigOverride> | undefined,
+    ) as Partial<Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>>,
+    extensionWidgets: pruneWidgetOverrides(input.extensionWidgets),
+  };
 }
 
 export function coerceCompactionSettings(
@@ -98,8 +221,34 @@ export function coerceCompactionSettings(
 export function loadCompactionSettings(
   cwd: string,
 ): CompactionSettingsSnapshot {
-  const globalSettings = readJsonObject(join(getAgentDir(), "settings.json"));
-  const projectSettings = readJsonObject(join(cwd, ".pi", "settings.json"));
+  let globalSettings: Record<string, unknown> | undefined;
+  let projectSettings: Record<string, unknown> | undefined;
+
+  try {
+    const globalValue = parseJsonFile(join(getAgentDir(), "settings.json"));
+    if (
+      globalValue &&
+      typeof globalValue === "object" &&
+      !Array.isArray(globalValue)
+    ) {
+      globalSettings = globalValue as Record<string, unknown>;
+    }
+  } catch {
+    globalSettings = undefined;
+  }
+
+  try {
+    const projectValue = parseJsonFile(join(cwd, ".pi", "settings.json"));
+    if (
+      projectValue &&
+      typeof projectValue === "object" &&
+      !Array.isArray(projectValue)
+    ) {
+      projectSettings = projectValue as Record<string, unknown>;
+    }
+  } catch {
+    projectSettings = undefined;
+  }
 
   let resolved = { ...DEFAULT_COMPACTION_SETTINGS };
   if (globalSettings?.compaction !== undefined) {
@@ -112,128 +261,26 @@ export function loadCompactionSettings(
   return resolved;
 }
 
-function coerceFooterWidgetOverride(
-  value: unknown,
-): FooterWidgetConfigOverride | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-
-  const input = value as Record<string, unknown>;
-  const out: FooterWidgetConfigOverride = {};
-
-  if (typeof input.enabled === "boolean") out.enabled = input.enabled;
-
-  const row = toBoundedNonNegativeInt(input.row, MAX_WIDGET_ROW);
-  if (row !== undefined) out.row = row;
-
-  const position = toBoundedNonNegativeInt(input.position, MAX_WIDGET_POSITION);
-  if (position !== undefined) out.position = position;
-
-  if (isFooterWidgetAlign(input.align)) out.align = input.align;
-  if (isFooterWidgetFill(input.fill)) out.fill = input.fill;
-
-  const minWidth = toBoundedNonNegativeInt(
-    input.minWidth,
-    MAX_WIDGET_MIN_WIDTH,
-  );
-  if (minWidth !== undefined) out.minWidth = minWidth;
-
-  if (input.icon === "hide") {
-    out.icon = input.icon;
-  }
-
-  if (isFooterWidgetColor(input.iconColor)) out.iconColor = input.iconColor;
-  if (isFooterWidgetColor(input.textColor)) out.textColor = input.textColor;
-
-  return out;
-}
-
-export function coerceFooterConfig(value: unknown): FooterConfigSnapshot {
-  const out: FooterConfigSnapshot = {
-    refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
-    iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
-    contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
-    defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
-    defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
-    widgets: {},
-    extensionWidgets: {},
-  };
-
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return out;
-  }
-
-  const input = value as Record<string, unknown>;
-
-  const refreshMs = toBoundedNonNegativeInt(
-    input.refreshMs,
-    MAX_FOOTER_REFRESH_MS,
-  );
-  if (refreshMs !== undefined) {
-    out.refreshMs = Math.max(MIN_FOOTER_REFRESH_MS, refreshMs);
-  }
-
-  if (isFooterIconFamily(input.iconFamily)) {
-    out.iconFamily = input.iconFamily;
-  }
-
-  if (input.contextBarStyle === "heavy") {
-    out.contextBarStyle = "lines";
-  } else if (isContextBarStyleId(input.contextBarStyle)) {
-    out.contextBarStyle = input.contextBarStyle;
-  }
-
-  if (isFooterWidgetColor(input.defaultTextColor)) {
-    out.defaultTextColor = input.defaultTextColor;
-  }
-
-  if (isFooterWidgetColor(input.defaultIconColor)) {
-    out.defaultIconColor = input.defaultIconColor;
-  }
-
-  const widgetsRaw = input.widgets;
-  if (
-    widgetsRaw &&
-    typeof widgetsRaw === "object" &&
-    !Array.isArray(widgetsRaw)
-  ) {
-    for (const [id, widgetValue] of Object.entries(
-      widgetsRaw as Record<string, unknown>,
-    )) {
-      if (!isFooterWidgetId(id)) continue;
-      const coerced = coerceFooterWidgetOverride(widgetValue);
-      if (coerced && Object.keys(coerced).length > 0) out.widgets[id] = coerced;
-    }
-  }
-
-  const extensionWidgetsRaw = input.extensionWidgets;
-  if (
-    extensionWidgetsRaw &&
-    typeof extensionWidgetsRaw === "object" &&
-    !Array.isArray(extensionWidgetsRaw)
-  ) {
-    for (const [id, widgetValue] of Object.entries(
-      extensionWidgetsRaw as Record<string, unknown>,
-    )) {
-      if (!id) continue;
-      const coerced = coerceFooterWidgetOverride(widgetValue);
-      if (coerced && Object.keys(coerced).length > 0) {
-        out.extensionWidgets[id] = coerced;
-      }
-    }
-  }
-
-  return out;
-}
-
 export function getFooterConfigPath(): string {
   return join(getAgentDir(), FOOTER_CONFIG_FILE);
 }
 
 export function loadFooterConfig(): FooterConfigSnapshot {
-  const config = readJsonObject(getFooterConfigPath());
-  return coerceFooterConfig(config);
+  const configPath = getFooterConfigPath();
+
+  try {
+    const config = parseJsonFile(configPath);
+    const parsed = parseFooterConfig(configPath, config);
+    lastFooterConfigError = undefined;
+    return parsed;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message !== lastFooterConfigError) {
+      console.warn(message);
+      lastFooterConfigError = message;
+    }
+    return defaultFooterConfig();
+  }
 }
 
 function writeFooterConfigFile(content: string): void {
@@ -241,40 +288,10 @@ function writeFooterConfigFile(content: string): void {
   writeFileSync(getFooterConfigPath(), content, "utf8");
 }
 
-function cloneFooterWidgetOverride(
-  override: FooterWidgetConfigOverride,
-): FooterWidgetConfigOverride {
-  return {
-    ...override,
-  };
-}
-
 export function cloneFooterConfig(
   config: FooterConfigSnapshot,
 ): FooterConfigSnapshot {
-  const widgets: Partial<
-    Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>
-  > = {};
-  for (const widgetId of FOOTER_WIDGET_IDS) {
-    const override = config.widgets[widgetId];
-    if (!override) continue;
-    widgets[widgetId] = cloneFooterWidgetOverride(override);
-  }
-
-  const extensionWidgets: Record<string, FooterWidgetConfigOverride> = {};
-  for (const [widgetId, override] of Object.entries(config.extensionWidgets)) {
-    extensionWidgets[widgetId] = cloneFooterWidgetOverride(override);
-  }
-
-  return {
-    refreshMs: config.refreshMs,
-    iconFamily: config.iconFamily,
-    contextBarStyle: config.contextBarStyle,
-    defaultTextColor: config.defaultTextColor,
-    defaultIconColor: config.defaultIconColor,
-    widgets,
-    extensionWidgets,
-  };
+  return structuredClone(config);
 }
 
 function isEmptyWidgetOverride(
@@ -297,13 +314,13 @@ function toFooterConfigObject(
   for (const widgetId of FOOTER_WIDGET_IDS) {
     const override = config.widgets[widgetId];
     if (isEmptyWidgetOverride(override)) continue;
-    outWidgets[widgetId] = cloneFooterWidgetOverride(override);
+    outWidgets[widgetId] = structuredClone(override);
   }
 
   const outExtensionWidgets: Record<string, FooterWidgetConfigOverride> = {};
   for (const [widgetId, override] of Object.entries(config.extensionWidgets)) {
     if (isEmptyWidgetOverride(override)) continue;
-    outExtensionWidgets[widgetId] = cloneFooterWidgetOverride(override);
+    outExtensionWidgets[widgetId] = structuredClone(override);
   }
 
   const out: Record<string, unknown> = {
@@ -378,7 +395,7 @@ function updateWidgetOverride(
   updater: (override: FooterWidgetConfigOverride) => void,
 ): void {
   const target = getWidgetOverrideBucket(config, bucket);
-  const override = cloneFooterWidgetOverride(target[widgetId] ?? {});
+  const override = structuredClone(target[widgetId] ?? {});
   updater(override);
 
   if (isEmptyWidgetOverride(override)) {

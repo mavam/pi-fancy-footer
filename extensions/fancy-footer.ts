@@ -2,6 +2,8 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
   Key,
   getKeybindings,
@@ -19,10 +21,8 @@ import {
   MAX_FOOTER_REFRESH_MS,
   MIN_FOOTER_REFRESH_MS,
   clampInt,
-  isFooterWidgetAlign,
-  isFooterWidgetFill,
   isFooterWidgetId,
-  toBoundedNonNegativeInt,
+  type FooterWidgetColor,
   type CompactionSettingsSnapshot,
   type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
@@ -63,6 +63,55 @@ interface ActiveFooterControls {
   reschedule: () => void;
 }
 
+const extensionWidgetColorSchema = Type.Union([
+  Type.Literal("text"),
+  Type.Literal("accent"),
+  Type.Literal("muted"),
+  Type.Literal("dim"),
+  Type.Literal("success"),
+  Type.Literal("error"),
+  Type.Literal("warning"),
+]);
+const extensionWidgetMetadataSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    label: Type.Optional(Type.String({ minLength: 1 })),
+    description: Type.String({ minLength: 1 }),
+    defaults: Type.Object(
+      {
+        row: Type.Integer({ minimum: 0, maximum: 12 }),
+        position: Type.Integer({ minimum: 0, maximum: 64 }),
+        align: Type.Union([
+          Type.Literal("left"),
+          Type.Literal("middle"),
+          Type.Literal("right"),
+        ]),
+        fill: Type.Union([Type.Literal("none"), Type.Literal("grow")]),
+        minWidth: Type.Optional(Type.Integer({ minimum: 0, maximum: 120 })),
+      },
+      { additionalProperties: false },
+    ),
+    textColor: Type.Optional(extensionWidgetColorSchema),
+    styled: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+const validateExtensionWidgetMetadata = TypeCompiler.Compile(
+  extensionWidgetMetadataSchema,
+);
+
+function isFooterWidgetColorValue(value: unknown): value is FooterWidgetColor {
+  return (
+    value === "text" ||
+    value === "accent" ||
+    value === "muted" ||
+    value === "dim" ||
+    value === "success" ||
+    value === "error" ||
+    value === "warning"
+  );
+}
+
 export default function (pi: ExtensionAPI) {
   let compactionSettings: CompactionSettingsSnapshot = {
     ...DEFAULT_COMPACTION_SETTINGS,
@@ -84,57 +133,69 @@ export default function (pi: ExtensionAPI) {
     widget: FancyFooterWidgetContribution,
   ): FancyFooterWidgetContribution | undefined => {
     if (!widget || typeof widget !== "object") return undefined;
-    if (typeof widget.id !== "string" || widget.id.trim() === "") {
-      console.warn("Ignoring fancy-footer widget without a valid id");
-      return undefined;
-    }
-    if (isFooterWidgetId(widget.id.trim())) {
+
+    const metadata = {
+      id: typeof widget.id === "string" ? widget.id.trim() : widget.id,
+      label:
+        typeof widget.label === "string" ? widget.label.trim() : widget.label,
+      description:
+        typeof widget.description === "string"
+          ? widget.description.trim()
+          : widget.description,
+      defaults: widget.defaults,
+      textColor: widget.textColor,
+      styled: widget.styled,
+    };
+    if (metadata.label === "") metadata.label = undefined;
+
+    if (!validateExtensionWidgetMetadata.Check(metadata)) {
+      const errors = Array.from(
+        validateExtensionWidgetMetadata.Errors(metadata),
+      )
+        .map((error) => `${error.path || "/"}: ${error.message}`)
+        .join(", ");
       console.warn(
-        `Ignoring fancy-footer widget '${widget.id}' because it conflicts with a built-in widget id`,
+        `Ignoring fancy-footer widget '${String(widget.id ?? "<unknown>")}' with invalid metadata: ${errors}`,
       );
       return undefined;
     }
-    if (typeof widget.description !== "string" || !widget.description.trim()) {
+
+    if (isFooterWidgetId(metadata.id)) {
       console.warn(
-        `Ignoring fancy-footer widget '${widget.id}' without a description`,
+        `Ignoring fancy-footer widget '${metadata.id}' because it conflicts with a built-in widget id`,
       );
       return undefined;
     }
     if (typeof widget.renderText !== "function") {
       console.warn(
-        `Ignoring fancy-footer widget '${widget.id}' without a renderText function`,
+        `Ignoring fancy-footer widget '${metadata.id}' without a renderText function`,
       );
       return undefined;
     }
-
-    const defaults = widget.defaults;
-    if (!defaults || typeof defaults !== "object") {
+    if (widget.visible !== undefined && typeof widget.visible !== "function") {
       console.warn(
-        `Ignoring fancy-footer widget '${widget.id}' without defaults`,
+        `Ignoring fancy-footer widget '${metadata.id}' with an invalid visible handler`,
       );
       return undefined;
     }
     if (
-      !isFooterWidgetAlign(defaults.align) ||
-      !isFooterWidgetFill(defaults.fill)
+      widget.textColor !== undefined &&
+      !isFooterWidgetColorValue(widget.textColor)
     ) {
       console.warn(
-        `Ignoring fancy-footer widget '${widget.id}' with invalid defaults`,
+        `Ignoring fancy-footer widget '${metadata.id}' with an invalid textColor`,
       );
       return undefined;
     }
 
     return {
       ...widget,
-      id: widget.id.trim(),
-      label: widget.label?.trim() || widget.id.trim(),
-      defaults: {
-        row: toBoundedNonNegativeInt(defaults.row, 12) ?? 1,
-        position: toBoundedNonNegativeInt(defaults.position, 64) ?? 0,
-        align: defaults.align,
-        fill: defaults.fill,
-        minWidth: toBoundedNonNegativeInt(defaults.minWidth, 120),
-      },
+      id: metadata.id,
+      label: metadata.label ?? metadata.id,
+      description: metadata.description,
+      defaults: metadata.defaults,
+      textColor: metadata.textColor,
+      styled: metadata.styled,
     };
   };
 

@@ -89,6 +89,10 @@ Create `~/.pi/agent/fancy-footer.json`:
 
 Top-level settings:
 
+> [!NOTE]
+> `fancy-footer.json` is validated strictly. Use only the documented keys and values.
+> Invalid config falls back to defaults and logs a warning.
+
 - `refreshMs` (number)
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
