@@ -14,9 +14,8 @@ import {
   Text,
 } from "@mariozechner/pi-tui";
 import {
-  DEFAULT_COMPACTION_SETTINGS,
-  CONTEXT_BAR_STYLE_IDS,
   CONTEXT_BAR_STYLES,
+  DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   FOOTER_CONFIG_FILE,
   FOOTER_ICON_FAMILIES,
@@ -32,55 +31,37 @@ import {
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
-  type CompactionSettingsSnapshot,
   type BuiltInFooterWidgetId,
-  type ContextBarStyleId,
+  type CompactionSettingsSnapshot,
   type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
-  type FooterIconFamily,
   type FooterWidgetAlign,
   type FooterWidgetColor,
   type FooterWidgetConfigOverride,
   type FooterWidgetFill,
-  type FooterWidgetIconMode,
-  type FooterWidgetState,
   clampInt,
-  getContextBarStyle,
   getDefaultWidgetIcon,
-  resolveFancyFooterWidgetIcon,
-  isContextBarStyleId,
-  isFooterIconFamily,
   isFooterWidgetAlign,
   isFooterWidgetColor,
   isFooterWidgetFill,
+  resolveFancyFooterWidgetIcon,
   toBoundedNonNegativeInt,
   widgetSummary,
 } from "./shared.ts";
 
-const footerWidgetColorSchema = Type.Union(
-  FOOTER_WIDGET_COLORS.map((value) => Type.Literal(value)),
-);
-const footerIconFamilySchema = Type.Union(
-  FOOTER_ICON_FAMILIES.map((value) => Type.Literal(value)),
-);
-const contextBarStyleSchema = Type.Union(
-  CONTEXT_BAR_STYLE_IDS.map((value) => Type.Literal(value)),
-);
-const footerWidgetAlignSchema = Type.Union([
-  Type.Literal("left"),
-  Type.Literal("middle"),
-  Type.Literal("right"),
-]);
-const footerWidgetFillSchema = Type.Union([
-  Type.Literal("none"),
-  Type.Literal("grow"),
-]);
-const footerWidgetIconModeSchema = Type.Union([
-  Type.Literal("default"),
-  Type.Literal("hide"),
-]);
+const literalUnion = (values: readonly string[]) =>
+  Type.Union(values.map((value) => Type.Literal(value)));
 
-const FooterWidgetConfigOverrideSchema = Type.Object(
+const footerWidgetColorSchema = literalUnion(FOOTER_WIDGET_COLORS);
+const footerIconFamilySchema = literalUnion(FOOTER_ICON_FAMILIES);
+const contextBarStyleSchema = literalUnion(
+  CONTEXT_BAR_STYLES.map((style) => style.label),
+);
+const footerWidgetAlignSchema = literalUnion(["left", "middle", "right"]);
+const footerWidgetFillSchema = literalUnion(["none", "grow"]);
+const footerWidgetIconModeSchema = literalUnion(["default", "hide"]);
+
+const footerWidgetConfigOverrideSchema = Type.Object(
   {
     enabled: Type.Optional(Type.Boolean()),
     row: Type.Optional(Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW })),
@@ -99,7 +80,7 @@ const FooterWidgetConfigOverrideSchema = Type.Object(
   { additionalProperties: false },
 );
 
-const FooterConfigFileSchema = Type.Object(
+const footerConfigFileSchema = Type.Object(
   {
     refreshMs: Type.Optional(
       Type.Integer({
@@ -116,7 +97,7 @@ const FooterConfigFileSchema = Type.Object(
         Object.fromEntries(
           FOOTER_WIDGET_IDS.map((widgetId) => [
             widgetId,
-            Type.Optional(FooterWidgetConfigOverrideSchema),
+            Type.Optional(footerWidgetConfigOverrideSchema),
           ]),
         ),
         { additionalProperties: false },
@@ -125,15 +106,42 @@ const FooterConfigFileSchema = Type.Object(
     extensionWidgets: Type.Optional(
       Type.Record(
         Type.String({ minLength: 1 }),
-        FooterWidgetConfigOverrideSchema,
+        footerWidgetConfigOverrideSchema,
       ),
     ),
   },
   { additionalProperties: false },
 );
 
-const validateFooterConfigFile = TypeCompiler.Compile(FooterConfigFileSchema);
+const validateFooterConfigFile = TypeCompiler.Compile(footerConfigFileSchema);
 let lastFooterConfigError: string | undefined;
+
+export type FooterConfigSectionId = "generic" | "widgets" | "extension-widgets";
+
+export interface FooterConfigSection {
+  id: FooterConfigSectionId;
+  title: string;
+  items: SettingItem[];
+}
+
+type WidgetConfigBucket = "widgets" | "extensionWidgets";
+
+interface ConfigurableWidgetMeta {
+  id: string;
+  label: string;
+  description: string;
+  defaults: {
+    row: number;
+    position: number;
+    align: FooterWidgetAlign;
+    fill: FooterWidgetFill;
+    minWidth?: number;
+  };
+  defaultIcon?: { text: string; color: FooterWidgetColor };
+  bucket: WidgetConfigBucket;
+  section: Extract<FooterConfigSectionId, "widgets" | "extension-widgets">;
+  builtInId?: BuiltInFooterWidgetId;
+}
 
 function parseJsonFile(filePath: string): unknown | undefined {
   if (!existsSync(filePath)) return undefined;
@@ -221,41 +229,24 @@ export function coerceCompactionSettings(
 export function loadCompactionSettings(
   cwd: string,
 ): CompactionSettingsSnapshot {
-  let globalSettings: Record<string, unknown> | undefined;
-  let projectSettings: Record<string, unknown> | undefined;
-
-  try {
-    const globalValue = parseJsonFile(join(getAgentDir(), "settings.json"));
-    if (
-      globalValue &&
-      typeof globalValue === "object" &&
-      !Array.isArray(globalValue)
-    ) {
-      globalSettings = globalValue as Record<string, unknown>;
-    }
-  } catch {
-    globalSettings = undefined;
-  }
-
-  try {
-    const projectValue = parseJsonFile(join(cwd, ".pi", "settings.json"));
-    if (
-      projectValue &&
-      typeof projectValue === "object" &&
-      !Array.isArray(projectValue)
-    ) {
-      projectSettings = projectValue as Record<string, unknown>;
-    }
-  } catch {
-    projectSettings = undefined;
-  }
-
   let resolved = { ...DEFAULT_COMPACTION_SETTINGS };
-  if (globalSettings?.compaction !== undefined) {
-    resolved = coerceCompactionSettings(globalSettings.compaction, resolved);
-  }
-  if (projectSettings?.compaction !== undefined) {
-    resolved = coerceCompactionSettings(projectSettings.compaction, resolved);
+
+  for (const filePath of [
+    join(getAgentDir(), "settings.json"),
+    join(cwd, ".pi", "settings.json"),
+  ]) {
+    try {
+      const value = parseJsonFile(filePath);
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        continue;
+      }
+      const settings = value as Record<string, unknown>;
+      if (settings.compaction !== undefined) {
+        resolved = coerceCompactionSettings(settings.compaction, resolved);
+      }
+    } catch {
+      // Ignore unrelated settings parsing failures.
+    }
   }
 
   return resolved;
@@ -307,20 +298,19 @@ function isEmptyWidgetOverride(
 function toFooterConfigObject(
   config: FooterConfigSnapshot,
 ): Record<string, unknown> {
-  const outWidgets: Partial<
+  const widgets: Partial<
     Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>
   > = {};
-
   for (const widgetId of FOOTER_WIDGET_IDS) {
     const override = config.widgets[widgetId];
     if (isEmptyWidgetOverride(override)) continue;
-    outWidgets[widgetId] = structuredClone(override);
+    widgets[widgetId] = structuredClone(override);
   }
 
-  const outExtensionWidgets: Record<string, FooterWidgetConfigOverride> = {};
+  const extensionWidgets: Record<string, FooterWidgetConfigOverride> = {};
   for (const [widgetId, override] of Object.entries(config.extensionWidgets)) {
     if (isEmptyWidgetOverride(override)) continue;
-    outExtensionWidgets[widgetId] = structuredClone(override);
+    extensionWidgets[widgetId] = structuredClone(override);
   }
 
   const out: Record<string, unknown> = {
@@ -335,11 +325,9 @@ function toFooterConfigObject(
     defaultIconColor: config.defaultIconColor,
   };
 
-  if (Object.keys(outWidgets).length > 0) {
-    out.widgets = outWidgets;
-  }
-  if (Object.keys(outExtensionWidgets).length > 0) {
-    out.extensionWidgets = outExtensionWidgets;
+  if (Object.keys(widgets).length > 0) out.widgets = widgets;
+  if (Object.keys(extensionWidgets).length > 0) {
+    out.extensionWidgets = extensionWidgets;
   }
 
   return out;
@@ -351,221 +339,201 @@ export function writeFooterConfigSnapshot(config: FooterConfigSnapshot): void {
   );
 }
 
-type WidgetConfigBucket = "widgets" | "extensionWidgets";
-
-interface ConfigurableWidgetMeta {
-  id: string;
-  label: string;
-  description: string;
-  defaults: {
-    row: number;
-    position: number;
-    align: FooterWidgetAlign;
-    fill: FooterWidgetFill;
-    minWidth?: number;
-  };
-  defaultIcon?: { text: string; color: FooterWidgetColor };
-  bucket: WidgetConfigBucket;
-}
-
-function getWidgetOverrideBucket(
+function getWidgetOverride(
   config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-): Record<string, FooterWidgetConfigOverride> {
-  return bucket === "widgets"
-    ? (config.widgets as Record<string, FooterWidgetConfigOverride>)
-    : config.extensionWidgets;
-}
-
-function getWidgetState(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-): FooterWidgetState {
-  const enabled = getWidgetOverrideBucket(config, bucket)[widgetId]?.enabled;
-  if (enabled === true) return "enabled";
-  if (enabled === false) return "disabled";
-  return "default";
+  widget: ConfigurableWidgetMeta,
+): FooterWidgetConfigOverride | undefined {
+  return widget.bucket === "widgets"
+    ? config.widgets[widget.id as BuiltInFooterWidgetId]
+    : config.extensionWidgets[widget.id];
 }
 
 function updateWidgetOverride(
   config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  updater: (override: FooterWidgetConfigOverride) => void,
+  widget: ConfigurableWidgetMeta,
+  mutate: (override: FooterWidgetConfigOverride) => void,
 ): void {
-  const target = getWidgetOverrideBucket(config, bucket);
-  const override = structuredClone(target[widgetId] ?? {});
-  updater(override);
+  const target =
+    widget.bucket === "widgets"
+      ? (config.widgets as Record<string, FooterWidgetConfigOverride>)
+      : config.extensionWidgets;
+  const override = structuredClone(target[widget.id] ?? {});
+  mutate(override);
 
   if (isEmptyWidgetOverride(override)) {
-    delete target[widgetId];
+    delete target[widget.id];
   } else {
-    target[widgetId] = override;
+    target[widget.id] = override;
   }
 }
 
-function setWidgetState(
+function summarizeExtensionWidgetOverride(
   config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  state: FooterWidgetState,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (state === "default") {
-      delete override.enabled;
-    } else {
-      override.enabled = state === "enabled";
-    }
-  });
-}
-
-function setWidgetNumberOverride(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  key: "row" | "position" | "minWidth",
-  value: string,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override[key];
-      return;
-    }
-
-    const max =
-      key === "row"
-        ? MAX_WIDGET_ROW
-        : key === "position"
-          ? MAX_WIDGET_POSITION
-          : MAX_WIDGET_MIN_WIDTH;
-
-    const n = toBoundedNonNegativeInt(value, max);
-    if (n === undefined) return;
-    override[key] = n;
-  });
-}
-
-function setWidgetAlignOverride(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  value: string,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override.align;
-      return;
-    }
-    if (isFooterWidgetAlign(value)) {
-      override.align = value;
-    }
-  });
-}
-
-function setWidgetFillOverride(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  value: string,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override.fill;
-      return;
-    }
-    if (isFooterWidgetFill(value)) {
-      override.fill = value;
-    }
-  });
-}
-
-function getWidgetIconMode(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-): FooterWidgetIconMode {
-  return getWidgetOverrideBucket(config, bucket)[widgetId]?.icon === "hide"
-    ? "hide"
-    : "default";
-}
-
-function setWidgetIconMode(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  value: string,
-): void {
-  if (value !== "default" && value !== "hide") return;
-
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override.icon;
-      return;
-    }
-    override.icon = value;
-  });
-}
-
-function getWidgetIconColorValue(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
+  widget: ConfigurableWidgetMeta,
 ): string {
-  return (
-    getWidgetOverrideBucket(config, bucket)[widgetId]?.iconColor ?? "default"
-  );
+  const override = config.extensionWidgets[widget.id];
+  if (!override) return "default";
+
+  const parts: string[] = [];
+  if (override.enabled === true) parts.push("on");
+  if (override.enabled === false) parts.push("off");
+  if (override.row !== undefined && override.row !== widget.defaults.row) {
+    parts.push(`row:${override.row}`);
+  }
+  if (
+    override.position !== undefined &&
+    override.position !== widget.defaults.position
+  ) {
+    parts.push(`pos:${override.position}`);
+  }
+  if (
+    override.align !== undefined &&
+    override.align !== widget.defaults.align
+  ) {
+    parts.push(`align:${override.align}`);
+  }
+  if (override.fill !== undefined && override.fill !== widget.defaults.fill) {
+    parts.push(`fill:${override.fill}`);
+  }
+  if (
+    override.minWidth !== undefined &&
+    override.minWidth !== widget.defaults.minWidth
+  ) {
+    parts.push(`width:${override.minWidth}`);
+  }
+  if (widget.defaultIcon && override.icon === "hide") parts.push("icon:hidden");
+  if (
+    widget.defaultIcon &&
+    override.iconColor !== undefined &&
+    override.iconColor !== config.defaultIconColor
+  ) {
+    parts.push(`icon:${override.iconColor}`);
+  }
+  if (
+    override.textColor !== undefined &&
+    override.textColor !== config.defaultTextColor
+  ) {
+    parts.push(`text:${override.textColor}`);
+  }
+
+  return parts.length > 0 ? parts.join(" ") : "default";
 }
 
-function setWidgetIconColor(
-  config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  value: string,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override.iconColor;
-      return;
-    }
+export { widgetSummary } from "./shared.ts";
 
-    if (!isFooterWidgetColor(value)) return;
-    override.iconColor = value;
-  });
-}
-
-function getWidgetTextColorValue(
+function summarizeWidget(
   config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
+  widget: ConfigurableWidgetMeta,
 ): string {
-  return (
-    getWidgetOverrideBucket(config, bucket)[widgetId]?.textColor ?? "default"
-  );
+  return widget.builtInId
+    ? widgetSummary(config, widget.builtInId)
+    : summarizeExtensionWidgetOverride(config, widget);
 }
 
-function setWidgetTextColor(
+function buildConfigurableWidgets(
   config: FooterConfigSnapshot,
-  bucket: WidgetConfigBucket,
-  widgetId: string,
-  value: string,
-): void {
-  updateWidgetOverride(config, bucket, widgetId, (override) => {
-    if (value === "default") {
-      delete override.textColor;
-      return;
-    }
+  extensionWidgets: readonly FancyFooterWidgetContribution[],
+): ConfigurableWidgetMeta[] {
+  return [
+    ...FOOTER_WIDGET_IDS.map((widgetId) => ({
+      id: widgetId,
+      label: widgetId,
+      description: FOOTER_WIDGET_META[widgetId].description,
+      defaults: FOOTER_WIDGET_META[widgetId].defaults,
+      defaultIcon: getDefaultWidgetIcon(widgetId, config.iconFamily),
+      bucket: "widgets" as const,
+      section: "widgets" as const,
+      builtInId: widgetId,
+    })),
+    ...extensionWidgets.map((widget) => ({
+      id: widget.id,
+      label: widget.label ?? widget.id,
+      description: widget.description,
+      defaults: widget.defaults,
+      defaultIcon: resolveFancyFooterWidgetIcon(widget.icon, config.iconFamily),
+      bucket: "extensionWidgets" as const,
+      section: "extension-widgets" as const,
+    })),
+  ];
+}
 
-    if (!isFooterWidgetColor(value)) return;
-    override.textColor = value;
+function widgetLabel(
+  config: FooterConfigSnapshot,
+  widget: ConfigurableWidgetMeta,
+  theme: Theme,
+): string {
+  const icon = widget.defaultIcon?.text ?? "◌";
+  const override = getWidgetOverride(config, widget);
+  if (override?.icon === "hide") {
+    return `${theme.fg("dim", icon)} ${widget.label}`;
+  }
+
+  const iconColor =
+    widget.defaultIcon && override?.iconColor !== undefined
+      ? override.iconColor
+      : config.defaultIconColor;
+  return `${theme.fg(iconColor, icon)} ${widget.label}`;
+}
+
+function applyWidgetField(
+  config: FooterConfigSnapshot,
+  widget: ConfigurableWidgetMeta,
+  fieldId: string,
+  newValue: string,
+): void {
+  updateWidgetOverride(config, widget, (override) => {
+    switch (fieldId) {
+      case "enabled":
+        if (newValue === "default") delete override.enabled;
+        else if (newValue === "enabled") override.enabled = true;
+        else if (newValue === "disabled") override.enabled = false;
+        break;
+      case "icon":
+        if (newValue === "default") delete override.icon;
+        else if (newValue === "hide") override.icon = "hide";
+        break;
+      case "iconColor":
+      case "textColor":
+        if (newValue === "default") {
+          delete override[fieldId];
+        } else if (isFooterWidgetColor(newValue)) {
+          override[fieldId] = newValue;
+        }
+        break;
+      case "align":
+        if (newValue === "default") delete override.align;
+        else if (isFooterWidgetAlign(newValue)) override.align = newValue;
+        break;
+      case "fill":
+        if (newValue === "default") delete override.fill;
+        else if (isFooterWidgetFill(newValue)) override.fill = newValue;
+        break;
+      case "row":
+      case "position":
+      case "minWidth": {
+        if (newValue === "default") {
+          delete override[fieldId];
+          break;
+        }
+        const max =
+          fieldId === "row"
+            ? MAX_WIDGET_ROW
+            : fieldId === "position"
+              ? MAX_WIDGET_POSITION
+              : MAX_WIDGET_MIN_WIDTH;
+        const parsed = toBoundedNonNegativeInt(newValue, max);
+        if (parsed !== undefined) override[fieldId] = parsed;
+        break;
+      }
+    }
   });
 }
 
-function asOptionValues(
+function optionValues(
   base: readonly number[],
   currentValue: number | undefined,
 ): string[] {
-  const values = new Set(base.map((n) => String(n)));
+  const values = new Set(base.map((value) => String(value)));
   if (currentValue !== undefined) values.add(String(currentValue));
   return [
     "default",
@@ -573,111 +541,22 @@ function asOptionValues(
   ];
 }
 
-export { widgetSummary } from "./shared.ts";
-
-function summarizeWidgetOverride(
-  override: FooterWidgetConfigOverride | undefined,
-  defaults: ConfigurableWidgetMeta["defaults"],
-): string {
-  if (!override) return "default";
-
-  const parts: string[] = [];
-  if (override.enabled === true) parts.push("on");
-  if (override.enabled === false) parts.push("off");
-
-  if (override.row !== undefined && override.row !== defaults.row) {
-    parts.push(`row:${override.row}`);
-  }
-  if (
-    override.position !== undefined &&
-    override.position !== defaults.position
-  ) {
-    parts.push(`pos:${override.position}`);
-  }
-  if (override.align !== undefined && override.align !== defaults.align) {
-    parts.push(`align:${override.align}`);
-  }
-  if (override.fill !== undefined && override.fill !== defaults.fill) {
-    parts.push(`fill:${override.fill}`);
-  }
-  if (
-    override.minWidth !== undefined &&
-    override.minWidth !== defaults.minWidth
-  ) {
-    parts.push(`width:${override.minWidth}`);
-  }
-  if (override.icon === "hide") parts.push("icon:hidden");
-  if (override.iconColor !== undefined)
-    parts.push(`icon:${override.iconColor}`);
-  if (override.textColor !== undefined)
-    parts.push(`text:${override.textColor}`);
-
-  return parts.length > 0 ? parts.join(" ") : "default";
-}
-
-function builtInWidgetMeta(
-  widgetId: BuiltInFooterWidgetId,
-  config: FooterConfigSnapshot,
-): ConfigurableWidgetMeta {
-  return {
-    id: widgetId,
-    label: widgetId,
-    description: FOOTER_WIDGET_META[widgetId].description,
-    defaults: FOOTER_WIDGET_META[widgetId].defaults,
-    defaultIcon: getDefaultWidgetIcon(widgetId, config.iconFamily),
-    bucket: "widgets",
-  };
-}
-
-function extensionWidgetMeta(
-  widget: FancyFooterWidgetContribution,
-  config: FooterConfigSnapshot,
-): ConfigurableWidgetMeta {
-  return {
-    id: widget.id,
-    label: widget.label ?? widget.id,
-    description: widget.description,
-    defaults: widget.defaults,
-    defaultIcon: resolveFancyFooterWidgetIcon(widget.icon, config.iconFamily),
-    bucket: "extensionWidgets",
-  };
-}
-
-function widgetSettingLabel(
-  widget: ConfigurableWidgetMeta,
-  theme: Theme,
-  config: FooterConfigSnapshot,
-): string {
-  const icon = widget.defaultIcon?.text ?? "◌";
-  const iconMode = getWidgetIconMode(config, widget.bucket, widget.id);
-  if (iconMode === "hide") {
-    return `${theme.fg("dim", icon)} ${widget.label}`;
-  }
-
-  const configuredIconColor = getWidgetIconColorValue(
-    config,
-    widget.bucket,
-    widget.id,
-  );
-  const resolvedColor = isFooterWidgetColor(configuredIconColor)
-    ? configuredIconColor
-    : config.defaultIconColor;
-
-  return `${theme.fg(resolvedColor, icon)} ${widget.label}`;
-}
-
 function widgetSettingsItems(
   config: FooterConfigSnapshot,
   widget: ConfigurableWidgetMeta,
 ): SettingItem[] {
-  const override = getWidgetOverrideBucket(config, widget.bucket)[widget.id];
-  const iconMode = getWidgetIconMode(config, widget.bucket, widget.id);
+  const override = getWidgetOverride(config, widget);
 
   return [
     {
       id: "enabled",
       label: "visibility",
-      currentValue: getWidgetState(config, widget.bucket, widget.id),
+      currentValue:
+        override?.enabled === true
+          ? "enabled"
+          : override?.enabled === false
+            ? "disabled"
+            : "default",
       values: ["default", "enabled", "disabled"],
       description:
         "Choose whether this widget follows its normal behavior, always shows, or stays hidden.",
@@ -685,7 +564,7 @@ function widgetSettingsItems(
     {
       id: "icon",
       label: "icon",
-      currentValue: iconMode,
+      currentValue: override?.icon === "hide" ? "hide" : "default",
       values: ["default", "hide"],
       description: widget.defaultIcon
         ? `Use the default ${config.iconFamily} icon: ${widget.defaultIcon.text}`
@@ -694,14 +573,14 @@ function widgetSettingsItems(
     {
       id: "iconColor",
       label: "icon color",
-      currentValue: getWidgetIconColorValue(config, widget.bucket, widget.id),
+      currentValue: override?.iconColor ?? "default",
       values: ["default", ...FOOTER_WIDGET_COLORS],
       description: "Choose the icon color when the icon is visible.",
     },
     {
       id: "textColor",
       label: "text color",
-      currentValue: getWidgetTextColorValue(config, widget.bucket, widget.id),
+      currentValue: override?.textColor ?? "default",
       values: ["default", ...FOOTER_WIDGET_COLORS],
       description: "Choose the text color for this widget.",
     },
@@ -710,7 +589,7 @@ function widgetSettingsItems(
       label: "row",
       currentValue:
         override?.row !== undefined ? String(override.row) : "default",
-      values: asOptionValues(FOOTER_ROW_OPTIONS, override?.row),
+      values: optionValues(FOOTER_ROW_OPTIONS, override?.row),
       description: "Move this widget to a different row.",
     },
     {
@@ -720,7 +599,7 @@ function widgetSettingsItems(
         override?.position !== undefined
           ? String(override.position)
           : "default",
-      values: asOptionValues(FOOTER_POSITION_OPTIONS, override?.position),
+      values: optionValues(FOOTER_POSITION_OPTIONS, override?.position),
       description:
         "Change where this widget appears within its alignment group on that row.",
     },
@@ -746,13 +625,13 @@ function widgetSettingsItems(
         override?.minWidth !== undefined
           ? String(override.minWidth)
           : "default",
-      values: asOptionValues(FOOTER_MIN_WIDTH_OPTIONS, override?.minWidth),
+      values: optionValues(FOOTER_MIN_WIDTH_OPTIONS, override?.minWidth),
       description: "Reserve at least this much width for the widget.",
     },
   ];
 }
 
-function createWidgetSettingsSubmenu(
+function widgetSettingsSubmenu(
   draft: FooterConfigSnapshot,
   theme: Theme,
   widget: ConfigurableWidgetMeta,
@@ -760,19 +639,18 @@ function createWidgetSettingsSubmenu(
 ) {
   return (_currentValue: string, done: (selectedValue?: string) => void) => {
     const submenuItems = widgetSettingsItems(draft, widget);
-
-    const subContainer = new Container();
-    subContainer.addChild(
+    const container = new Container();
+    container.addChild(
       new Text(
         theme.fg(
           "accent",
-          theme.bold(`Widget: ${widgetSettingLabel(widget, theme, draft)}`),
+          theme.bold(`Widget: ${widgetLabel(draft, widget, theme)}`),
         ),
         1,
         0,
       ),
     );
-    subContainer.addChild(
+    container.addChild(
       new Text(
         theme.fg("dim", "Change this widget's layout and appearance"),
         1,
@@ -780,58 +658,21 @@ function createWidgetSettingsSubmenu(
       ),
     );
 
-    const subSettings = new SettingsList(
+    const settings = new SettingsList(
       submenuItems,
       Math.min(submenuItems.length + 2, 14),
       getSettingsListTheme(),
       (fieldId, newValue) => {
-        if (
-          fieldId === "enabled" &&
-          (newValue === "default" ||
-            newValue === "enabled" ||
-            newValue === "disabled")
-        ) {
-          setWidgetState(draft, widget.bucket, widget.id, newValue);
-        } else if (fieldId === "icon") {
-          setWidgetIconMode(draft, widget.bucket, widget.id, newValue);
-        } else if (fieldId === "iconColor") {
-          setWidgetIconColor(draft, widget.bucket, widget.id, newValue);
-        } else if (fieldId === "textColor") {
-          setWidgetTextColor(draft, widget.bucket, widget.id, newValue);
-        } else if (
-          fieldId === "row" ||
-          fieldId === "position" ||
-          fieldId === "minWidth"
-        ) {
-          setWidgetNumberOverride(
-            draft,
-            widget.bucket,
-            widget.id,
-            fieldId,
-            newValue,
-          );
-        } else if (fieldId === "align") {
-          setWidgetAlignOverride(draft, widget.bucket, widget.id, newValue);
-        } else if (fieldId === "fill") {
-          setWidgetFillOverride(draft, widget.bucket, widget.id, newValue);
-        }
-
+        applyWidgetField(draft, widget, fieldId, newValue);
         applyDraft();
       },
       () => {
-        done(
-          widget.bucket === "widgets"
-            ? widgetSummary(draft, widget.id as BuiltInFooterWidgetId)
-            : summarizeWidgetOverride(
-                draft.extensionWidgets[widget.id],
-                widget.defaults,
-              ),
-        );
+        done(summarizeWidget(draft, widget));
       },
     );
 
-    subContainer.addChild(subSettings);
-    subContainer.addChild(
+    container.addChild(settings);
+    container.addChild(
       new Text(
         theme.fg("dim", "↑↓ navigate • enter/space change • esc back"),
         1,
@@ -841,44 +682,25 @@ function createWidgetSettingsSubmenu(
 
     return {
       render(width: number) {
-        return subContainer.render(width);
+        return container.render(width);
       },
       invalidate() {
-        subContainer.invalidate();
+        container.invalidate();
       },
       handleInput(data: string) {
-        subSettings.handleInput?.(data);
+        settings.handleInput?.(data);
       },
     };
   };
 }
 
-function formatContextBarStyleValue(value: ContextBarStyleId): string {
-  const style = getContextBarStyle(value);
-  return `${style.label} ${style.used}${style.free}${style.reserved}`;
-}
-
-export function coerceContextBarStyleValue(
-  value: string,
-): ContextBarStyleId | undefined {
-  if (isContextBarStyleId(value)) return value;
-
-  for (const styleId of CONTEXT_BAR_STYLE_IDS) {
-    if (formatContextBarStyleValue(styleId) === value) {
-      return styleId;
-    }
-  }
-
-  return undefined;
-}
-
-export function genericFooterSettingsItems(
+function genericFooterSettingsItems(
   draft: FooterConfigSnapshot,
 ): SettingItem[] {
   const refreshValues = Array.from(
     new Set([
       String(draft.refreshMs),
-      ...FOOTER_REFRESH_OPTIONS.map((n) => String(n)),
+      ...FOOTER_REFRESH_OPTIONS.map((value) => String(value)),
     ]),
   ).sort((a, b) => Number(a) - Number(b));
 
@@ -902,13 +724,15 @@ export function genericFooterSettingsItems(
     {
       id: "contextBarStyle",
       label: "context bar style",
-      currentValue: formatContextBarStyleValue(draft.contextBarStyle),
-      values: CONTEXT_BAR_STYLE_IDS.map(formatContextBarStyleValue),
+      currentValue: draft.contextBarStyle,
+      values: CONTEXT_BAR_STYLES.map((style) => style.label),
       description:
         "Choose the character style for the context usage bar: " +
-        CONTEXT_BAR_STYLES.map((s, i) => {
-          const repr = s.label + " " + s.used + s.free + s.reserved;
-          return i === CONTEXT_BAR_STYLES.length - 1 ? "or " + repr : repr;
+        CONTEXT_BAR_STYLES.map((style, index) => {
+          const sample = `${style.label} ${style.used}${style.free}${style.reserved}`;
+          return index === CONTEXT_BAR_STYLES.length - 1
+            ? `or ${sample}`
+            : sample;
         }).join(", ") +
         ".",
     },
@@ -931,76 +755,48 @@ export function genericFooterSettingsItems(
   ];
 }
 
-export function widgetFooterSettingsItems(
+export function createFooterConfigSections(
   draft: FooterConfigSnapshot,
   theme: Theme,
   applyDraft: () => void,
-): SettingItem[] {
-  return FOOTER_WIDGET_IDS.map((widgetId) => {
-    const widget = builtInWidgetMeta(widgetId, draft);
-    return {
-      id: `widget:${widgetId}`,
-      label: widgetSettingLabel(widget, theme, draft),
-      currentValue: widgetSummary(draft, widgetId),
-      description: widget.description,
-      submenu: createWidgetSettingsSubmenu(draft, theme, widget, applyDraft),
-    };
-  });
-}
+  extensionWidgets: readonly FancyFooterWidgetContribution[],
+): FooterConfigSection[] {
+  const widgets = buildConfigurableWidgets(draft, extensionWidgets);
 
-export function extensionWidgetFooterSettingsItems(
-  draft: FooterConfigSnapshot,
-  theme: Theme,
-  applyDraft: () => void,
-  widgets: readonly FancyFooterWidgetContribution[],
-): SettingItem[] {
-  return widgets.map((widget) => {
-    const meta = extensionWidgetMeta(widget, draft);
-    return {
-      id: `extension-widget:${widget.id}`,
-      label: widgetSettingLabel(meta, theme, draft),
-      currentValue: summarizeWidgetOverride(
-        draft.extensionWidgets[widget.id],
-        meta.defaults,
-      ),
-      description: meta.description,
-      submenu: createWidgetSettingsSubmenu(draft, theme, meta, applyDraft),
-    };
-  });
-}
+  const widgetItems = (
+    section: ConfigurableWidgetMeta["section"],
+  ): SettingItem[] =>
+    widgets
+      .filter((widget) => widget.section === section)
+      .map((widget) => ({
+        id: `${section}:${widget.id}`,
+        label: widgetLabel(draft, widget, theme),
+        currentValue: summarizeWidget(draft, widget),
+        description: widget.description,
+        submenu: widgetSettingsSubmenu(draft, theme, widget, applyDraft),
+      }));
 
-export function rootFooterSettingsItems(
-  draft: FooterConfigSnapshot,
-  theme: Theme,
-  applyDraft: () => void,
-  extensionWidgets: readonly FancyFooterWidgetContribution[] = [],
-): SettingItem[] {
-  return [
-    ...genericFooterSettingsItems(draft),
-    ...widgetFooterSettingsItems(draft, theme, applyDraft),
-    ...extensionWidgetFooterSettingsItems(
-      draft,
-      theme,
-      applyDraft,
-      extensionWidgets,
-    ),
+  const sections: FooterConfigSection[] = [
+    {
+      id: "generic",
+      title: "General",
+      items: genericFooterSettingsItems(draft),
+    },
+    {
+      id: "widgets",
+      title: "Built-in widgets",
+      items: widgetItems("widgets"),
+    },
   ];
-}
 
-export function coerceRefreshMs(value: string): number | undefined {
-  const refreshMs = toBoundedNonNegativeInt(value, MAX_FOOTER_REFRESH_MS);
-  if (refreshMs === undefined) return undefined;
-  return Math.max(MIN_FOOTER_REFRESH_MS, refreshMs);
-}
+  const extensionItems = widgetItems("extension-widgets");
+  if (extensionItems.length > 0) {
+    sections.push({
+      id: "extension-widgets",
+      title: "Extension widgets",
+      items: extensionItems,
+    });
+  }
 
-export function coerceWidgetColor(
-  value: string,
-): FooterWidgetColor | undefined {
-  if (!isFooterWidgetColor(value)) return undefined;
-  return value;
-}
-
-export function coerceIconFamily(value: string): FooterIconFamily | undefined {
-  if (!isFooterIconFamily(value)) return undefined;
-  return value;
+  return sections;
 }

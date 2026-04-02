@@ -5,24 +5,18 @@ import {
 import { Type } from "@sinclair/typebox";
 import { TypeCompiler } from "@sinclair/typebox/compiler";
 import {
-  Key,
-  getKeybindings,
-  matchesKey,
-  truncateToWidth,
-  visibleWidth,
-  wrapTextWithAnsi,
-  type Component,
-  type SettingItem,
-} from "@mariozechner/pi-tui";
-import {
   DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
+  FOOTER_WIDGET_COLORS,
   MAX_FOOTER_REFRESH_MS,
+  MAX_WIDGET_MIN_WIDTH,
+  MAX_WIDGET_POSITION,
+  MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
   clampInt,
+  isFooterWidgetColor,
   isFooterWidgetId,
-  type FooterWidgetColor,
   type CompactionSettingsSnapshot,
   type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
@@ -31,16 +25,9 @@ import {
 import {
   cloneFooterConfig,
   coerceCompactionSettings,
-  coerceContextBarStyleValue,
-  coerceIconFamily,
-  coerceRefreshMs,
-  coerceWidgetColor,
-  extensionWidgetFooterSettingsItems,
-  genericFooterSettingsItems,
   getFooterConfigPath,
   loadCompactionSettings,
   loadFooterConfig,
-  widgetFooterSettingsItems,
   writeFooterConfigSnapshot,
 } from "./fancy-footer/config.ts";
 import {
@@ -53,6 +40,7 @@ import {
   FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT,
   FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT,
 } from "./fancy-footer/api.ts";
+import { openFooterConfigEditor } from "./fancy-footer/config-editor.ts";
 import {
   collectSessionUsageMetrics,
   renderFooterLines,
@@ -63,15 +51,9 @@ interface ActiveFooterControls {
   reschedule: () => void;
 }
 
-const extensionWidgetColorSchema = Type.Union([
-  Type.Literal("text"),
-  Type.Literal("accent"),
-  Type.Literal("muted"),
-  Type.Literal("dim"),
-  Type.Literal("success"),
-  Type.Literal("error"),
-  Type.Literal("warning"),
-]);
+const extensionWidgetColorSchema = Type.Union(
+  FOOTER_WIDGET_COLORS.map((value) => Type.Literal(value)),
+);
 const extensionWidgetMetadataSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
@@ -79,15 +61,17 @@ const extensionWidgetMetadataSchema = Type.Object(
     description: Type.String({ minLength: 1 }),
     defaults: Type.Object(
       {
-        row: Type.Integer({ minimum: 0, maximum: 12 }),
-        position: Type.Integer({ minimum: 0, maximum: 64 }),
+        row: Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW }),
+        position: Type.Integer({ minimum: 0, maximum: MAX_WIDGET_POSITION }),
         align: Type.Union([
           Type.Literal("left"),
           Type.Literal("middle"),
           Type.Literal("right"),
         ]),
         fill: Type.Union([Type.Literal("none"), Type.Literal("grow")]),
-        minWidth: Type.Optional(Type.Integer({ minimum: 0, maximum: 120 })),
+        minWidth: Type.Optional(
+          Type.Integer({ minimum: 0, maximum: MAX_WIDGET_MIN_WIDTH }),
+        ),
       },
       { additionalProperties: false },
     ),
@@ -99,18 +83,6 @@ const extensionWidgetMetadataSchema = Type.Object(
 const validateExtensionWidgetMetadata = TypeCompiler.Compile(
   extensionWidgetMetadataSchema,
 );
-
-function isFooterWidgetColorValue(value: unknown): value is FooterWidgetColor {
-  return (
-    value === "text" ||
-    value === "accent" ||
-    value === "muted" ||
-    value === "dim" ||
-    value === "success" ||
-    value === "error" ||
-    value === "warning"
-  );
-}
 
 export default function (pi: ExtensionAPI) {
   let compactionSettings: CompactionSettingsSnapshot = {
@@ -180,7 +152,7 @@ export default function (pi: ExtensionAPI) {
     }
     if (
       widget.textColor !== undefined &&
-      !isFooterWidgetColorValue(widget.textColor)
+      !isFooterWidgetColor(widget.textColor)
     ) {
       console.warn(
         `Ignoring fancy-footer widget '${metadata.id}' with an invalid textColor`,
@@ -386,323 +358,24 @@ export default function (pi: ExtensionAPI) {
       }
 
       const draft = cloneFooterConfig(loadFooterConfig());
+      const applyDraft = () => {
+        try {
+          writeFooterConfigSnapshot(draft);
+          footerConfig = loadFooterConfig();
+          activeFooterControls?.reschedule();
+          activeFooterControls?.requestRender();
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(`Failed to save config: ${msg}`, "error");
+        }
+      };
 
-      await ctx.ui.custom((tui, theme, _kb, done) => {
-        const applyDraft = () => {
-          try {
-            writeFooterConfigSnapshot(draft);
-            footerConfig = loadFooterConfig();
-            activeFooterControls?.reschedule();
-            activeFooterControls?.requestRender();
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            ctx.ui.notify(`Failed to save config: ${msg}`, "error");
-          }
-        };
-
-        type ConfigSection = "generic" | "widgets" | "extension-widgets";
-
-        let activeSection: ConfigSection = "generic";
-        const selection: Record<ConfigSection, number> = {
-          generic: 0,
-          widgets: 0,
-          "extension-widgets": 0,
-        };
-        let submenu: Component | undefined;
-
-        const getSectionItems = (section: ConfigSection): SettingItem[] => {
-          if (section === "generic") {
-            return genericFooterSettingsItems(draft);
-          }
-          if (section === "widgets") {
-            return widgetFooterSettingsItems(draft, theme, () => {
-              applyDraft();
-              tui.requestRender();
-            });
-          }
-          return extensionWidgetFooterSettingsItems(
-            draft,
-            theme,
-            () => {
-              applyDraft();
-              tui.requestRender();
-            },
-            extensionWidgets,
-          );
-        };
-
-        const clampSectionSelection = (section: ConfigSection) => {
-          const items = getSectionItems(section);
-          if (items.length === 0) {
-            selection[section] = 0;
-            return;
-          }
-          selection[section] = clampInt(
-            selection[section],
-            0,
-            items.length - 1,
-          );
-        };
-
-        const getActiveSectionItems = () => {
-          clampSectionSelection(activeSection);
-          return getSectionItems(activeSection);
-        };
-
-        const getSelectedItem = () => {
-          const items = getActiveSectionItems();
-          return items[selection[activeSection]];
-        };
-
-        const orderedSections: ConfigSection[] = [
-          "generic",
-          "widgets",
-          "extension-widgets",
-        ];
-
-        const getFlatSelections = () => {
-          return orderedSections.flatMap((section) => {
-            const items = getSectionItems(section);
-            return items.map((_, index) => ({ section, index }));
-          });
-        };
-
-        const handleRootChange = (id: string, newValue: string) => {
-          if (id === "refreshMs") {
-            const refreshMs = coerceRefreshMs(newValue);
-            if (refreshMs !== undefined) {
-              draft.refreshMs = refreshMs;
-              applyDraft();
-            }
-          } else if (id === "iconFamily") {
-            const iconFamily = coerceIconFamily(newValue);
-            if (iconFamily) {
-              draft.iconFamily = iconFamily;
-              applyDraft();
-            }
-          } else if (id === "contextBarStyle") {
-            const contextBarStyle = coerceContextBarStyleValue(newValue);
-            if (contextBarStyle) {
-              draft.contextBarStyle = contextBarStyle;
-              applyDraft();
-            }
-          } else if (id === "defaultTextColor") {
-            const color = coerceWidgetColor(newValue);
-            if (color) {
-              draft.defaultTextColor = color;
-              applyDraft();
-            }
-          } else if (id === "defaultIconColor") {
-            const color = coerceWidgetColor(newValue);
-            if (color) {
-              draft.defaultIconColor = color;
-              applyDraft();
-            }
-          }
-        };
-
-        const moveSection = (direction: 1 | -1) => {
-          const index = orderedSections.indexOf(activeSection);
-          for (let offset = 1; offset <= orderedSections.length; offset++) {
-            const next =
-              orderedSections[
-                (index + offset * direction + orderedSections.length) %
-                  orderedSections.length
-              ]!;
-            if (getSectionItems(next).length > 0) {
-              activeSection = next;
-              clampSectionSelection(activeSection);
-              return;
-            }
-          }
-        };
-
-        const moveSelection = (direction: 1 | -1) => {
-          const entries = getFlatSelections();
-          if (entries.length === 0) return;
-
-          clampSectionSelection(activeSection);
-          const currentFlatIndex = entries.findIndex(
-            (entry) =>
-              entry.section === activeSection &&
-              entry.index === selection[activeSection],
-          );
-          const safeCurrentIndex = currentFlatIndex >= 0 ? currentFlatIndex : 0;
-          const next =
-            entries[
-              (safeCurrentIndex + direction + entries.length) % entries.length
-            ];
-          if (!next) return;
-
-          activeSection = next.section;
-          selection[next.section] = next.index;
-        };
-
-        const activateCurrentItem = () => {
-          const item = getSelectedItem();
-          if (!item) return;
-
-          if (item.submenu) {
-            submenu = item.submenu(item.currentValue, () => {
-              submenu = undefined;
-              tui.requestRender();
-            });
-            return;
-          }
-
-          if (item.values && item.values.length > 0) {
-            const currentIndex = item.values.indexOf(item.currentValue);
-            const nextValue =
-              item.values[
-                (currentIndex + 1 + item.values.length) % item.values.length
-              ];
-            if (nextValue !== undefined) {
-              handleRootChange(item.id, nextValue);
-            }
-          }
-        };
-
-        const renderSection = (
-          width: number,
-          title: string,
-          section: ConfigSection,
-        ): string[] => {
-          const items = getSectionItems(section);
-          clampSectionSelection(section);
-
-          const lines = [
-            truncateToWidth(
-              activeSection === section
-                ? theme.fg("accent", theme.bold(title))
-                : theme.bold(title),
-              width,
-            ),
-          ];
-
-          if (items.length === 0) {
-            lines.push(
-              truncateToWidth(
-                theme.fg("dim", "  No settings available"),
-                width,
-              ),
-            );
-            return lines;
-          }
-
-          const labelWidth = Math.min(
-            28,
-            Math.max(...items.map((item) => visibleWidth(item.label)), 0),
-          );
-          for (const [index, item] of items.entries()) {
-            const selected =
-              activeSection === section && selection[section] === index;
-            const prefix = selected ? theme.fg("accent", "→ ") : "  ";
-            const paddedLabel =
-              item.label +
-              " ".repeat(Math.max(0, labelWidth - visibleWidth(item.label)));
-            const label = selected
-              ? theme.fg("accent", paddedLabel)
-              : paddedLabel;
-            const usedWidth = visibleWidth(prefix) + labelWidth + 2;
-            const valueMaxWidth = Math.max(4, width - usedWidth - 2);
-            const value = selected
-              ? theme.fg(
-                  "accent",
-                  truncateToWidth(item.currentValue, valueMaxWidth, ""),
-                )
-              : theme.fg(
-                  "dim",
-                  truncateToWidth(item.currentValue, valueMaxWidth, ""),
-                );
-            lines.push(truncateToWidth(`${prefix}${label}  ${value}`, width));
-          }
-
-          return lines;
-        };
-
-        return {
-          render(width: number) {
-            if (submenu) {
-              return submenu.render(width);
-            }
-
-            const lines = [
-              truncateToWidth(
-                theme.fg("accent", theme.bold("Fancy Footer Configuration")),
-                width,
-              ),
-              truncateToWidth(theme.fg("dim", configPath), width),
-              "",
-              ...renderSection(width, "General", "generic"),
-              "",
-              ...renderSection(width, "Built-in widgets", "widgets"),
-            ];
-
-            if (extensionWidgets.length > 0) {
-              lines.push("");
-              lines.push(
-                ...renderSection(
-                  width,
-                  "Extension widgets",
-                  "extension-widgets",
-                ),
-              );
-            }
-
-            const selected = getSelectedItem();
-            if (selected?.description) {
-              lines.push("");
-              for (const line of wrapTextWithAnsi(
-                selected.description,
-                Math.max(10, width - 2),
-              )) {
-                lines.push(truncateToWidth(theme.fg("dim", line), width));
-              }
-            }
-
-            lines.push("");
-            lines.push(
-              truncateToWidth(
-                theme.fg(
-                  "dim",
-                  "↑↓ navigate • Tab/Shift+Tab switch section • Enter configure widget/change values • Esc close",
-                ),
-                width,
-              ),
-            );
-
-            return lines;
-          },
-          invalidate() {
-            submenu?.invalidate?.();
-          },
-          handleInput(data: string) {
-            if (submenu) {
-              submenu.handleInput?.(data);
-              tui.requestRender();
-              return;
-            }
-
-            const kb = getKeybindings();
-
-            if (kb.matches(data, "tui.select.up")) {
-              if (getActiveSectionItems().length > 0) moveSelection(-1);
-            } else if (kb.matches(data, "tui.select.down")) {
-              if (getActiveSectionItems().length > 0) moveSelection(1);
-            } else if (matchesKey(data, Key.tab)) {
-              moveSection(1);
-            } else if (matchesKey(data, Key.shift("tab"))) {
-              moveSection(-1);
-            } else if (kb.matches(data, "tui.select.confirm") || data === " ") {
-              activateCurrentItem();
-            } else if (kb.matches(data, "tui.select.cancel")) {
-              done(undefined);
-              return;
-            }
-
-            tui.requestRender();
-          },
-        };
+      await openFooterConfigEditor({
+        ctx,
+        configPath,
+        draft,
+        extensionWidgets,
+        applyDraft,
       });
     },
   });
