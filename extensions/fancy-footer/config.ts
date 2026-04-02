@@ -52,6 +52,7 @@ import {
   isFooterWidgetFill,
   isFooterWidgetId,
   toBoundedNonNegativeInt,
+  widgetSummary,
 } from "./shared.ts";
 
 function readJsonObject(filePath: string): Record<string, unknown> | undefined {
@@ -475,45 +476,7 @@ function asOptionValues(
   ];
 }
 
-export function widgetSummary(
-  config: FooterConfigSnapshot,
-  widgetId: FooterWidgetId,
-): string {
-  const defaults = FOOTER_WIDGET_META[widgetId].defaults;
-
-  const override = config.widgets[widgetId];
-  if (!override) return "default";
-
-  const parts: string[] = [];
-
-  if (override.enabled === true) parts.push("on");
-  if (override.enabled === false) parts.push("off");
-
-  const row = override.row ?? defaults.row;
-  const position = override.position ?? defaults.position;
-  const align = override.align ?? defaults.align;
-
-  parts.push(`r${row}`);
-  parts.push(`p${position}`);
-  parts.push(align);
-
-  if (override.icon === "hide") {
-    parts.push("icon:off");
-  }
-
-  if (override.iconColor !== undefined) {
-    parts.push(`icon:${override.iconColor}`);
-  }
-
-  if (override.textColor !== undefined) {
-    parts.push(`text:${override.textColor}`);
-  }
-
-  if (override.fill !== undefined) parts.push(`fill:${override.fill}`);
-  if (override.minWidth !== undefined) parts.push(`w:${override.minWidth}`);
-
-  return parts.join(" ");
-}
+export { widgetSummary } from "./shared.ts";
 
 function widgetDescription(widgetId: FooterWidgetId): string {
   return FOOTER_WIDGET_META[widgetId].description;

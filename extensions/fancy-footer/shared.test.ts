@@ -9,6 +9,8 @@ import {
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
   isFooterIconFamily,
+  widgetSummary,
+  type FooterConfigSnapshot,
 } from "./shared.ts";
 
 test("icon families provide family-specific widget icons", () => {
@@ -80,5 +82,147 @@ test("closeOpenTerminalHyperlinks closes truncated OSC 8 links before the suffix
       "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
     ),
     "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+  );
+});
+
+// ── widgetSummary ──────────────────────────────────────────────────────
+
+function withWidgets(
+  widgets: FooterConfigSnapshot["widgets"],
+): FooterConfigSnapshot {
+  return { ...DEFAULT_FOOTER_CONFIG, widgets };
+}
+
+test("widgetSummary returns 'default' when no override exists", () => {
+  assert.equal(widgetSummary(DEFAULT_FOOTER_CONFIG, "model"), "default");
+  assert.equal(widgetSummary(DEFAULT_FOOTER_CONFIG, "context-bar"), "default");
+});
+
+test("widgetSummary returns 'default' when override matches built-in defaults", () => {
+  // context-bar defaults: row 0, position 0, align middle, fill grow
+  const config = withWidgets({
+    "context-bar": { row: 0, position: 0, align: "middle", fill: "grow" },
+  });
+  assert.equal(widgetSummary(config, "context-bar"), "default");
+});
+
+test("widgetSummary shows only deltas from defaults", () => {
+  // context-bar default: row 0, position 0, middle, grow
+  // Only icon hidden is a real change.
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "context-bar": { icon: "hide" } }),
+      "context-bar",
+    ),
+    "icon:hidden",
+  );
+
+  // Move context-bar to a non-default location.
+  assert.equal(
+    widgetSummary(
+      withWidgets({
+        "context-bar": {
+          row: 1,
+          position: 3,
+          align: "left",
+          icon: "hide",
+        },
+      }),
+      "context-bar",
+    ),
+    "row:1 pos:3 align:left icon:hidden",
+  );
+});
+
+test("widgetSummary shows enabled/disabled state", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "total-cost": { enabled: false } }),
+      "total-cost",
+    ),
+    "off",
+  );
+  assert.equal(
+    widgetSummary(withWidgets({ model: { enabled: true } }), "model"),
+    "on",
+  );
+});
+
+test("widgetSummary shows color overrides", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ branch: { iconColor: "muted", textColor: "muted" } }),
+      "branch",
+    ),
+    "icon:muted text:muted",
+  );
+});
+
+test("widgetSummary hides color overrides that match effective defaults", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ branch: { iconColor: "text", textColor: "dim" } }),
+      "branch",
+    ),
+    "default",
+  );
+
+  const config: FooterConfigSnapshot = {
+    ...DEFAULT_FOOTER_CONFIG,
+    defaultIconColor: "muted",
+    defaultTextColor: "warning",
+    widgets: { branch: { iconColor: "muted", textColor: "warning" } },
+  };
+  assert.equal(widgetSummary(config, "branch"), "default");
+});
+
+test("widgetSummary hides icon-only overrides for iconless widgets", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "git-status": { icon: "hide", iconColor: "muted" } }),
+      "git-status",
+    ),
+    "default",
+  );
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "git-status": { icon: "hide", textColor: "warning" } }),
+      "git-status",
+    ),
+    "text:warning",
+  );
+});
+
+test("widgetSummary shows fill only when it differs from the widget default", () => {
+  // context-bar defaults to fill:grow, so fill:grow is not a delta.
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "context-bar": { fill: "grow" } }),
+      "context-bar",
+    ),
+    "default",
+  );
+  // fill:none on context-bar IS a delta.
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "context-bar": { fill: "none" } }),
+      "context-bar",
+    ),
+    "fill:none",
+  );
+  // model defaults to fill:none, so fill:grow IS a delta.
+  assert.equal(
+    widgetSummary(withWidgets({ model: { fill: "grow" } }), "model"),
+    "fill:grow",
+  );
+});
+
+test("widgetSummary shows minWidth override", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "context-bar": { minWidth: 12 } }),
+      "context-bar",
+    ),
+    "width:12",
   );
 });

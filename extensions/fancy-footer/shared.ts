@@ -629,3 +629,50 @@ export function getDefaultWidgetIcon(
   if (meta.hasFooterIcon === false) return undefined;
   return { text: getWidgetSettingIcon(widgetId, iconFamily), color: "text" };
 }
+
+export function widgetSummary(
+  config: FooterConfigSnapshot,
+  widgetId: FooterWidgetId,
+): string {
+  const meta = FOOTER_WIDGET_META[widgetId];
+  const defaults = meta.defaults;
+  const hasBuiltInIcon = meta.hasFooterIcon !== false;
+
+  const override = config.widgets[widgetId];
+  if (!override) return "default";
+
+  const parts: string[] = [];
+
+  if (override.enabled === true) parts.push("on");
+  if (override.enabled === false) parts.push("off");
+
+  if (override.row !== undefined && override.row !== defaults.row)
+    parts.push(`row:${override.row}`);
+  if (
+    override.position !== undefined &&
+    override.position !== defaults.position
+  )
+    parts.push(`pos:${override.position}`);
+  if (override.align !== undefined && override.align !== defaults.align)
+    parts.push(`align:${override.align}`);
+
+  if (hasBuiltInIcon && override.icon === "hide") parts.push("icon:hidden");
+  if (
+    hasBuiltInIcon &&
+    override.iconColor !== undefined &&
+    override.iconColor !== config.defaultIconColor
+  ) {
+    parts.push(`icon:${override.iconColor}`);
+  }
+  if (
+    override.textColor !== undefined &&
+    override.textColor !== config.defaultTextColor
+  ) {
+    parts.push(`text:${override.textColor}`);
+  }
+  if (override.fill !== undefined && override.fill !== defaults.fill)
+    parts.push(`fill:${override.fill}`);
+  if (override.minWidth !== undefined) parts.push(`width:${override.minWidth}`);
+
+  return parts.length > 0 ? parts.join(" ") : "default";
+}
