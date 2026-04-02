@@ -11,12 +11,14 @@ import {
   MAX_WIDGET_MIN_WIDTH,
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
+  type BuiltInFooterWidgetId,
   type CompactionSettingsSnapshot,
+  type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
+  type FooterWidgetConfigOverride,
   type FooterIconFamily,
   type FooterMetrics,
   type FooterWidget,
-  type FooterWidgetId,
   type FooterWidgetSize,
   type GitCounts,
   type GitInfo,
@@ -34,6 +36,7 @@ import {
   getDefaultWidgetIcon,
   getStatuslineSymbols,
   normalizeModel,
+  resolveFancyFooterWidgetIcon,
   normalizePath,
   toNumber,
 } from "./shared.ts";
@@ -465,7 +468,7 @@ function computeFooterMetrics(
 }
 
 function baseWidgetDefaults(
-  widgetId: FooterWidgetId,
+  widgetId: BuiltInFooterWidgetId,
   iconFamily: FooterIconFamily,
 ): Pick<
   FooterWidget,
@@ -581,9 +584,33 @@ function buildFooterWidgets(
   ];
 }
 
+function buildExtensionWidgets(
+  widgets: readonly FancyFooterWidgetContribution[],
+  iconFamily: FooterIconFamily,
+): FooterWidget[] {
+  return widgets.map((widget) => ({
+    id: widget.id,
+    location: {
+      row: clampInt(widget.defaults.row, 0, MAX_WIDGET_ROW),
+      position: clampInt(widget.defaults.position, 0, MAX_WIDGET_POSITION),
+    },
+    align: widget.defaults.align,
+    fill: widget.defaults.fill,
+    minWidth:
+      widget.defaults.minWidth !== undefined
+        ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
+        : undefined,
+    icon: resolveFancyFooterWidgetIcon(widget.icon, iconFamily),
+    textColor: widget.textColor ?? "dim",
+    styled: widget.styled,
+    visible: widget.visible,
+    renderText: widget.renderText,
+  }));
+}
+
 function applyWidgetConfigOverrides(
   widgets: FooterWidget[],
-  overrides: FooterConfigSnapshot["widgets"],
+  overrides: Record<string, FooterWidgetConfigOverride | undefined>,
   defaultTextColor: FooterConfigSnapshot["defaultTextColor"],
   defaultIconColor: FooterConfigSnapshot["defaultIconColor"],
   iconFamily: FooterIconFamily,
@@ -744,6 +771,7 @@ export function renderFooterLines(
   usageMetrics: SessionUsageMetrics,
   compactionSettings: CompactionSettingsSnapshot,
   footerConfig: FooterConfigSnapshot,
+  extensionWidgets: readonly FancyFooterWidgetContribution[] = [],
 ): string[] {
   if (width <= 0) return ["", ""];
 
@@ -766,8 +794,14 @@ export function renderFooterLines(
 
   const barStyle = getContextBarStyle(footerConfig.contextBarStyle);
   const widgets = applyWidgetConfigOverrides(
-    buildFooterWidgets(footerConfig.iconFamily, barStyle),
-    footerConfig.widgets,
+    [
+      ...buildFooterWidgets(footerConfig.iconFamily, barStyle),
+      ...buildExtensionWidgets(extensionWidgets, footerConfig.iconFamily),
+    ],
+    {
+      ...(footerConfig.widgets as Record<string, FooterWidgetConfigOverride>),
+      ...footerConfig.extensionWidgets,
+    },
     footerConfig.defaultTextColor,
     footerConfig.defaultIconColor,
     footerConfig.iconFamily,

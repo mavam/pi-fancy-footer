@@ -5,6 +5,7 @@
   "type": "module",
   "files": [
     "extensions",
+    "api.ts",
     "README.md",
     "LICENSE"
   ],
@@ -20,6 +21,10 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mavam/pi-fancy-footer.git"
+  },
+  "exports": {
+    ".": "./extensions/fancy-footer.ts",
+    "./api": "./api.ts"
   },
   "engines": {
     "node": ">=24.0.0"

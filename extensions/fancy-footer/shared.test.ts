@@ -9,6 +9,7 @@ import {
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
   isFooterIconFamily,
+  resolveFancyFooterWidgetIcon,
   widgetSummary,
   type FooterConfigSnapshot,
 } from "./shared.ts";
@@ -59,6 +60,19 @@ test("every widget returns a non-empty icon for every icon family", () => {
 
 test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.equal(DEFAULT_FOOTER_CONFIG.iconFamily, "nerd");
+  assert.deepEqual(DEFAULT_FOOTER_CONFIG.extensionWidgets, {});
+});
+
+test("resolveFancyFooterWidgetIcon resolves icon strings and family maps", () => {
+  assert.deepEqual(resolveFancyFooterWidgetIcon("X", "ascii"), {
+    text: "X",
+    color: "text",
+  });
+  assert.deepEqual(
+    resolveFancyFooterWidgetIcon({ ascii: ">", unicode: "→" }, "unicode"),
+    { text: "→", color: "text" },
+  );
+  assert.equal(resolveFancyFooterWidgetIcon(false, "emoji"), undefined);
 });
 
 test("formatTerminalHyperlink wraps text in an OSC 8 hyperlink", () => {

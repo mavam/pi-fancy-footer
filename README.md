@@ -43,8 +43,8 @@ pi install npm:pi-fancy-footer
 ## 🎮 Commands
 
 - `/fancy-footer` - open interactive footer config editor (small TUI)
-  - settings are grouped into General and Widgets sections
-  - all widgets are listed directly (with icon prefixes)
+  - settings are grouped into General, Built-in widgets, and Extension widgets sections
+  - built-in and 3rd-party widgets are listed directly (with icon prefixes)
   - select a widget and press Enter for detailed settings
   - in widget settings, adjust row/position/align/fill/min-width, visibility,
     icon hide, icon color, and text color
@@ -76,6 +76,13 @@ Create `~/.pi/agent/fancy-footer.json`:
       "icon": "hide",
       "textColor": "muted"
     }
+  },
+  "extensionWidgets": {
+    "acme.build-status": {
+      "row": 1,
+      "position": 8,
+      "align": "right"
+    }
   }
 }
 ```
@@ -93,7 +100,7 @@ Top-level settings:
 - `defaultIconColor`
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 
-Supported per-widget overrides:
+Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
 - `enabled` (boolean)
 - `row` (number)
@@ -107,7 +114,7 @@ Supported per-widget overrides:
 - `textColor`
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 
-Widget IDs:
+Built-in widget IDs:
 
 - `model`
 - `thinking`
@@ -122,6 +129,64 @@ Widget IDs:
 - `diff-added`
 - `diff-removed`
 - `git-status`
+
+3rd-party widget IDs are extension-defined and live under `extensionWidgets`.
+
+## 🧩 Extension widgets
+
+Other pi extensions can contribute fancy-footer widgets.
+
+### For users
+
+- Contributed widgets appear in a separate **Extension widgets** section in `/fancy-footer`.
+- Their overrides are stored in `extensionWidgets` inside `~/.pi/agent/fancy-footer.json`.
+- They use the same layout controls as built-in widgets, so you can mix and match them on any footer row.
+
+### For extension developers
+
+If your extension depends on `pi-fancy-footer`, import the helper API from `pi-fancy-footer/api`:
+
+```ts
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { contributeFancyFooterWidgets } from "pi-fancy-footer/api";
+
+export default function (pi: ExtensionAPI) {
+  contributeFancyFooterWidgets(pi, {
+    id: "acme.build-status",
+    label: "Build status",
+    description: "Shows the latest CI result for the current branch.",
+    defaults: {
+      row: 1,
+      position: 8,
+      align: "right",
+      fill: "none",
+    },
+    icon: {
+      nerd: "󰙨",
+      emoji: "🧪",
+      unicode: "◈",
+      ascii: "B",
+    },
+    renderText: () => "passing",
+  });
+}
+```
+
+Available helpers:
+
+- `contributeFancyFooterWidgets(pi, widgetOrWidgets)` - register one or more widgets for discovery.
+- `requestFancyFooterWidgetDiscovery(pi)` - ask `pi-fancy-footer` to re-discover contributed widgets.
+- `requestFancyFooterRefresh(pi)` - ask the footer to re-render immediately.
+
+Each contributed widget defines:
+
+- `id` - stable config key, ideally namespaced like `vendor.widget-name`
+- `label` - display name in `/fancy-footer` (defaults to `id`)
+- `description` - help text in the config UI
+- `defaults` - default `row`, `position`, `align`, `fill`, and optional `minWidth`
+- `icon` - a single icon, per-family icon map, function, or `false`
+- `renderText(ctx, availableWidth?)` - widget renderer
+- optional `visible(ctx)`, `textColor`, and `styled`
 
 ## 🔣 Icon families
 

@@ -19,7 +19,12 @@ import {
   MAX_FOOTER_REFRESH_MS,
   MIN_FOOTER_REFRESH_MS,
   clampInt,
+  isFooterWidgetAlign,
+  isFooterWidgetFill,
+  isFooterWidgetId,
+  toBoundedNonNegativeInt,
   type CompactionSettingsSnapshot,
+  type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type SessionUsageMetrics,
 } from "./fancy-footer/shared.ts";
@@ -30,6 +35,7 @@ import {
   coerceIconFamily,
   coerceRefreshMs,
   coerceWidgetColor,
+  extensionWidgetFooterSettingsItems,
   genericFooterSettingsItems,
   getFooterConfigPath,
   loadCompactionSettings,
@@ -42,6 +48,11 @@ import {
   collectPullRequestInfo,
   shouldRefreshPullRequest,
 } from "./fancy-footer/git.ts";
+import {
+  FANCY_FOOTER_DISCOVER_WIDGETS_EVENT,
+  FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT,
+  FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT,
+} from "./fancy-footer/api.ts";
 import {
   collectSessionUsageMetrics,
   renderFooterLines,
@@ -63,9 +74,86 @@ export default function (pi: ExtensionAPI) {
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
+    extensionWidgets: { ...DEFAULT_FOOTER_CONFIG.extensionWidgets },
   };
+  let extensionWidgets: FancyFooterWidgetContribution[] = [];
 
   let activeFooterControls: ActiveFooterControls | undefined;
+
+  const normalizeExtensionWidget = (
+    widget: FancyFooterWidgetContribution,
+  ): FancyFooterWidgetContribution | undefined => {
+    if (!widget || typeof widget !== "object") return undefined;
+    if (typeof widget.id !== "string" || widget.id.trim() === "") {
+      console.warn("Ignoring fancy-footer widget without a valid id");
+      return undefined;
+    }
+    if (isFooterWidgetId(widget.id.trim())) {
+      console.warn(
+        `Ignoring fancy-footer widget '${widget.id}' because it conflicts with a built-in widget id`,
+      );
+      return undefined;
+    }
+    if (typeof widget.description !== "string" || !widget.description.trim()) {
+      console.warn(
+        `Ignoring fancy-footer widget '${widget.id}' without a description`,
+      );
+      return undefined;
+    }
+    if (typeof widget.renderText !== "function") {
+      console.warn(
+        `Ignoring fancy-footer widget '${widget.id}' without a renderText function`,
+      );
+      return undefined;
+    }
+
+    const defaults = widget.defaults;
+    if (!defaults || typeof defaults !== "object") {
+      console.warn(
+        `Ignoring fancy-footer widget '${widget.id}' without defaults`,
+      );
+      return undefined;
+    }
+    if (
+      !isFooterWidgetAlign(defaults.align) ||
+      !isFooterWidgetFill(defaults.fill)
+    ) {
+      console.warn(
+        `Ignoring fancy-footer widget '${widget.id}' with invalid defaults`,
+      );
+      return undefined;
+    }
+
+    return {
+      ...widget,
+      id: widget.id.trim(),
+      label: widget.label?.trim() || widget.id.trim(),
+      defaults: {
+        row: toBoundedNonNegativeInt(defaults.row, 12) ?? 1,
+        position: toBoundedNonNegativeInt(defaults.position, 64) ?? 0,
+        align: defaults.align,
+        fill: defaults.fill,
+        minWidth: toBoundedNonNegativeInt(defaults.minWidth, 120),
+      },
+    };
+  };
+
+  const discoverExtensionWidgets = () => {
+    const discovered = new Map<string, FancyFooterWidgetContribution>();
+
+    pi.events.emit(FANCY_FOOTER_DISCOVER_WIDGETS_EVENT, {
+      registerWidget: (widget: FancyFooterWidgetContribution) => {
+        const normalized = normalizeExtensionWidget(widget);
+        if (!normalized) return;
+        discovered.set(normalized.id, normalized);
+      },
+    });
+
+    extensionWidgets = Array.from(discovered.values()).sort((a, b) =>
+      a.label!.localeCompare(b.label!),
+    );
+    activeFooterControls?.requestRender();
+  };
 
   const installFooter = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
@@ -219,6 +307,7 @@ export default function (pi: ExtensionAPI) {
             usageMetrics,
             compactionSettings,
             footerConfig,
+            extensionWidgets,
           );
         },
       };
@@ -250,12 +339,13 @@ export default function (pi: ExtensionAPI) {
           }
         };
 
-        type ConfigSection = "generic" | "widgets";
+        type ConfigSection = "generic" | "widgets" | "extension-widgets";
 
         let activeSection: ConfigSection = "generic";
         const selection: Record<ConfigSection, number> = {
           generic: 0,
           widgets: 0,
+          "extension-widgets": 0,
         };
         let submenu: Component | undefined;
 
@@ -263,10 +353,21 @@ export default function (pi: ExtensionAPI) {
           if (section === "generic") {
             return genericFooterSettingsItems(draft);
           }
-          return widgetFooterSettingsItems(draft, theme, () => {
-            applyDraft();
-            tui.requestRender();
-          });
+          if (section === "widgets") {
+            return widgetFooterSettingsItems(draft, theme, () => {
+              applyDraft();
+              tui.requestRender();
+            });
+          }
+          return extensionWidgetFooterSettingsItems(
+            draft,
+            theme,
+            () => {
+              applyDraft();
+              tui.requestRender();
+            },
+            extensionWidgets,
+          );
         };
 
         const clampSectionSelection = (section: ConfigSection) => {
@@ -292,7 +393,11 @@ export default function (pi: ExtensionAPI) {
           return items[selection[activeSection]];
         };
 
-        const orderedSections: ConfigSection[] = ["generic", "widgets"];
+        const orderedSections: ConfigSection[] = [
+          "generic",
+          "widgets",
+          "extension-widgets",
+        ];
 
         const getFlatSelections = () => {
           return orderedSections.flatMap((section) => {
@@ -469,8 +574,19 @@ export default function (pi: ExtensionAPI) {
               "",
               ...renderSection(width, "General", "generic"),
               "",
-              ...renderSection(width, "Widgets", "widgets"),
+              ...renderSection(width, "Built-in widgets", "widgets"),
             ];
+
+            if (extensionWidgets.length > 0) {
+              lines.push("");
+              lines.push(
+                ...renderSection(
+                  width,
+                  "Extension widgets",
+                  "extension-widgets",
+                ),
+              );
+            }
 
             const selected = getSelectedItem();
             if (selected?.description) {
@@ -530,6 +646,14 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.events.on(FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT, () => {
+    discoverExtensionWidgets();
+  });
+
+  pi.events.on(FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT, () => {
+    activeFooterControls?.requestRender();
+  });
+
   pi.on("session_before_compact", async (event) => {
     compactionSettings = coerceCompactionSettings(
       event.preparation.settings,
@@ -539,6 +663,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_start", async (_event, ctx) => {
+    discoverExtensionWidgets();
     installFooter(ctx);
   });
 }

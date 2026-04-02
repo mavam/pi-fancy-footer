@@ -252,7 +252,8 @@ export const FOOTER_WIDGET_IDS = [
   "git-status",
 ] as const;
 
-export type FooterWidgetId = (typeof FOOTER_WIDGET_IDS)[number];
+export type BuiltInFooterWidgetId = (typeof FOOTER_WIDGET_IDS)[number];
+export type FooterWidgetId = string;
 
 export const FOOTER_REFRESH_OPTIONS = [
   250, 500, 1000, 2000, 3000, 5000, 10000,
@@ -355,7 +356,8 @@ export interface FooterConfigSnapshot {
   contextBarStyle: ContextBarStyleId;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
-  widgets: Partial<Record<FooterWidgetId, FooterWidgetConfigOverride>>;
+  widgets: Partial<Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>>;
+  extensionWidgets: Record<string, FooterWidgetConfigOverride>;
 }
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
@@ -365,6 +367,7 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   defaultTextColor: "dim",
   defaultIconColor: "text",
   widgets: {},
+  extensionWidgets: {},
 };
 
 export interface FooterWidgetEditorDefaults {
@@ -372,6 +375,24 @@ export interface FooterWidgetEditorDefaults {
   position: number;
   align: FooterWidgetAlign;
   fill: FooterWidgetFill;
+  minWidth?: number;
+}
+
+export type FancyFooterWidgetIcon =
+  | string
+  | Partial<Record<FooterIconFamily, string>>
+  | ((iconFamily: FooterIconFamily) => string | undefined);
+
+export interface FancyFooterWidgetContribution {
+  id: string;
+  label?: string;
+  description: string;
+  defaults: FooterWidgetEditorDefaults;
+  icon?: FancyFooterWidgetIcon | false;
+  textColor?: FooterWidgetColor;
+  styled?: boolean;
+  visible?: (ctx: WidgetRenderContext) => boolean;
+  renderText: (ctx: WidgetRenderContext, availableWidth?: number) => string;
 }
 
 export interface FooterWidgetMeta {
@@ -381,7 +402,10 @@ export interface FooterWidgetMeta {
   hasFooterIcon?: boolean;
 }
 
-export const FOOTER_WIDGET_META: Record<FooterWidgetId, FooterWidgetMeta> = {
+export const FOOTER_WIDGET_META: Record<
+  BuiltInFooterWidgetId,
+  FooterWidgetMeta
+> = {
   model: {
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
     description: "Shows the active model.",
@@ -492,7 +516,9 @@ export function isFooterWidgetFill(value: unknown): value is FooterWidgetFill {
   return value === "none" || value === "grow";
 }
 
-export function isFooterWidgetId(value: string): value is FooterWidgetId {
+export function isFooterWidgetId(
+  value: string,
+): value is BuiltInFooterWidgetId {
   return (FOOTER_WIDGET_IDS as readonly string[]).includes(value);
 }
 
@@ -613,7 +639,7 @@ export function parseNumstat(output: string): {
 }
 
 export function getWidgetSettingIcon(
-  widgetId: FooterWidgetId,
+  widgetId: BuiltInFooterWidgetId,
   iconFamily: FooterIconFamily,
 ): string {
   return getStatuslineSymbols(iconFamily)[
@@ -622,7 +648,7 @@ export function getWidgetSettingIcon(
 }
 
 export function getDefaultWidgetIcon(
-  widgetId: FooterWidgetId,
+  widgetId: BuiltInFooterWidgetId,
   iconFamily: FooterIconFamily,
 ): FooterWidgetIcon | undefined {
   const meta = FOOTER_WIDGET_META[widgetId];
@@ -630,9 +656,28 @@ export function getDefaultWidgetIcon(
   return { text: getWidgetSettingIcon(widgetId, iconFamily), color: "text" };
 }
 
+export function resolveFancyFooterWidgetIcon(
+  icon: FancyFooterWidgetContribution["icon"],
+  iconFamily: FooterIconFamily,
+): FooterWidgetIcon | undefined {
+  if (icon === false) return undefined;
+
+  let text = "";
+  if (typeof icon === "function") {
+    text = icon(iconFamily) ?? "";
+  } else if (typeof icon === "string") {
+    text = icon;
+  } else if (icon && typeof icon === "object") {
+    text = icon[iconFamily] ?? "";
+  }
+
+  if (!text) return undefined;
+  return { text, color: "text" };
+}
+
 export function widgetSummary(
   config: FooterConfigSnapshot,
-  widgetId: FooterWidgetId,
+  widgetId: BuiltInFooterWidgetId,
 ): string {
   const meta = FOOTER_WIDGET_META[widgetId];
   const defaults = meta.defaults;
