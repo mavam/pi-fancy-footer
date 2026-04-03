@@ -1,4 +1,4 @@
-name: Release
+name: Release and Publish
 
 on:
   workflow_dispatch:
@@ -20,6 +20,7 @@ on:
 
 jobs:
   release:
+    name: Create GitHub release
     uses: tenzir/ship/.github/workflows/release.yaml@main
     permissions:
       contents: write
@@ -28,7 +29,7 @@ jobs:
       title: ${{ inputs.title }}
 
   publish:
-    name: Publish to npm
+    name: Publish package to npm
     needs: release
     runs-on: ubuntu-latest
     permissions:
