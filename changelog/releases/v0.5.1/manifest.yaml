@@ -1,0 +1,9 @@
+created: 2026-04-15
+title: Context bar expansion on wide terminals
+intro: >-
+  This release fixes the context bar layout on wide terminals by letting the bar expand
+  across the full width of its row. The footer now uses the available horizontal space
+  instead of capping the bar at 200 cells and leaving large empty gaps.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.5.0
