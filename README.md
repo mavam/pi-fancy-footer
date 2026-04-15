@@ -229,6 +229,8 @@ Notes:
 - `context-bar` renders a bar whose characters are controlled by
   `contextBarStyle`, not `iconFamily`. Used cells are colored with the widget
   icon color; free and reserved cells stay dim.
+- `context-bar` grows to fill the remaining horizontal space on its row,
+  including on wide terminals.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
   `ascii` palettes.

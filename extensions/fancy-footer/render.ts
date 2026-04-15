@@ -7,7 +7,6 @@ import type {
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import {
   FOOTER_WIDGET_META,
-  MAX_CONTEXT_BAR_CELLS,
   MAX_WIDGET_MIN_WIDTH,
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
@@ -32,6 +31,7 @@ import {
   closeOpenTerminalHyperlinks,
   formatThinkingLevel,
   formatTerminalHyperlink,
+  getContextBarSegments,
   getContextBarStyle,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
@@ -79,30 +79,12 @@ function buildBricks(
   usedColor: FooterConfigSnapshot["defaultIconColor"],
   barStyle: ContextBarStyleDef,
 ): string {
-  const n = clampInt(cells, 0, MAX_CONTEXT_BAR_CELLS);
+  const {
+    cells: n,
+    usedCells,
+    safeCells,
+  } = getContextBarSegments(cells, totalTokens, usedTokens, settings);
   if (n === 0) return "";
-
-  const total = Math.max(1, Math.floor(totalTokens));
-  const clampedUsedTokens = Math.max(
-    0,
-    Math.min(total, Math.floor(usedTokens)),
-  );
-
-  const reserveTokens = settings.enabled
-    ? Math.max(0, Math.floor(settings.reserveTokens))
-    : 0;
-  const safeTokens = Math.max(0, Math.min(total, total - reserveTokens));
-
-  let safeCells = Math.floor((safeTokens * n) / total);
-  safeCells = Math.max(0, Math.min(n, safeCells));
-
-  if (settings.enabled && reserveTokens > 0 && n > 1 && safeCells >= n) {
-    safeCells = n - 1;
-  }
-
-  let usedCells = Math.floor((clampedUsedTokens * n) / total);
-  if (clampedUsedTokens > 0 && usedCells === 0) usedCells = 1;
-  usedCells = Math.max(0, Math.min(n, usedCells));
 
   let out = "";
 

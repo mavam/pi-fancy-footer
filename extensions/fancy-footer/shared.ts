@@ -145,13 +145,52 @@ export function getContextBarStyle(id: ContextBarStyleId): ContextBarStyleDef {
   );
 }
 
+export interface ContextBarSegments {
+  cells: number;
+  usedCells: number;
+  safeCells: number;
+}
+
+export function getContextBarSegments(
+  cells: number,
+  totalTokens: number,
+  usedTokens: number,
+  settings: CompactionSettingsSnapshot,
+): ContextBarSegments {
+  const n = Math.max(0, Math.floor(cells));
+  if (n === 0) return { cells: 0, usedCells: 0, safeCells: 0 };
+
+  const total = Math.max(1, Math.floor(totalTokens));
+  const clampedUsedTokens = Math.max(
+    0,
+    Math.min(total, Math.floor(usedTokens)),
+  );
+
+  const reserveTokens = settings.enabled
+    ? Math.max(0, Math.floor(settings.reserveTokens))
+    : 0;
+  const safeTokens = Math.max(0, Math.min(total, total - reserveTokens));
+
+  let safeCells = Math.floor((safeTokens * n) / total);
+  safeCells = Math.max(0, Math.min(n, safeCells));
+
+  if (settings.enabled && reserveTokens > 0 && n > 1 && safeCells >= n) {
+    safeCells = n - 1;
+  }
+
+  let usedCells = Math.floor((clampedUsedTokens * n) / total);
+  if (clampedUsedTokens > 0 && usedCells === 0) usedCells = 1;
+  usedCells = Math.max(0, Math.min(n, usedCells));
+
+  return { cells: n, usedCells, safeCells };
+}
+
 export const GIT_REFRESH_MS = 5000;
 export const MIN_FOOTER_REFRESH_MS = 250;
 export const MAX_FOOTER_REFRESH_MS = 60_000;
 export const MAX_WIDGET_ROW = 12;
 export const MAX_WIDGET_POSITION = 64;
 export const MAX_WIDGET_MIN_WIDTH = 120;
-export const MAX_CONTEXT_BAR_CELLS = 200;
 export const FOOTER_CONFIG_FILE = "fancy-footer.json";
 
 export interface CompactionSettingsSnapshot {

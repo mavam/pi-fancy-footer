@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   FOOTER_ICON_FAMILIES,
   FOOTER_WIDGET_IDS,
   closeOpenTerminalHyperlinks,
   formatTerminalHyperlink,
+  getContextBarSegments,
   getDefaultWidgetIcon,
   getWidgetSettingIcon,
   isFooterIconFamily,
@@ -61,6 +63,19 @@ test("every widget returns a non-empty icon for every icon family", () => {
 test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.equal(DEFAULT_FOOTER_CONFIG.iconFamily, "nerd");
   assert.deepEqual(DEFAULT_FOOTER_CONFIG.extensionWidgets, {});
+});
+
+test("getContextBarSegments does not cap wide bars", () => {
+  const segments = getContextBarSegments(
+    280,
+    272_000,
+    0,
+    DEFAULT_COMPACTION_SETTINGS,
+  );
+
+  assert.equal(segments.cells, 280);
+  assert.equal(segments.safeCells, 263);
+  assert.equal(segments.usedCells, 0);
 });
 
 test("resolveFancyFooterWidgetIcon resolves icon strings and family maps", () => {
