@@ -1,0 +1,9 @@
+created: 2026-04-23
+title: Footer stability after reloads and session switches
+intro: >-
+  This release hardens the fancy footer during `/reload` and other session replacement
+  flows. The footer now stays active across reloads and session switches instead of
+  crashing pi with stale extension state.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.5.2
