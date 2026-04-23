@@ -1,0 +1,9 @@
+created: 2026-04-23
+title: Compatibility with pi 0.69
+intro: >-
+  This release restores compatibility with pi 0.69 and later. Installed pi-fancy-footer
+  packages now load correctly after pi's TypeBox update without requiring configuration
+  changes.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.5.1
