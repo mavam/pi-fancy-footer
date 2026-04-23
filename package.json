@@ -3,6 +3,12 @@
   "version": "0.5.1",
   "description": "A fancy footer extension for pi",
   "type": "module",
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "typebox": "*"
+  },
   "files": [
     "extensions",
     "api.ts",

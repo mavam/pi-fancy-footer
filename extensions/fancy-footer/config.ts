@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Type } from "@sinclair/typebox";
-import { TypeCompiler } from "@sinclair/typebox/compiler";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import {
   getAgentDir,
   getSettingsListTheme,
@@ -113,7 +113,7 @@ const footerConfigFileSchema = Type.Object(
   { additionalProperties: false },
 );
 
-const validateFooterConfigFile = TypeCompiler.Compile(footerConfigFileSchema);
+const validateFooterConfigFile = Compile(footerConfigFileSchema);
 let lastFooterConfigError: string | undefined;
 
 export type FooterConfigSectionId = "generic" | "widgets" | "extension-widgets";

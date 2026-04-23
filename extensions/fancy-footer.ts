@@ -2,8 +2,8 @@ import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { TypeCompiler } from "@sinclair/typebox/compiler";
+import { Type } from "typebox";
+import { Compile } from "typebox/compile";
 import {
   DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
@@ -80,7 +80,7 @@ const extensionWidgetMetadataSchema = Type.Object(
   },
   { additionalProperties: false },
 );
-const validateExtensionWidgetMetadata = TypeCompiler.Compile(
+const validateExtensionWidgetMetadata = Compile(
   extensionWidgetMetadataSchema,
 );
 
