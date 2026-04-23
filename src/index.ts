@@ -21,7 +21,7 @@ import {
   type FancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type SessionUsageMetrics,
-} from "./fancy-footer/shared.ts";
+} from "./shared.ts";
 import {
   cloneFooterConfig,
   coerceCompactionSettings,
@@ -29,22 +29,19 @@ import {
   loadCompactionSettings,
   loadFooterConfig,
   writeFooterConfigSnapshot,
-} from "./fancy-footer/config.ts";
+} from "./config.ts";
 import {
   collectGitInfo,
   collectPullRequestInfo,
   shouldRefreshPullRequest,
-} from "./fancy-footer/git.ts";
+} from "./git.ts";
 import {
   FANCY_FOOTER_DISCOVER_WIDGETS_EVENT,
   FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT,
   FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT,
-} from "./fancy-footer/api.ts";
-import { openFooterConfigEditor } from "./fancy-footer/config-editor.ts";
-import {
-  collectSessionUsageMetrics,
-  renderFooterLines,
-} from "./fancy-footer/render.ts";
+} from "./api.ts";
+import { openFooterConfigEditor } from "./config-editor.ts";
+import { collectSessionUsageMetrics, renderFooterLines } from "./render.ts";
 
 interface ActiveFooterControls {
   requestRender: () => void;
@@ -80,9 +77,7 @@ const extensionWidgetMetadataSchema = Type.Object(
   },
   { additionalProperties: false },
 );
-const validateExtensionWidgetMetadata = Compile(
-  extensionWidgetMetadataSchema,
-);
+const validateExtensionWidgetMetadata = Compile(extensionWidgetMetadataSchema);
 
 export default function (pi: ExtensionAPI) {
   let compactionSettings: CompactionSettingsSnapshot = {
@@ -100,6 +95,12 @@ export default function (pi: ExtensionAPI) {
   let extensionWidgets: FancyFooterWidgetContribution[] = [];
 
   let activeFooterControls: ActiveFooterControls | undefined;
+  let footerInstanceId = 0;
+
+  const invalidateActiveFooter = () => {
+    footerInstanceId += 1;
+    activeFooterControls = undefined;
+  };
 
   const normalizeExtensionWidget = (
     widget: FancyFooterWidgetContribution,
@@ -195,6 +196,8 @@ export default function (pi: ExtensionAPI) {
     footerConfig = loadFooterConfig();
 
     ctx.ui.setFooter((tui, theme, footerData) => {
+      const instanceId = ++footerInstanceId;
+      const fallbackThinkingLevel = pi.getThinkingLevel();
       let currentGit = { ...EMPTY_GIT_INFO };
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
@@ -204,8 +207,10 @@ export default function (pi: ExtensionAPI) {
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
+      const isActiveFooter = () => !disposed && instanceId === footerInstanceId;
+
       const requestRender = () => {
-        if (disposed) return;
+        if (!isActiveFooter()) return;
         tui.requestRender();
       };
 
@@ -215,11 +220,12 @@ export default function (pi: ExtensionAPI) {
       // Keep networked PR discovery off the local git refresh path.
       const refreshPullRequest = async () => {
         if (
-          disposed ||
+          !isActiveFooter() ||
           !isPullRequestWidgetEnabled() ||
           !shouldRefreshPullRequest(currentGit)
-        )
+        ) {
           return;
+        }
         if (pullRequestRefreshing) {
           pullRequestRefreshQueued = true;
           return;
@@ -231,10 +237,12 @@ export default function (pi: ExtensionAPI) {
             pullRequestRefreshQueued = false;
 
             if (
+              !isActiveFooter() ||
               !isPullRequestWidgetEnabled() ||
               !shouldRefreshPullRequest(currentGit)
-            )
+            ) {
               continue;
+            }
 
             const targetBranch = currentGit.branch;
             const targetRepository = currentGit.repository;
@@ -244,7 +252,7 @@ export default function (pi: ExtensionAPI) {
               ctx.cwd,
               targetBranch,
             );
-            if (disposed) return;
+            if (!isActiveFooter()) return;
             if (
               currentGit.branch !== targetBranch ||
               currentGit.repository !== targetRepository ||
@@ -258,14 +266,14 @@ export default function (pi: ExtensionAPI) {
               ...pullRequest,
             };
             requestRender();
-          } while (!disposed && pullRequestRefreshQueued);
+          } while (isActiveFooter() && pullRequestRefreshQueued);
         } finally {
           pullRequestRefreshing = false;
         }
       };
 
       const refreshGit = async () => {
-        if (disposed) return;
+        if (!isActiveFooter()) return;
         if (refreshing) {
           refreshQueued = true;
           return;
@@ -275,23 +283,25 @@ export default function (pi: ExtensionAPI) {
         try {
           do {
             refreshQueued = false;
+            if (!isActiveFooter()) continue;
+
             compactionSettings = loadCompactionSettings(ctx.cwd);
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
             const git = await collectGitInfo(pi, ctx.cwd, currentGit);
-            if (disposed) return;
+            if (!isActiveFooter()) return;
             currentGit = git;
             requestRender();
             void refreshPullRequest();
-          } while (!disposed && refreshQueued);
+          } while (isActiveFooter() && refreshQueued);
         } finally {
           refreshing = false;
         }
       };
 
       const scheduleRefresh = () => {
-        if (disposed) return;
+        if (!isActiveFooter()) return;
         if (refreshTimer) clearTimeout(refreshTimer);
 
         const refreshMs = clampInt(
@@ -300,6 +310,7 @@ export default function (pi: ExtensionAPI) {
           MAX_FOOTER_REFRESH_MS,
         );
         refreshTimer = setTimeout(() => {
+          if (!isActiveFooter()) return;
           void refreshGit().finally(() => {
             scheduleRefresh();
           });
@@ -307,6 +318,7 @@ export default function (pi: ExtensionAPI) {
       };
 
       const onBranchChange = footerData.onBranchChange(() => {
+        if (!isActiveFooter()) return;
         usageMetrics = collectSessionUsageMetrics(ctx);
         requestRender();
         void refreshGit();
@@ -331,11 +343,13 @@ export default function (pi: ExtensionAPI) {
           }
         },
         render(width: number): string[] {
+          if (!isActiveFooter()) return ["", ""];
+
           return renderFooterLines(
             width,
             ctx,
             currentGit,
-            pi.getThinkingLevel(),
+            fallbackThinkingLevel,
             theme,
             usageMetrics,
             compactionSettings,
@@ -394,6 +408,10 @@ export default function (pi: ExtensionAPI) {
       compactionSettings,
     );
     activeFooterControls?.requestRender();
+  });
+
+  pi.on("session_shutdown", async () => {
+    invalidateActiveFooter();
   });
 
   pi.on("session_start", async (_event, ctx) => {

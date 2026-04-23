@@ -32,6 +32,7 @@ import {
   formatThinkingLevel,
   formatTerminalHyperlink,
   getContextBarSegments,
+  getThinkingLevelFromEntries,
   getContextBarStyle,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
@@ -371,7 +372,7 @@ function composeAlignedRow(
 function computeFooterMetrics(
   ctx: ExtensionContext,
   git: GitInfo,
-  thinkingLevel: string,
+  fallbackThinkingLevel: string,
   usageMetrics: SessionUsageMetrics,
   iconFamily: FooterIconFamily,
 ): FooterMetrics {
@@ -425,7 +426,12 @@ function computeFooterMetrics(
     : Math.max(usageFromPercent, usageFromLatest);
 
   const model = normalizeModel(ctx.model?.name || ctx.model?.id || "Claude");
-  const thinking = formatThinkingLevel(thinkingLevel);
+  const thinking = formatThinkingLevel(
+    getThinkingLevelFromEntries(
+      ctx.sessionManager.getBranch(),
+      fallbackThinkingLevel,
+    ),
+  );
 
   const usedK = Math.floor(usedTokensForBar / 1000);
   const totalK = Math.max(1, Math.floor(totalTokens / 1000));
@@ -748,7 +754,7 @@ export function renderFooterLines(
   width: number,
   ctx: ExtensionContext,
   git: GitInfo,
-  thinkingLevel: string,
+  fallbackThinkingLevel: string,
   theme: Theme,
   usageMetrics: SessionUsageMetrics,
   compactionSettings: CompactionSettingsSnapshot,
@@ -760,7 +766,7 @@ export function renderFooterLines(
   const metrics = computeFooterMetrics(
     ctx,
     git,
-    thinkingLevel,
+    fallbackThinkingLevel,
     usageMetrics,
     footerConfig.iconFamily,
   );

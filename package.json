@@ -10,8 +10,7 @@
     "typebox": "*"
   },
   "files": [
-    "extensions",
-    "api.ts",
+    "src",
     "README.md",
     "LICENSE"
   ],
@@ -29,21 +28,21 @@
     "url": "git+https://github.com/mavam/pi-fancy-footer.git"
   },
   "exports": {
-    ".": "./extensions/fancy-footer.ts",
-    "./api": "./api.ts"
+    ".": "./src/index.ts",
+    "./api": "./src/api.ts"
   },
   "engines": {
     "node": ">=24.0.0"
   },
   "scripts": {
-    "test": "node --test --experimental-strip-types extensions/fancy-footer/*.test.ts"
+    "test": "node --test --experimental-strip-types src/*.test.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "pi": {
     "extensions": [
-      "./extensions/fancy-footer.ts"
+      "./src/index.ts"
     ]
   }
 }

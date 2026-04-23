@@ -600,6 +600,22 @@ export function normalizeThinkingLevel(level: string): ThinkingLevel {
   }
 }
 
+export function getThinkingLevelFromEntries(
+  entries: ReadonlyArray<{
+    type: string;
+    thinkingLevel?: string;
+  }>,
+  fallbackLevel: string,
+): ThinkingLevel {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry.type !== "thinking_level_change") continue;
+    return normalizeThinkingLevel(entry.thinkingLevel ?? fallbackLevel);
+  }
+
+  return normalizeThinkingLevel(fallbackLevel);
+}
+
 export function formatThinkingLevel(level: string): string {
   const normalized = normalizeThinkingLevel(level);
   if (normalized === "off") return "";

@@ -9,6 +9,7 @@ import {
   formatTerminalHyperlink,
   getContextBarSegments,
   getDefaultWidgetIcon,
+  getThinkingLevelFromEntries,
   getWidgetSettingIcon,
   isFooterIconFamily,
   resolveFancyFooterWidgetIcon,
@@ -111,6 +112,28 @@ test("closeOpenTerminalHyperlinks closes truncated OSC 8 links before the suffix
       "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
     ),
     "\x1b]8;;https://github.com/org/repo/pull/42\x0742\x1b]8;;\x07",
+  );
+});
+
+test("getThinkingLevelFromEntries prefers the latest thinking change", () => {
+  assert.equal(
+    getThinkingLevelFromEntries(
+      [
+        { type: "thinking_level_change", thinkingLevel: "low" },
+        { type: "message" },
+        { type: "thinking_level_change", thinkingLevel: "high" },
+      ],
+      "off",
+    ),
+    "high",
+  );
+});
+
+test("getThinkingLevelFromEntries falls back when the session has no change", () => {
+  assert.equal(getThinkingLevelFromEntries([], "high"), "high");
+  assert.equal(
+    getThinkingLevelFromEntries([{ type: "message" }], "off"),
+    "off",
   );
 });
 
