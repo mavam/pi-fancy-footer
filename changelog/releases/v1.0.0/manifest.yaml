@@ -1,0 +1,9 @@
+created: 2026-04-28
+title: Simpler extension widgets
+intro: >-
+  This release simplifies extension widget definitions with a smaller render-first
+  API. It also adds an unresolved pull request review thread widget and refreshes
+  the Nerd Font icon language for clearer footer status.
+source:
+  mode: sync-stable-queue
+  previous_stable: v0.5.3
