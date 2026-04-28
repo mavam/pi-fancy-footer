@@ -149,6 +149,88 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   );
 });
 
+test("collectPullRequestInfo includes unresolved review thread count", async () => {
+  const { pi } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
+      return { code: 0, stdout: "origin/feature\n", stderr: "" };
+    }
+
+    if (command === "git" && gitSubcommand(args) === "config") {
+      return {
+        code: 0,
+        stdout: "remote.origin.url https://github.com/me/repo.git",
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args.includes("branch=feature")
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    number: 12,
+                    url: "https://github.com/me/repo/pull/12",
+                    headRepositoryOwner: { login: "me" },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args.includes("number=12")
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: {
+                    hasNextPage: false,
+                    endCursor: null,
+                  },
+                  nodes: [
+                    { isResolved: false },
+                    { isResolved: true },
+                    { isResolved: false },
+                  ],
+                },
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+
+  const result = await collectPullRequestInfo(pi as never, "/repo", "feature");
+
+  assert.deepEqual(result.pullRequest, {
+    number: 12,
+    url: "https://github.com/me/repo/pull/12",
+    unresolvedReviewThreadCount: 2,
+  });
+});
+
 test("collectPullRequestInfo skips GitHub CLI lookups when the repository has no GitHub remote", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
     if (command === "git" && gitSubcommand(args) === "rev-parse") {

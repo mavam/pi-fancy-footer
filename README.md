@@ -18,7 +18,8 @@ pi install npm:pi-fancy-footer
 - Context window capacity and approximate usage
 - Context usage bar with compaction reserve tail
 - Total session cost
-- Repo / path, branch, commit, and open PR number
+- Repo / path, branch, commit, open PR number, and unresolved PR review
+  threads
 - Git diff stats and ahead/behind status
 
 ## 📸 Screenshots
@@ -130,6 +131,7 @@ Built-in widget IDs:
 - `branch`
 - `commit`
 - `pull-request`
+- `pull-request-review-threads`
 - `diff-added`
 - `diff-removed`
 - `git-status`
@@ -205,21 +207,22 @@ leading widget icon.
 
 <!-- markdownlint-disable MD013 MD060 -->
 
-| Widget             | nerd | emoji      | unicode | ascii    |
-| ------------------ | ---- | ---------- | ------- | -------- |
-| `model`            | `󰧑`  | `🤖`       | `◉`     | `%`      |
-| `thinking`         | `󰭻`  | `🧠`       | `✦`     | `?`      |
-| `context-capacity` | ``   | `💾`       | `□`     | `[]`     |
-| `context-bar`      | `󰾆`  | `🔋`       | `◧`     | `\|`     |
-| `context-usage`    | ``   | `📈`       | `■`     | `~`      |
-| `total-cost`       | `$`  | `💲`       | `$`     | `$`      |
-| `location`         | ``   | `📁`       | `⌂`     | `/`      |
-| `branch`           | ``   | `🌿`       | `⎇`     | `*`      |
-| `commit`           | ``   | `🔖`       | `#`     | `#`      |
-| `pull-request`     | ``   | `🔀`       | `⇄`     | `@`      |
-| `diff-added`       | `↗`  | `➕`       | `+`     | `+`      |
-| `diff-removed`     | `↘`  | `➖`       | `−`     | `-`      |
-| `git-status`       | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+| Widget                        | nerd | emoji      | unicode | ascii    |
+| ----------------------------- | ---- | ---------- | ------- | -------- |
+| `model`                       | `󰧑`  | `🤖`       | `◉`     | `%`      |
+| `thinking`                    | `󰭻`  | `🧠`       | `✦`     | `?`      |
+| `context-capacity`            | ``   | `💾`       | `□`     | `[]`     |
+| `context-bar`                 | `󰾆`  | `🔋`       | `◧`     | `\|`     |
+| `context-usage`               | ``   | `📈`       | `■`     | `~`      |
+| `total-cost`                  | `$`  | `💲`       | `$`     | `$`      |
+| `location`                    | ``   | `📁`       | `⌂`     | `/`      |
+| `branch`                      | ``   | `🌿`       | `⎇`     | `*`      |
+| `commit`                      | ``   | `🔖`       | `#`     | `#`      |
+| `pull-request`                | ``   | `🔀`       | `⇄`     | `@`      |
+| `pull-request-review-threads` | `󰅺`  | `💬`       | `✎`     | `!`      |
+| `diff-added`                  | `↗`  | `➕`       | `+`     | `+`      |
+| `diff-removed`                | `↘`  | `➖`       | `−`     | `-`      |
+| `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
 
 <!-- markdownlint-enable MD013 MD060 -->
 
@@ -238,8 +241,10 @@ Notes:
   work better in terminals that don't use a Nerd Font.
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
-- The PR widget appears only for open GitHub pull requests and relies on the
+- The PR widgets appear only for open GitHub pull requests and rely on the
   GitHub CLI (`gh`) being available and authenticated.
+- `pull-request-review-threads` counts unresolved GitHub review threads
+  on the current PR.
 - Reads compaction settings from:
   - `~/.pi/agent/settings.json`
   - `<project>/.pi/settings.json`

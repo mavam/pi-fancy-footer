@@ -25,6 +25,7 @@ export const STATUSLINE_SYMBOLS = {
     branch: "",
     commit: "",
     pullRequest: "",
+    pullRequestReviewThreads: "󰅺",
     contextUsed: "━",
     contextFree: "─",
     contextReserved: "┄",
@@ -45,6 +46,7 @@ export const STATUSLINE_SYMBOLS = {
     branch: "🌿",
     commit: "🔖",
     pullRequest: "🔀",
+    pullRequestReviewThreads: "💬",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -65,6 +67,7 @@ export const STATUSLINE_SYMBOLS = {
     branch: "⎇",
     commit: "#",
     pullRequest: "⇄",
+    pullRequestReviewThreads: "✎",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -85,6 +88,7 @@ export const STATUSLINE_SYMBOLS = {
     branch: "*",
     commit: "#",
     pullRequest: "@",
+    pullRequestReviewThreads: "!",
     contextUsed: "#",
     contextFree: "-",
     contextReserved: ":",
@@ -228,6 +232,7 @@ export interface GitCounts {
 export interface GitHubPullRequest {
   number: number;
   url: string;
+  unresolvedReviewThreadCount?: number;
 }
 
 export interface GitInfo {
@@ -286,6 +291,7 @@ export const FOOTER_WIDGET_IDS = [
   "branch",
   "commit",
   "pull-request",
+  "pull-request-review-threads",
   "diff-added",
   "diff-removed",
   "git-status",
@@ -333,6 +339,7 @@ export interface FooterMetrics {
   commit: string;
   pullRequestNumber: number;
   pullRequestUrl: string;
+  pullRequestUnresolvedReviewThreadCount: number;
   added: number;
   removed: number;
   gitStatusSymbol: string;
@@ -496,18 +503,24 @@ export const FOOTER_WIDGET_META: Record<
       "Shows the open GitHub pull request number for the current branch.",
     symbolKey: "pullRequest",
   },
-  "diff-added": {
+  "pull-request-review-threads": {
     defaults: { row: 1, position: 4, align: "left", fill: "none" },
+    description:
+      "Shows unresolved GitHub pull request review threads for the current branch.",
+    symbolKey: "pullRequestReviewThreads",
+  },
+  "diff-added": {
+    defaults: { row: 1, position: 5, align: "left", fill: "none" },
     description: "Shows added lines in your working tree.",
     symbolKey: "diffAdded",
   },
   "diff-removed": {
-    defaults: { row: 1, position: 5, align: "left", fill: "none" },
+    defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Shows removed lines in your working tree.",
     symbolKey: "diffRemoved",
   },
   "git-status": {
-    defaults: { row: 1, position: 6, align: "left", fill: "none" },
+    defaults: { row: 1, position: 7, align: "left", fill: "none" },
     description: "Shows whether your branch is ahead, behind, or diverged.",
     symbolKey: "gitDiverged",
     hasFooterIcon: false,

@@ -12,6 +12,18 @@ interface PullRequestCandidate {
   headOwner: string;
 }
 
+export interface GitHubPullRequestLocation {
+  owner: string;
+  name: string;
+  number: number;
+}
+
+export interface PullRequestReviewThreadsPage {
+  unresolvedCount: number;
+  hasNextPage: boolean;
+  endCursor: string;
+}
+
 export interface PullRequestLookupPlan {
   baseRepositories: string[];
   headOwners: string[];
@@ -198,6 +210,61 @@ export function parsePullRequest(output: string): GitHubPullRequest | undefined 
   }
 }
 
-export function selectPullRequestFromGraphQL(output: string, headOwners: string[]): GitHubPullRequest | undefined {
+export function parseGitHubPullRequestUrl(
+  url: string,
+): GitHubPullRequestLocation | undefined {
+  const match = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/,
+  );
+  if (!match) return undefined;
+
+  const [, owner, name, numberText] = match;
+  const number = Math.max(0, Math.floor(toNumber(numberText)));
+  if (!owner || !name || number <= 0) return undefined;
+  return { owner, name, number };
+}
+
+export function parsePullRequestReviewThreadsPage(
+  output: string,
+): PullRequestReviewThreadsPage | undefined {
+  try {
+    const parsed = JSON.parse(output) as {
+      data?: {
+        repository?: {
+          pullRequest?: {
+            reviewThreads?: {
+              pageInfo?: {
+                hasNextPage?: unknown;
+                endCursor?: unknown;
+              };
+              nodes?: Array<{ isResolved?: unknown }>;
+            };
+          } | null;
+        } | null;
+      };
+    };
+
+    const reviewThreads = parsed?.data?.repository?.pullRequest?.reviewThreads;
+    const nodes = reviewThreads?.nodes;
+    if (!Array.isArray(nodes)) return undefined;
+
+    return {
+      unresolvedCount: nodes.filter((node) => node?.isResolved === false)
+        .length,
+      hasNextPage: reviewThreads?.pageInfo?.hasNextPage === true,
+      endCursor:
+        typeof reviewThreads?.pageInfo?.endCursor === "string"
+          ? reviewThreads.pageInfo.endCursor
+          : "",
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function selectPullRequestFromGraphQL(
+  output: string,
+  headOwners: string[],
+): GitHubPullRequest | undefined {
   return selectPullRequest(parsePullRequestCandidates(output), headOwners);
 }

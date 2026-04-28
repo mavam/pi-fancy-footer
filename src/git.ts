@@ -1,7 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   createGitHubRepositoryContext,
+  parseGitHubPullRequestUrl,
   parsePullRequest,
+  parsePullRequestReviewThreadsPage,
   selectPullRequestFromGraphQL,
   splitGitHubRepository,
 } from "./pull-request.ts";
@@ -16,6 +18,10 @@ interface ExecResult {
   code: number;
   stdout: string;
   stderr: string;
+}
+
+interface PullRequestCollectionOptions {
+  includeReviewThreads?: boolean;
 }
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
@@ -35,6 +41,19 @@ const PULL_REQUEST_QUERY = [
   "  }",
   "}",
 ].join(" ");
+const PULL_REQUEST_REVIEW_THREADS_QUERY = [
+  "query($owner: String!, $name: String!, $number: Int!, $after: String) {",
+  "  repository(owner: $owner, name: $name) {",
+  "    pullRequest(number: $number) {",
+  "      reviewThreads(first: 100, after: $after) {",
+  "        pageInfo { hasNextPage endCursor }",
+  "        nodes { isResolved }",
+  "      }",
+  "    }",
+  "  }",
+  "}",
+].join(" ");
+const MAX_PULL_REQUEST_REVIEW_THREAD_PAGES = 10;
 
 async function execResult(
   pi: ExtensionAPI,
@@ -141,6 +160,76 @@ async function collectCurrentBranchPullRequest(
   return parsePullRequest(result.stdout);
 }
 
+async function collectPullRequestReviewThreadCount(
+  pi: ExtensionAPI,
+  cwd: string,
+  pullRequest: NonNullable<GitInfo["pullRequest"]>,
+): Promise<number | undefined> {
+  const location = parseGitHubPullRequestUrl(pullRequest.url);
+  if (!location) return undefined;
+
+  let unresolvedCount = 0;
+  let cursor = "";
+
+  for (let page = 0; page < MAX_PULL_REQUEST_REVIEW_THREAD_PAGES; page++) {
+    const args = [
+      "api",
+      "graphql",
+      "-f",
+      `query=${PULL_REQUEST_REVIEW_THREADS_QUERY}`,
+      "-F",
+      `owner=${location.owner}`,
+      "-F",
+      `name=${location.name}`,
+      "-F",
+      `number=${location.number}`,
+    ];
+    if (cursor) {
+      args.push("-F", `after=${cursor}`);
+    }
+
+    const result = await execResult(
+      pi,
+      "gh",
+      args,
+      cwd,
+      GITHUB_COMMAND_TIMEOUT_MS,
+    );
+    if (result.code !== 0 || !result.stdout) return undefined;
+
+    const parsed = parsePullRequestReviewThreadsPage(result.stdout);
+    if (!parsed) return undefined;
+
+    unresolvedCount += parsed.unresolvedCount;
+    if (!parsed.hasNextPage || !parsed.endCursor) return unresolvedCount;
+    cursor = parsed.endCursor;
+  }
+
+  return unresolvedCount;
+}
+
+async function enrichPullRequest(
+  pi: ExtensionAPI,
+  cwd: string,
+  pullRequest: GitInfo["pullRequest"],
+  includeReviewThreads: boolean,
+): Promise<GitInfo["pullRequest"]> {
+  if (!pullRequest) return undefined;
+  if (!includeReviewThreads) return pullRequest;
+
+  const unresolvedReviewThreadCount = await collectPullRequestReviewThreadCount(
+    pi,
+    cwd,
+    pullRequest,
+  );
+  if (unresolvedReviewThreadCount === undefined) return pullRequest;
+
+  return {
+    ...pullRequest,
+    unresolvedReviewThreadCount,
+  };
+}
+
 export function shouldRefreshPullRequest(
   git: Pick<
     GitInfo,
@@ -158,12 +247,15 @@ export async function collectPullRequestInfo(
   pi: ExtensionAPI,
   cwd: string,
   branch: string,
+  options: PullRequestCollectionOptions = {},
 ): Promise<
   Pick<
     GitInfo,
     "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"
   >
 > {
+  const includeReviewThreads = options.includeReviewThreads ?? true;
+
   if (!branch) {
     return {
       pullRequest: undefined,
@@ -202,7 +294,12 @@ export async function collectPullRequestInfo(
     );
     if (pullRequest) {
       return {
-        pullRequest,
+        pullRequest: await enrichPullRequest(
+          pi,
+          cwd,
+          pullRequest,
+          includeReviewThreads,
+        ),
         pullRequestLookupEnabled: true,
         pullRequestLookupAt,
       };
@@ -213,7 +310,12 @@ export async function collectPullRequestInfo(
     ? await collectCurrentBranchPullRequest(pi, cwd)
     : undefined;
   return {
-    pullRequest: fallbackPullRequest,
+    pullRequest: await enrichPullRequest(
+      pi,
+      cwd,
+      fallbackPullRequest,
+      includeReviewThreads,
+    ),
     pullRequestLookupEnabled: true,
     pullRequestLookupAt,
   };

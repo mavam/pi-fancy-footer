@@ -449,6 +449,8 @@ function computeFooterMetrics(
     commit: git.commit,
     pullRequestNumber: git.pullRequest?.number ?? 0,
     pullRequestUrl: git.pullRequest?.url ?? "",
+    pullRequestUnresolvedReviewThreadCount:
+      git.pullRequest?.unresolvedReviewThreadCount ?? 0,
     added: git.added,
     removed: git.removed,
     ...buildGitStatus(git.counts, iconFamily),
@@ -544,6 +546,16 @@ function buildFooterWidgets(
         formatTerminalHyperlink(
           metrics.pullRequestUrl,
           `${metrics.pullRequestNumber}`,
+        ),
+    },
+    {
+      ...baseWidgetDefaults("pull-request-review-threads", iconFamily),
+      visible: ({ metrics }) =>
+        metrics.pullRequestUnresolvedReviewThreadCount > 0,
+      renderText: ({ metrics }) =>
+        formatTerminalHyperlink(
+          metrics.pullRequestUrl,
+          `${metrics.pullRequestUnresolvedReviewThreadCount}`,
         ),
     },
     {
