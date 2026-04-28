@@ -207,22 +207,22 @@ leading widget icon.
 
 <!-- markdownlint-disable MD013 MD060 -->
 
-| Widget                        | nerd | emoji      | unicode | ascii    |
-| ----------------------------- | ---- | ---------- | ------- | -------- |
-| `model`                       | `󰧑`  | `🤖`       | `◉`     | `%`      |
-| `thinking`                    | `󰭻`  | `🧠`       | `✦`     | `?`      |
-| `context-capacity`            | ``   | `💾`       | `□`     | `[]`     |
-| `context-bar`                 | `󰾆`  | `🔋`       | `◧`     | `\|`     |
-| `context-usage`               | ``   | `📈`       | `■`     | `~`      |
-| `total-cost`                  | `$`  | `💲`       | `$`     | `$`      |
-| `location`                    | ``   | `📁`       | `⌂`     | `/`      |
-| `branch`                      | ``   | `🌿`       | `⎇`     | `*`      |
-| `commit`                      | ``   | `🔖`       | `#`     | `#`      |
-| `pull-request`                | ``   | `🔀`       | `⇄`     | `@`      |
-| `pull-request-review-threads` | `󰅺`  | `💬`       | `✎`     | `!`      |
-| `diff-added`                  | `↗`  | `➕`       | `+`     | `+`      |
-| `diff-removed`                | `↘`  | `➖`       | `−`     | `-`      |
-| `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+| Widget                        | nerd    | emoji      | unicode | ascii    |
+| ----------------------------- | ------- | ---------- | ------- | -------- |
+| `model`                       | `󰚩`     | `🤖`       | `◉`     | `%`      |
+| `thinking`                    | `󰧑`     | `🧠`       | `✦`     | `?`      |
+| `context-capacity`            | ``     | `💾`       | `□`     | `[]`     |
+| `context-bar`                 | `󰾆`     | `🔋`       | `◧`     | `\|`     |
+| `context-usage`               | ``     | `📈`       | `■`     | `~`      |
+| `total-cost`                  | `󰇁`     | `💲`       | `$`     | `$`      |
+| `location`                    | ``     | `📁`       | `⌂`     | `/`      |
+| `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
+| `commit`                      | ``     | `🔖`       | `#`     | `#`      |
+| `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
+| `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
+| `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
+| `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
+| `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
 
 <!-- markdownlint-enable MD013 MD060 -->
 

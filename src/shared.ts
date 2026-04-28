@@ -19,8 +19,8 @@ export type FooterIconFamily = (typeof FOOTER_ICON_FAMILIES)[number];
 
 export const STATUSLINE_SYMBOLS = {
   nerd: {
-    thinking: "󰭻",
-    model: "󰧑",
+    thinking: "󰧑",
+    model: "󰚩",
     path: "",
     branch: "",
     commit: "",
@@ -34,10 +34,10 @@ export const STATUSLINE_SYMBOLS = {
     contextUsageMarker: "",
     gitAhead: "",
     gitBehind: "",
-    gitDiverged: "",
+    gitDiverged: "",
     diffAdded: "↗",
     diffRemoved: "↘",
-    currency: "$",
+    currency: "󰇁",
   },
   emoji: {
     thinking: "🧠",

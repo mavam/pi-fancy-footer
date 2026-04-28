@@ -22,6 +22,9 @@ test("icon families provide family-specific widget icons", () => {
   assert.equal(getWidgetSettingIcon("branch", "emoji"), "🌿");
   assert.equal(getWidgetSettingIcon("branch", "unicode"), "⎇");
   assert.equal(getWidgetSettingIcon("branch", "ascii"), "*");
+  assert.equal(getWidgetSettingIcon("model", "nerd"), "\u{f06a9}");
+  assert.equal(getWidgetSettingIcon("thinking", "nerd"), "\u{f09d1}");
+  assert.equal(getWidgetSettingIcon("total-cost", "nerd"), "\u{f01c1}");
 
   assert.equal(isFooterIconFamily("emoji"), true);
   assert.equal(isFooterIconFamily("bogus"), false);
