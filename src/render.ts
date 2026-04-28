@@ -12,7 +12,8 @@ import {
   MAX_WIDGET_ROW,
   type BuiltInFooterWidgetId,
   type CompactionSettingsSnapshot,
-  type FancyFooterWidgetContribution,
+  type FancyFooterWidgetResult,
+  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type FooterWidgetConfigOverride,
   type FooterIconFamily,
@@ -202,6 +203,7 @@ function renderWidget(
       : Math.max(0, maxTotalWidth - iconWidth);
 
   const rawText = widget.renderText(renderCtx, contentWidth);
+  if (!rawText) return "";
   const styledText = widget.styled
     ? rawText
     : renderCtx.theme.fg(widget.textColor ?? "dim", rawText);
@@ -214,6 +216,12 @@ function renderWidget(
   const combined = `${styledIcon}${styledText}`;
   if (maxTotalWidth === undefined) return combined;
   return truncateFooterText(combined, maxTotalWidth, "");
+}
+
+function widgetResultToText(result: FancyFooterWidgetResult): string {
+  if (result === undefined || result === null || result === false) return "";
+  if (typeof result === "object") return String(result.text ?? "");
+  return String(result);
 }
 
 function prepareWidgetGroup(
@@ -585,7 +593,7 @@ function buildFooterWidgets(
 }
 
 function buildExtensionWidgets(
-  widgets: readonly FancyFooterWidgetContribution[],
+  widgets: readonly NormalizedFancyFooterWidgetContribution[],
   iconFamily: FooterIconFamily,
 ): FooterWidget[] {
   return widgets.map((widget) => ({
@@ -604,7 +612,8 @@ function buildExtensionWidgets(
     textColor: widget.textColor ?? "dim",
     styled: widget.styled,
     visible: widget.visible,
-    renderText: widget.renderText,
+    renderText: (ctx, availableWidth) =>
+      widgetResultToText(widget.render(ctx, availableWidth)),
   }));
 }
 
@@ -771,7 +780,7 @@ export function renderFooterLines(
   usageMetrics: SessionUsageMetrics,
   compactionSettings: CompactionSettingsSnapshot,
   footerConfig: FooterConfigSnapshot,
-  extensionWidgets: readonly FancyFooterWidgetContribution[] = [],
+  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[] = [],
 ): string[] {
   if (width <= 0) return ["", ""];
 

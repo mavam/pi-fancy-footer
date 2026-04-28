@@ -15,7 +15,7 @@ import {
   isContextBarStyleId,
   isFooterIconFamily,
   isFooterWidgetColor,
-  type FancyFooterWidgetContribution,
+  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
 } from "./shared.ts";
 
@@ -23,7 +23,7 @@ interface OpenFooterConfigEditorOptions {
   ctx: ExtensionContext;
   configPath: string;
   draft: FooterConfigSnapshot;
-  extensionWidgets: readonly FancyFooterWidgetContribution[];
+  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[];
   applyDraft: () => void;
 }
 

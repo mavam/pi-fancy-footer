@@ -429,16 +429,45 @@ export type FancyFooterWidgetIcon =
   | Partial<Record<FooterIconFamily, string>>
   | ((iconFamily: FooterIconFamily) => string | undefined);
 
+export type FancyFooterWidgetResult =
+  | string
+  | number
+  | undefined
+  | null
+  | false
+  | {
+      text: string | number;
+      icon?: FancyFooterWidgetIcon | false;
+      textColor?: FooterWidgetColor;
+      iconColor?: FooterWidgetColor;
+      raw?: boolean;
+    };
+
 export interface FancyFooterWidgetContribution {
   id: string;
   label?: string;
-  description: string;
-  defaults: FooterWidgetEditorDefaults;
+  description?: string;
+  row?: number;
+  order?: number;
+  align?: FooterWidgetAlign;
+  grow?: boolean;
+  minWidth?: number;
   icon?: FancyFooterWidgetIcon | false;
   textColor?: FooterWidgetColor;
   styled?: boolean;
   visible?: (ctx: WidgetRenderContext) => boolean;
-  renderText: (ctx: WidgetRenderContext, availableWidth?: number) => string;
+  render: (
+    ctx: WidgetRenderContext,
+    availableWidth?: number,
+  ) => FancyFooterWidgetResult;
+}
+
+export interface NormalizedFancyFooterWidgetContribution extends Omit<
+  FancyFooterWidgetContribution,
+  "description"
+> {
+  description: string;
+  defaults: FooterWidgetEditorDefaults;
 }
 
 export interface FooterWidgetMeta {

@@ -160,26 +160,23 @@ export default function (pi: ExtensionAPI) {
   contributeFancyFooterWidgets(pi, {
     id: "acme.build-status",
     label: "Build status",
-    description: "Shows the latest CI result for the current branch.",
-    defaults: {
-      row: 1,
-      position: 8,
-      align: "right",
-      fill: "none",
-    },
     icon: {
       nerd: "󰙨",
       emoji: "🧪",
       unicode: "◈",
       ascii: "B",
     },
-    renderText: () => "passing",
+    row: 1,
+    order: 8,
+    align: "right",
+    render: () => "passing",
   });
 }
 ```
 
 Available helpers:
 
+- `defineFancyFooterWidget(widget)` - identity helper for typing widget definitions.
 - `contributeFancyFooterWidgets(pi, widgetOrWidgets)` - register one or more widgets for discovery.
 - `requestFancyFooterWidgetDiscovery(pi)` - ask `pi-fancy-footer` to re-discover contributed widgets.
 - `requestFancyFooterRefresh(pi)` - ask the footer to re-render immediately.
@@ -187,12 +184,12 @@ Available helpers:
 Each contributed widget defines:
 
 - `id` - stable config key, ideally namespaced like `vendor.widget-name`
+- `render(ctx, availableWidth?)` - widget renderer; return `undefined`, `null`, `false`, or an empty string to hide the widget
 - `label` - display name in `/fancy-footer` (defaults to `id`)
-- `description` - help text in the config UI
-- `defaults` - default `row`, `position`, `align`, `fill`, and optional `minWidth`
+- `description` - help text in the config UI (defaults to `label`/`id`)
+- `row`, `order`, `align`, `grow`, and `minWidth` - optional default layout controls
 - `icon` - a single icon, per-family icon map, function, or `false`
-- `renderText(ctx, availableWidth?)` - widget renderer
-- optional `visible(ctx)`, `textColor`, and `styled`
+- optional `textColor` and `styled`
 
 ## 🔣 Icon families
 

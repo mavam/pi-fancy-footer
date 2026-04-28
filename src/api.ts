@@ -29,6 +29,12 @@ function toWidgetList(
   return Array.isArray(value) ? value : [value];
 }
 
+export function defineFancyFooterWidget(
+  widget: FancyFooterWidgetContribution,
+): FancyFooterWidgetContribution {
+  return widget;
+}
+
 export function contributeFancyFooterWidgets(
   pi: ExtensionAPI,
   provider: FancyFooterWidgetProvider,
@@ -56,6 +62,7 @@ export type {
   FooterIconFamily,
   FooterWidgetAlign,
   FooterWidgetColor,
+  FancyFooterWidgetResult,
   FooterWidgetEditorDefaults,
   FooterWidgetFill,
   WidgetRenderContext,

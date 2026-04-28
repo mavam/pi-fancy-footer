@@ -19,6 +19,7 @@ import {
   isFooterWidgetId,
   type CompactionSettingsSnapshot,
   type FancyFooterWidgetContribution,
+  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type SessionUsageMetrics,
 } from "./shared.ts";
@@ -55,22 +56,32 @@ const extensionWidgetMetadataSchema = Type.Object(
   {
     id: Type.String({ minLength: 1 }),
     label: Type.Optional(Type.String({ minLength: 1 })),
-    description: Type.String({ minLength: 1 }),
-    defaults: Type.Object(
-      {
-        row: Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW }),
-        position: Type.Integer({ minimum: 0, maximum: MAX_WIDGET_POSITION }),
-        align: Type.Union([
-          Type.Literal("left"),
-          Type.Literal("middle"),
-          Type.Literal("right"),
-        ]),
-        fill: Type.Union([Type.Literal("none"), Type.Literal("grow")]),
-        minWidth: Type.Optional(
-          Type.Integer({ minimum: 0, maximum: MAX_WIDGET_MIN_WIDTH }),
-        ),
-      },
-      { additionalProperties: false },
+    description: Type.Optional(Type.String({ minLength: 1 })),
+    defaults: Type.Optional(
+      Type.Object(
+        {
+          row: Type.Optional(
+            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW }),
+          ),
+          position: Type.Optional(
+            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_POSITION }),
+          ),
+          align: Type.Optional(
+            Type.Union([
+              Type.Literal("left"),
+              Type.Literal("middle"),
+              Type.Literal("right"),
+            ]),
+          ),
+          fill: Type.Optional(
+            Type.Union([Type.Literal("none"), Type.Literal("grow")]),
+          ),
+          minWidth: Type.Optional(
+            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_MIN_WIDTH }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
     ),
     textColor: Type.Optional(extensionWidgetColorSchema),
     styled: Type.Optional(Type.Boolean()),
@@ -92,7 +103,7 @@ export default function (pi: ExtensionAPI) {
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
     extensionWidgets: { ...DEFAULT_FOOTER_CONFIG.extensionWidgets },
   };
-  let extensionWidgets: FancyFooterWidgetContribution[] = [];
+  let extensionWidgets: NormalizedFancyFooterWidgetContribution[] = [];
 
   let activeFooterControls: ActiveFooterControls | undefined;
   let footerInstanceId = 0;
@@ -104,7 +115,7 @@ export default function (pi: ExtensionAPI) {
 
   const normalizeExtensionWidget = (
     widget: FancyFooterWidgetContribution,
-  ): FancyFooterWidgetContribution | undefined => {
+  ): NormalizedFancyFooterWidgetContribution | undefined => {
     if (!widget || typeof widget !== "object") return undefined;
 
     const metadata = {
@@ -115,7 +126,13 @@ export default function (pi: ExtensionAPI) {
         typeof widget.description === "string"
           ? widget.description.trim()
           : widget.description,
-      defaults: widget.defaults,
+      defaults: {
+        row: widget.row,
+        position: widget.order,
+        align: widget.align,
+        fill: widget.grow === true ? "grow" : undefined,
+        minWidth: widget.minWidth,
+      },
       textColor: widget.textColor,
       styled: widget.styled,
     };
@@ -139,9 +156,9 @@ export default function (pi: ExtensionAPI) {
       );
       return undefined;
     }
-    if (typeof widget.renderText !== "function") {
+    if (typeof widget.render !== "function") {
       console.warn(
-        `Ignoring fancy-footer widget '${metadata.id}' without a renderText function`,
+        `Ignoring fancy-footer widget '${metadata.id}' without a render function`,
       );
       return undefined;
     }
@@ -165,15 +182,25 @@ export default function (pi: ExtensionAPI) {
       ...widget,
       id: metadata.id,
       label: metadata.label ?? metadata.id,
-      description: metadata.description,
-      defaults: metadata.defaults,
+      description: metadata.description ?? metadata.label ?? metadata.id,
+      defaults: {
+        row: metadata.defaults.row ?? 1,
+        position: metadata.defaults.position ?? 0,
+        align: metadata.defaults.align ?? "right",
+        fill: metadata.defaults.fill ?? "none",
+        minWidth: metadata.defaults.minWidth,
+      },
+      render: widget.render,
       textColor: metadata.textColor,
       styled: metadata.styled,
     };
   };
 
   const discoverExtensionWidgets = () => {
-    const discovered = new Map<string, FancyFooterWidgetContribution>();
+    const discovered = new Map<
+      string,
+      NormalizedFancyFooterWidgetContribution
+    >();
 
     pi.events.emit(FANCY_FOOTER_DISCOVER_WIDGETS_EVENT, {
       registerWidget: (widget: FancyFooterWidgetContribution) => {
@@ -258,8 +285,7 @@ export default function (pi: ExtensionAPI) {
               ctx.cwd,
               targetBranch,
               {
-                includeReviewThreads:
-                  isPullRequestReviewThreadsWidgetEnabled(),
+                includeReviewThreads: isPullRequestReviewThreadsWidgetEnabled(),
               },
             );
             if (!isActiveFooter()) return;

@@ -33,7 +33,7 @@ import {
   MIN_FOOTER_REFRESH_MS,
   type BuiltInFooterWidgetId,
   type CompactionSettingsSnapshot,
-  type FancyFooterWidgetContribution,
+  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type FooterWidgetAlign,
   type FooterWidgetColor,
@@ -432,7 +432,7 @@ function summarizeWidget(
 
 function buildConfigurableWidgets(
   config: FooterConfigSnapshot,
-  extensionWidgets: readonly FancyFooterWidgetContribution[],
+  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[],
 ): ConfigurableWidgetMeta[] {
   return [
     ...FOOTER_WIDGET_IDS.map((widgetId) => ({
@@ -759,7 +759,7 @@ export function createFooterConfigSections(
   draft: FooterConfigSnapshot,
   theme: Theme,
   applyDraft: () => void,
-  extensionWidgets: readonly FancyFooterWidgetContribution[],
+  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[],
 ): FooterConfigSection[] {
   const widgets = buildConfigurableWidgets(draft, extensionWidgets);
 
