@@ -214,14 +214,20 @@ export default function (pi: ExtensionAPI) {
         tui.requestRender();
       };
 
-      const isPullRequestWidgetEnabled = () =>
-        footerConfig.widgets["pull-request"]?.enabled !== false;
+      const isPullRequestReviewThreadsWidgetEnabled = () => {
+        const widget = footerConfig.widgets["pull-request-review-threads"];
+        return widget?.enabled !== false;
+      };
+
+      const isPullRequestBackedWidgetEnabled = () =>
+        footerConfig.widgets["pull-request"]?.enabled !== false ||
+        isPullRequestReviewThreadsWidgetEnabled();
 
       // Keep networked PR discovery off the local git refresh path.
       const refreshPullRequest = async () => {
         if (
           !isActiveFooter() ||
-          !isPullRequestWidgetEnabled() ||
+          !isPullRequestBackedWidgetEnabled() ||
           !shouldRefreshPullRequest(currentGit)
         ) {
           return;
@@ -238,7 +244,7 @@ export default function (pi: ExtensionAPI) {
 
             if (
               !isActiveFooter() ||
-              !isPullRequestWidgetEnabled() ||
+              !isPullRequestBackedWidgetEnabled() ||
               !shouldRefreshPullRequest(currentGit)
             ) {
               continue;
@@ -251,6 +257,10 @@ export default function (pi: ExtensionAPI) {
               pi,
               ctx.cwd,
               targetBranch,
+              {
+                includeReviewThreads:
+                  isPullRequestReviewThreadsWidgetEnabled(),
+              },
             );
             if (!isActiveFooter()) return;
             if (

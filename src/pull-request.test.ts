@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createGitHubRepositoryContext, selectPullRequestFromGraphQL } from "./pull-request.ts";
+import {
+  createGitHubRepositoryContext,
+  parseGitHubPullRequestUrl,
+  parsePullRequestReviewThreadsPage,
+  selectPullRequestFromGraphQL,
+} from "./pull-request.ts";
 
 test("createGitHubRepositoryContext derives repository and PR lookup plan from remotes", () => {
   const context = createGitHubRepositoryContext(
@@ -17,6 +22,59 @@ test("createGitHubRepositoryContext derives repository and PR lookup plan from r
     baseRepositories: ["org/repo", "me/repo"],
     headOwners: ["me", "org"],
     allowCurrentBranchFallback: true,
+  });
+});
+
+test("parseGitHubPullRequestUrl extracts owner, repository, and PR number", () => {
+  assert.deepEqual(
+    parseGitHubPullRequestUrl("https://github.com/org/repo/pull/42"),
+    {
+      owner: "org",
+      name: "repo",
+      number: 42,
+    },
+  );
+  assert.deepEqual(
+    parseGitHubPullRequestUrl(
+      "https://github.com/org/repo/pull/42#discussion_r1",
+    ),
+    {
+      owner: "org",
+      name: "repo",
+      number: 42,
+    },
+  );
+  assert.equal(
+    parseGitHubPullRequestUrl("https://example.com/org/repo/pull/42"),
+    undefined,
+  );
+});
+
+test("parsePullRequestReviewThreadsPage counts unresolved review threads", () => {
+  const output = JSON.stringify({
+    data: {
+      repository: {
+        pullRequest: {
+          reviewThreads: {
+            pageInfo: {
+              hasNextPage: true,
+              endCursor: "cursor-1",
+            },
+            nodes: [
+              { isResolved: false },
+              { isResolved: true },
+              { isResolved: false },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(parsePullRequestReviewThreadsPage(output), {
+    unresolvedCount: 2,
+    hasNextPage: true,
+    endCursor: "cursor-1",
   });
 });
 
