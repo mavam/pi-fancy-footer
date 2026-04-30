@@ -179,19 +179,19 @@ export async function openFooterConfigEditor({
       }
 
       const labelWidth = Math.min(
-        28,
         Math.max(...items.map((item) => visibleWidth(item.label)), 0),
+        Math.max(8, width - 12),
       );
       for (const [index, item] of items.entries()) {
         const selected =
           activeSection === sectionId && selection[sectionId] === index;
         const prefix = selected ? theme.fg("accent", "→ ") : "  ";
+        const label = truncateToWidth(item.label, labelWidth, "");
         const paddedLabel =
-          item.label +
-          " ".repeat(Math.max(0, labelWidth - visibleWidth(item.label)));
+          label + " ".repeat(Math.max(0, labelWidth - visibleWidth(label)));
         const valueWidth = Math.max(
           4,
-          width - visibleWidth(prefix) - labelWidth - 4,
+          width - visibleWidth(prefix) - labelWidth - 2,
         );
         const value = truncateToWidth(item.currentValue, valueWidth, "");
 
