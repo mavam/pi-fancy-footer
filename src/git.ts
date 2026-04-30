@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { buildWorkflowRunsPath, selectPullRequestCiStatus } from "./ci.ts";
 import {
   createGitHubRepositoryContext,
   parseGitHubPullRequestUrl,
@@ -22,6 +23,7 @@ interface ExecResult {
 
 interface PullRequestCollectionOptions {
   includeReviewThreads?: boolean;
+  includeCiStatus?: boolean;
 }
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
@@ -35,6 +37,7 @@ const PULL_REQUEST_QUERY = [
   "      nodes {",
   "        number",
   "        url",
+  "        headRefOid",
   "        headRepositoryOwner { login }",
   "      }",
   "    }",
@@ -151,7 +154,7 @@ async function collectCurrentBranchPullRequest(
   const result = await execResult(
     pi,
     "gh",
-    ["pr", "view", "--json", "number,url"],
+    ["pr", "view", "--json", "number,url,headRefOid"],
     cwd,
     GITHUB_COMMAND_TIMEOUT_MS,
   );
@@ -208,25 +211,52 @@ async function collectPullRequestReviewThreadCount(
   return unresolvedCount;
 }
 
+async function collectPullRequestCiStatus(
+  pi: ExtensionAPI,
+  cwd: string,
+  pullRequest: NonNullable<GitInfo["pullRequest"]>,
+): Promise<NonNullable<GitInfo["pullRequest"]>["ciStatus"] | undefined> {
+  const path = buildWorkflowRunsPath(
+    pullRequest.url,
+    pullRequest.headRefOid ?? "",
+  );
+  if (!path) return undefined;
+
+  const result = await execResult(
+    pi,
+    "gh",
+    ["api", path],
+    cwd,
+    GITHUB_COMMAND_TIMEOUT_MS,
+  );
+  if (result.code !== 0 || !result.stdout) return undefined;
+
+  return selectPullRequestCiStatus(result.stdout);
+}
+
 async function enrichPullRequest(
   pi: ExtensionAPI,
   cwd: string,
   pullRequest: GitInfo["pullRequest"],
-  includeReviewThreads: boolean,
+  options: Required<PullRequestCollectionOptions>,
 ): Promise<GitInfo["pullRequest"]> {
   if (!pullRequest) return undefined;
-  if (!includeReviewThreads) return pullRequest;
 
-  const unresolvedReviewThreadCount = await collectPullRequestReviewThreadCount(
-    pi,
-    cwd,
-    pullRequest,
-  );
-  if (unresolvedReviewThreadCount === undefined) return pullRequest;
+  const [unresolvedReviewThreadCount, ciStatus] = await Promise.all([
+    options.includeReviewThreads
+      ? collectPullRequestReviewThreadCount(pi, cwd, pullRequest)
+      : Promise.resolve(undefined),
+    options.includeCiStatus
+      ? collectPullRequestCiStatus(pi, cwd, pullRequest)
+      : Promise.resolve(undefined),
+  ]);
 
   return {
     ...pullRequest,
-    unresolvedReviewThreadCount,
+    ...(unresolvedReviewThreadCount !== undefined
+      ? { unresolvedReviewThreadCount }
+      : {}),
+    ...(ciStatus ? { ciStatus } : {}),
   };
 }
 
@@ -255,6 +285,8 @@ export async function collectPullRequestInfo(
   >
 > {
   const includeReviewThreads = options.includeReviewThreads ?? true;
+  const includeCiStatus = options.includeCiStatus ?? false;
+  const enrichmentOptions = { includeReviewThreads, includeCiStatus };
 
   if (!branch) {
     return {
@@ -298,7 +330,7 @@ export async function collectPullRequestInfo(
           pi,
           cwd,
           pullRequest,
-          includeReviewThreads,
+          enrichmentOptions,
         ),
         pullRequestLookupEnabled: true,
         pullRequestLookupAt,
@@ -314,7 +346,7 @@ export async function collectPullRequestInfo(
       pi,
       cwd,
       fallbackPullRequest,
-      includeReviewThreads,
+      enrichmentOptions,
     ),
     pullRequestLookupEnabled: true,
     pullRequestLookupAt,

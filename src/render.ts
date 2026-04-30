@@ -132,6 +132,35 @@ function buildGitStatus(
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
 
+function buildPullRequestCiStatus(
+  state: FooterMetrics["pullRequestCiState"],
+  iconFamily: FooterIconFamily,
+  configuredColor: FooterConfigSnapshot["defaultIconColor"],
+):
+  | { symbol: string; color: FooterConfigSnapshot["defaultIconColor"] }
+  | undefined {
+  const symbols = getStatuslineSymbols(iconFamily);
+  switch (state) {
+    case "running":
+      return {
+        symbol: symbols.pullRequestCiRunning,
+        color: configuredColor === "text" ? "warning" : configuredColor,
+      };
+    case "failed":
+      return {
+        symbol: symbols.pullRequestCiFailed,
+        color: configuredColor === "text" ? "error" : configuredColor,
+      };
+    case "okay":
+      return {
+        symbol: symbols.pullRequestCiOkay,
+        color: configuredColor === "text" ? "success" : configuredColor,
+      };
+    default:
+      return undefined;
+  }
+}
+
 function resolveGitStatusSymbolColor(
   symbol: string,
   configuredColor: FooterConfigSnapshot["defaultIconColor"],
@@ -459,6 +488,8 @@ function computeFooterMetrics(
     pullRequestUrl: git.pullRequest?.url ?? "",
     pullRequestUnresolvedReviewThreadCount:
       git.pullRequest?.unresolvedReviewThreadCount ?? 0,
+    pullRequestCiState: git.pullRequest?.ciStatus?.state ?? "",
+    pullRequestCiUrl: git.pullRequest?.ciStatus?.url ?? "",
     added: git.added,
     removed: git.removed,
     ...buildGitStatus(git.counts, iconFamily),
@@ -565,6 +596,23 @@ function buildFooterWidgets(
           metrics.pullRequestUrl,
           `${metrics.pullRequestUnresolvedReviewThreadCount}`,
         ),
+    },
+    {
+      ...baseWidgetDefaults("pull-request-ci-status", iconFamily),
+      styled: true,
+      visible: ({ metrics }) => metrics.pullRequestCiState !== "",
+      renderText: ({ metrics, theme, defaultIconColor }) => {
+        const status = buildPullRequestCiStatus(
+          metrics.pullRequestCiState,
+          iconFamily,
+          defaultIconColor,
+        );
+        if (!status) return "";
+        return formatTerminalHyperlink(
+          metrics.pullRequestCiUrl,
+          theme.fg(status.color, status.symbol),
+        );
+      },
     },
     {
       ...baseWidgetDefaults("diff-added", iconFamily),

@@ -18,8 +18,8 @@ pi install npm:pi-fancy-footer
 - Context window capacity and approximate usage
 - Context usage bar with compaction reserve tail
 - Total session cost
-- Repo / path, branch, commit, open PR number, and unresolved PR review
-  threads
+- Repo / path, branch, commit, open PR number, unresolved PR review
+  threads, and PR CI status
 - Git diff stats and ahead/behind status
 
 ## 📸 Screenshots
@@ -132,6 +132,7 @@ Built-in widget IDs:
 - `commit`
 - `pull-request`
 - `pull-request-review-threads`
+- `pull-request-ci-status`
 - `diff-added`
 - `diff-removed`
 - `git-status`
@@ -217,6 +218,7 @@ leading widget icon.
 | `commit`                      | ``     | `🔖`       | `#`     | `#`      |
 | `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
 | `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
+| `pull-request-ci-status`      | `//` | `⏳/❌/✅` | `◷/✕/✓` | `~/x/+`  |
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
@@ -232,6 +234,9 @@ Notes:
 - `context-bar` grows to fill the remaining horizontal space on its row,
   including on wide terminals.
 - `git-status` uses symbols for ahead / behind / diverged status.
+- `pull-request-ci-status` is icon-only and uses symbols for running / failed /
+  okay status. By default it uses semantic colors (warning / error / success);
+  set this widget's icon color to override them.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
   `ascii` palettes.
 - `nerd` keeps the original Nerd Font look. `emoji`, `unicode`, and `ascii`
@@ -242,6 +247,9 @@ Notes:
   GitHub CLI (`gh`) being available and authenticated.
 - `pull-request-review-threads` counts unresolved GitHub review threads
   on the current PR.
+- `pull-request-ci-status` shows GitHub Actions workflow runs for the current
+  PR head commit. It links to the relevant run and switches to failed as soon as
+  one workflow fails, even when other workflows are still running.
 - Reads compaction settings from:
   - `~/.pi/agent/settings.json`
   - `<project>/.pi/settings.json`

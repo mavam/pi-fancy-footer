@@ -26,6 +26,9 @@ export const STATUSLINE_SYMBOLS = {
     commit: "",
     pullRequest: "",
     pullRequestReviewThreads: "󰅺",
+    pullRequestCiRunning: "",
+    pullRequestCiFailed: "",
+    pullRequestCiOkay: "",
     contextUsed: "━",
     contextFree: "─",
     contextReserved: "┄",
@@ -47,6 +50,9 @@ export const STATUSLINE_SYMBOLS = {
     commit: "🔖",
     pullRequest: "🔀",
     pullRequestReviewThreads: "💬",
+    pullRequestCiRunning: "⏳",
+    pullRequestCiFailed: "❌",
+    pullRequestCiOkay: "✅",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -68,6 +74,9 @@ export const STATUSLINE_SYMBOLS = {
     commit: "#",
     pullRequest: "⇄",
     pullRequestReviewThreads: "✎",
+    pullRequestCiRunning: "◷",
+    pullRequestCiFailed: "✕",
+    pullRequestCiOkay: "✓",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -89,6 +98,9 @@ export const STATUSLINE_SYMBOLS = {
     commit: "#",
     pullRequest: "@",
     pullRequestReviewThreads: "!",
+    pullRequestCiRunning: "~",
+    pullRequestCiFailed: "x",
+    pullRequestCiOkay: "+",
     contextUsed: "#",
     contextFree: "-",
     contextReserved: ":",
@@ -229,10 +241,17 @@ export interface GitCounts {
   behind: number;
 }
 
+export type PullRequestCiState = "running" | "failed" | "okay";
+
 export interface GitHubPullRequest {
   number: number;
   url: string;
+  headRefOid?: string;
   unresolvedReviewThreadCount?: number;
+  ciStatus?: {
+    state: PullRequestCiState;
+    url: string;
+  };
 }
 
 export interface GitInfo {
@@ -292,6 +311,7 @@ export const FOOTER_WIDGET_IDS = [
   "commit",
   "pull-request",
   "pull-request-review-threads",
+  "pull-request-ci-status",
   "diff-added",
   "diff-removed",
   "git-status",
@@ -340,6 +360,8 @@ export interface FooterMetrics {
   pullRequestNumber: number;
   pullRequestUrl: string;
   pullRequestUnresolvedReviewThreadCount: number;
+  pullRequestCiState: PullRequestCiState | "";
+  pullRequestCiUrl: string;
   added: number;
   removed: number;
   gitStatusSymbol: string;
@@ -538,18 +560,25 @@ export const FOOTER_WIDGET_META: Record<
       "Shows unresolved GitHub pull request review threads for the current branch.",
     symbolKey: "pullRequestReviewThreads",
   },
-  "diff-added": {
+  "pull-request-ci-status": {
     defaults: { row: 1, position: 5, align: "left", fill: "none" },
+    description:
+      "Shows the GitHub Actions CI status for the current pull request.",
+    symbolKey: "pullRequestCiOkay",
+    hasFooterIcon: false,
+  },
+  "diff-added": {
+    defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Shows added lines in your working tree.",
     symbolKey: "diffAdded",
   },
   "diff-removed": {
-    defaults: { row: 1, position: 6, align: "left", fill: "none" },
+    defaults: { row: 1, position: 7, align: "left", fill: "none" },
     description: "Shows removed lines in your working tree.",
     symbolKey: "diffRemoved",
   },
   "git-status": {
-    defaults: { row: 1, position: 7, align: "left", fill: "none" },
+    defaults: { row: 1, position: 8, align: "left", fill: "none" },
     description: "Shows whether your branch is ahead, behind, or diverged.",
     symbolKey: "gitDiverged",
     hasFooterIcon: false,
@@ -779,6 +808,8 @@ export function widgetSummary(
   const meta = FOOTER_WIDGET_META[widgetId];
   const defaults = meta.defaults;
   const hasBuiltInIcon = meta.hasFooterIcon !== false;
+  const hasConfigurableIconColor =
+    hasBuiltInIcon || widgetId === "pull-request-ci-status";
 
   const override = config.widgets[widgetId];
   if (!override) return "default";
@@ -800,7 +831,7 @@ export function widgetSummary(
 
   if (hasBuiltInIcon && override.icon === "hide") parts.push("icon:hidden");
   if (
-    hasBuiltInIcon &&
+    hasConfigurableIconColor &&
     override.iconColor !== undefined &&
     override.iconColor !== config.defaultIconColor
   ) {

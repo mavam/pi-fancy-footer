@@ -189,11 +189,7 @@ test("collectPullRequestInfo includes unresolved review thread count", async () 
       };
     }
 
-    if (
-      command === "gh" &&
-      args[0] === "api" &&
-      args.includes("number=12")
-    ) {
+    if (command === "gh" && args[0] === "api" && args.includes("number=12")) {
       return {
         code: 0,
         stdout: JSON.stringify({
@@ -228,6 +224,93 @@ test("collectPullRequestInfo includes unresolved review thread count", async () 
     number: 12,
     url: "https://github.com/me/repo/pull/12",
     unresolvedReviewThreadCount: 2,
+  });
+});
+
+test("collectPullRequestInfo includes PR CI status when requested", async () => {
+  const { pi } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
+      return { code: 0, stdout: "origin/feature\n", stderr: "" };
+    }
+
+    if (command === "git" && gitSubcommand(args) === "config") {
+      return {
+        code: 0,
+        stdout: "remote.origin.url https://github.com/me/repo.git",
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args.includes("branch=feature")
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    number: 12,
+                    url: "https://github.com/me/repo/pull/12",
+                    headRefOid: "abc123",
+                    headRepositoryOwner: { login: "me" },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args[1] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          workflow_runs: [
+            {
+              status: "in_progress",
+              conclusion: null,
+              html_url: "https://github.com/me/repo/actions/runs/1",
+              updated_at: "2026-01-01T10:00:00Z",
+            },
+            {
+              status: "completed",
+              conclusion: "failure",
+              html_url: "https://github.com/me/repo/actions/runs/2",
+              updated_at: "2026-01-01T09:00:00Z",
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+
+  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
+    includeReviewThreads: false,
+    includeCiStatus: true,
+  });
+
+  assert.deepEqual(result.pullRequest, {
+    number: 12,
+    url: "https://github.com/me/repo/pull/12",
+    headRefOid: "abc123",
+    ciStatus: {
+      state: "failed",
+      url: "https://github.com/me/repo/actions/runs/2",
+    },
   });
 });
 
