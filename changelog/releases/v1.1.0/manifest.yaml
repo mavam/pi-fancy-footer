@@ -1,0 +1,9 @@
+created: 2026-04-30
+title: GitHub Actions PR status widget
+intro: >-
+  This release adds an icon-only GitHub Actions status widget for pull requests and
+  improves settings menu alignment. The footer now makes pull request CI state easier
+  to scan while keeping widget values neatly aligned.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.0.0
