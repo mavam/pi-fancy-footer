@@ -1,4 +1,8 @@
-import { type GitHubPullRequest, parseGitHubRemote, toNumber } from "./shared.ts";
+import {
+  type GitHubPullRequest,
+  parseGitHubRemote,
+  toNumber,
+} from "./shared.ts";
 
 interface GitHubRemote {
   name: string;
@@ -10,6 +14,7 @@ interface PullRequestCandidate {
   number: number;
   url: string;
   headOwner: string;
+  headRefOid?: string;
 }
 
 export interface GitHubPullRequestLocation {
@@ -85,7 +90,10 @@ function orderedRemoteValues<T>(
   const ordered: T[] = [];
   const seen = new Set<string>();
 
-  for (const remoteName of [...preferredNames, ...remotes.map((remote) => remote.name)]) {
+  for (const remoteName of [
+    ...preferredNames,
+    ...remotes.map((remote) => remote.name),
+  ]) {
     if (!remoteName) continue;
     const remote = byName.get(remoteName);
     if (!remote) continue;
@@ -99,30 +107,62 @@ function orderedRemoteValues<T>(
   return ordered;
 }
 
-function selectGitHubRepository(remotes: GitHubRemote[], preferredRemote: string): string {
-  return orderedRemoteValues(remotes, [preferredRemote, "origin", "upstream"], (remote) => remote.repository)[0] ?? "";
+function selectGitHubRepository(
+  remotes: GitHubRemote[],
+  preferredRemote: string,
+): string {
+  return (
+    orderedRemoteValues(
+      remotes,
+      [preferredRemote, "origin", "upstream"],
+      (remote) => remote.repository,
+    )[0] ?? ""
+  );
 }
 
-function selectPullRequestBaseRepositories(remotes: GitHubRemote[], preferredRemote: string): string[] {
+function selectPullRequestBaseRepositories(
+  remotes: GitHubRemote[],
+  preferredRemote: string,
+): string[] {
   // PRs often live in the upstream repo even when the branch tracks a fork remote.
-  return orderedRemoteValues(remotes, ["upstream", preferredRemote, "origin"], (remote) => remote.repository);
+  return orderedRemoteValues(
+    remotes,
+    ["upstream", preferredRemote, "origin"],
+    (remote) => remote.repository,
+  );
 }
 
-function selectPullRequestHeadOwners(remotes: GitHubRemote[], preferredRemote: string): string[] {
-  return orderedRemoteValues(remotes, [preferredRemote, "origin", "upstream"], (remote) => remote.owner);
+function selectPullRequestHeadOwners(
+  remotes: GitHubRemote[],
+  preferredRemote: string,
+): string[] {
+  return orderedRemoteValues(
+    remotes,
+    [preferredRemote, "origin", "upstream"],
+    (remote) => remote.owner,
+  );
 }
 
-function createPullRequestLookupPlan(remotes: GitHubRemote[], preferredRemote: string): PullRequestLookupPlan | undefined {
+function createPullRequestLookupPlan(
+  remotes: GitHubRemote[],
+  preferredRemote: string,
+): PullRequestLookupPlan | undefined {
   if (remotes.length === 0) return undefined;
 
   return {
-    baseRepositories: selectPullRequestBaseRepositories(remotes, preferredRemote),
+    baseRepositories: selectPullRequestBaseRepositories(
+      remotes,
+      preferredRemote,
+    ),
     headOwners: selectPullRequestHeadOwners(remotes, preferredRemote),
     allowCurrentBranchFallback: true,
   };
 }
 
-function selectPullRequest(candidates: PullRequestCandidate[], headOwners: string[]): GitHubPullRequest | undefined {
+function selectPullRequest(
+  candidates: PullRequestCandidate[],
+  headOwners: string[],
+): GitHubPullRequest | undefined {
   if (candidates.length === 0 || headOwners.length === 0) return undefined;
 
   let bestCandidate: PullRequestCandidate | undefined;
@@ -141,6 +181,9 @@ function selectPullRequest(candidates: PullRequestCandidate[], headOwners: strin
   return {
     number: bestCandidate.number,
     url: bestCandidate.url,
+    ...(bestCandidate.headRefOid
+      ? { headRefOid: bestCandidate.headRefOid }
+      : {}),
   };
 }
 
@@ -153,6 +196,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
             nodes?: Array<{
               number?: unknown;
               url?: unknown;
+              headRefOid?: unknown;
               headRepositoryOwner?: { login?: unknown } | null;
             }>;
           };
@@ -167,9 +211,14 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
     for (const node of nodes) {
       const number = Math.max(0, Math.floor(toNumber(node?.number)));
       const url = typeof node?.url === "string" ? node.url : "";
-      const headOwner = typeof node?.headRepositoryOwner?.login === "string" ? node.headRepositoryOwner.login : "";
+      const headOwner =
+        typeof node?.headRepositoryOwner?.login === "string"
+          ? node.headRepositoryOwner.login
+          : "";
+      const headRefOid =
+        typeof node?.headRefOid === "string" ? node.headRefOid : undefined;
       if (number <= 0 || !url) continue;
-      candidates.push({ number, url, headOwner });
+      candidates.push({ number, url, headOwner, headRefOid });
     }
 
     return candidates;
@@ -178,18 +227,26 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
   }
 }
 
-export function createGitHubRepositoryContext(remoteUrls: string, upstream: string): GitHubRepositoryContext {
+export function createGitHubRepositoryContext(
+  remoteUrls: string,
+  upstream: string,
+): GitHubRepositoryContext {
   const preferredRemote = parseRemoteName(upstream);
   const remotes = parseGitHubRemotes(remoteUrls);
 
   return {
     repository: selectGitHubRepository(remotes, preferredRemote),
     pullRequestLookupEnabled: remotes.length > 0,
-    pullRequestLookupPlan: createPullRequestLookupPlan(remotes, preferredRemote),
+    pullRequestLookupPlan: createPullRequestLookupPlan(
+      remotes,
+      preferredRemote,
+    ),
   };
 }
 
-export function splitGitHubRepository(repository: string): { owner: string; name: string } | undefined {
+export function splitGitHubRepository(
+  repository: string,
+): { owner: string; name: string } | undefined {
   const slash = repository.indexOf("/");
   if (slash <= 0 || slash >= repository.length - 1) return undefined;
   return {
@@ -198,13 +255,21 @@ export function splitGitHubRepository(repository: string): { owner: string; name
   };
 }
 
-export function parsePullRequest(output: string): GitHubPullRequest | undefined {
+export function parsePullRequest(
+  output: string,
+): GitHubPullRequest | undefined {
   try {
-    const parsed = JSON.parse(output) as { number?: unknown; url?: unknown };
+    const parsed = JSON.parse(output) as {
+      number?: unknown;
+      url?: unknown;
+      headRefOid?: unknown;
+    };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
+    const headRefOid =
+      typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
     if (number <= 0 || !url) return undefined;
-    return { number, url };
+    return { number, url, ...(headRefOid ? { headRefOid } : {}) };
   } catch {
     return undefined;
   }

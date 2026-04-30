@@ -246,9 +246,15 @@ export default function (pi: ExtensionAPI) {
         return widget?.enabled !== false;
       };
 
+      const isPullRequestCiStatusWidgetEnabled = () => {
+        const widget = footerConfig.widgets["pull-request-ci-status"];
+        return widget?.enabled !== false;
+      };
+
       const isPullRequestBackedWidgetEnabled = () =>
         footerConfig.widgets["pull-request"]?.enabled !== false ||
-        isPullRequestReviewThreadsWidgetEnabled();
+        isPullRequestReviewThreadsWidgetEnabled() ||
+        isPullRequestCiStatusWidgetEnabled();
 
       // Keep networked PR discovery off the local git refresh path.
       const refreshPullRequest = async () => {
@@ -286,6 +292,7 @@ export default function (pi: ExtensionAPI) {
               targetBranch,
               {
                 includeReviewThreads: isPullRequestReviewThreadsWidgetEnabled(),
+                includeCiStatus: isPullRequestCiStatusWidgetEnabled(),
               },
             );
             if (!isActiveFooter()) return;

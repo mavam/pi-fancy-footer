@@ -248,6 +248,16 @@ test("widgetSummary hides icon-only overrides for iconless widgets", () => {
   );
 });
 
+test("widgetSummary shows icon color overrides for the PR CI status widget", () => {
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "pull-request-ci-status": { iconColor: "accent" } }),
+      "pull-request-ci-status",
+    ),
+    "icon:accent",
+  );
+});
+
 test("widgetSummary shows fill only when it differs from the widget default", () => {
   // context-bar defaults to fill:grow, so fill:grow is not a delta.
   assert.equal(
