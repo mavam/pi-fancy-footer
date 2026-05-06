@@ -15,6 +15,7 @@ pi install npm:pi-fancy-footer
 ## 📊 What it shows
 
 - Active model + thinking level
+- Provider quota status for OpenAI Codex
 - Context window capacity and approximate usage
 - Context usage bar with compaction reserve tail
 - Total session cost
@@ -62,6 +63,13 @@ Create `~/.pi/agent/fancy-footer.json`:
   "contextBarStyle": "blocks",
   "defaultTextColor": "dim",
   "defaultIconColor": "text",
+  "providerStatus": {
+    "refreshMs": 60000,
+    "cacheTtlMs": 60000,
+    "providers": ["openai-codex"],
+    "showCredits": false,
+    "showReset": false
+  },
   "widgets": {
     "context-bar": {
       "align": "middle",
@@ -104,6 +112,12 @@ Top-level settings:
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 - `defaultIconColor`
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
+- `providerStatus`:
+  - `refreshMs` - provider status refresh interval in milliseconds
+  - `cacheTtlMs` - cache freshness window in milliseconds
+  - `providers` - supported provider adapters (`openai-codex`)
+  - `showCredits` - include provider-specific credit balance when available
+  - `showReset` - include the primary reset time when available
 
 Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
@@ -133,6 +147,7 @@ Built-in widget IDs:
 - `pull-request`
 - `pull-request-review-threads`
 - `pull-request-ci-status`
+- `provider-status`
 - `diff-added`
 - `diff-removed`
 - `git-status`
@@ -219,6 +234,7 @@ leading widget icon.
 | `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
 | `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
 | `pull-request-ci-status`      | `//` | `⏳/❌/✅` | `◷/✕/✓` | `~/x/+`  |
+| `provider-status`             | `󰓅`     | `📊`       | `%`     | `%`      |
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
@@ -237,6 +253,13 @@ Notes:
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
+- `provider-status` shows provider quota windows, currently for OpenAI Codex,
+  as `5h:95% 7d:97%`. It uses existing pi OpenAI Codex credentials from
+  `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
+  `~/.codex/auth.json`, and caches status under
+  `~/.cache/pi-fancy-footer/provider-status/`.
+- `provider-status` also refreshes from `x-codex-*` provider response headers
+  when pi exposes them, avoiding a separate status request after provider calls.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
   `ascii` palettes.
 - `nerd` keeps the original Nerd Font look. `emoji`, `unicode`, and `ascii`

@@ -29,6 +29,7 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiRunning: "",
     pullRequestCiFailed: "",
     pullRequestCiOkay: "",
+    providerStatus: "󰓅",
     contextUsed: "━",
     contextFree: "─",
     contextReserved: "┄",
@@ -53,6 +54,7 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiRunning: "⏳",
     pullRequestCiFailed: "❌",
     pullRequestCiOkay: "✅",
+    providerStatus: "📊",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -77,6 +79,7 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiRunning: "◷",
     pullRequestCiFailed: "✕",
     pullRequestCiOkay: "✓",
+    providerStatus: "%",
     contextUsed: "■",
     contextFree: "□",
     contextReserved: "▣",
@@ -101,6 +104,7 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiRunning: "~",
     pullRequestCiFailed: "x",
     pullRequestCiOkay: "+",
+    providerStatus: "%",
     contextUsed: "#",
     contextFree: "-",
     contextReserved: ":",
@@ -209,6 +213,11 @@ export const MAX_WIDGET_POSITION = 64;
 export const MAX_WIDGET_MIN_WIDTH = 120;
 export const FOOTER_CONFIG_FILE = "fancy-footer.json";
 
+export const MIN_PROVIDER_STATUS_REFRESH_MS = 10_000;
+export const MAX_PROVIDER_STATUS_REFRESH_MS = 3_600_000;
+export const MIN_PROVIDER_STATUS_CACHE_TTL_MS = 0;
+export const MAX_PROVIDER_STATUS_CACHE_TTL_MS = 3_600_000;
+
 export interface CompactionSettingsSnapshot {
   enabled: boolean;
   reserveTokens: number;
@@ -242,6 +251,26 @@ export interface GitCounts {
 }
 
 export type PullRequestCiState = "running" | "failed" | "okay";
+
+export interface ProviderStatusWindow {
+  leftPercent: number;
+  usedPercent: number;
+  resetAt?: number;
+}
+
+export type ProviderStatusState = "ok" | "warning" | "error" | "unavailable";
+
+export interface ProviderStatusSnapshot {
+  provider: "openai-codex";
+  source: "api" | "headers" | "cache";
+  fetchedAt: string;
+  state: ProviderStatusState;
+  primary?: ProviderStatusWindow;
+  secondary?: ProviderStatusWindow;
+  credits?: string;
+  url?: string;
+  error?: string;
+}
 
 export interface GitHubPullRequest {
   number: number;
@@ -312,6 +341,7 @@ export const FOOTER_WIDGET_IDS = [
   "pull-request",
   "pull-request-review-threads",
   "pull-request-ci-status",
+  "provider-status",
   "diff-added",
   "diff-removed",
   "git-status",
@@ -374,6 +404,11 @@ export interface WidgetRenderContext {
   ctx: ExtensionContext;
   compactionSettings: CompactionSettingsSnapshot;
   metrics: FooterMetrics;
+  providerStatus?: ProviderStatusSnapshot;
+  providerStatusConfig: Pick<
+    ProviderStatusConfigSnapshot,
+    "showCredits" | "showReset"
+  >;
   defaultIconColor: FooterWidgetColor;
   defaultTextColor: FooterWidgetColor;
 }
@@ -424,9 +459,26 @@ export interface FooterConfigSnapshot {
   contextBarStyle: ContextBarStyleId;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
+  providerStatus: ProviderStatusConfigSnapshot;
   widgets: Partial<Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>>;
   extensionWidgets: Record<string, FooterWidgetConfigOverride>;
 }
+
+export interface ProviderStatusConfigSnapshot {
+  refreshMs: number;
+  cacheTtlMs: number;
+  providers: readonly "openai-codex"[];
+  showCredits: boolean;
+  showReset: boolean;
+}
+
+export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
+  refreshMs: 60_000,
+  cacheTtlMs: 60_000,
+  providers: ["openai-codex"],
+  showCredits: false,
+  showReset: false,
+};
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
@@ -434,6 +486,7 @@ export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   contextBarStyle: DEFAULT_CONTEXT_BAR_STYLE,
   defaultTextColor: "dim",
   defaultIconColor: "text",
+  providerStatus: DEFAULT_PROVIDER_STATUS_CONFIG,
   widgets: {},
   extensionWidgets: {},
 };
@@ -566,6 +619,11 @@ export const FOOTER_WIDGET_META: Record<
       "Shows the GitHub Actions CI status for the current pull request.",
     symbolKey: "pullRequestCiOkay",
     hasFooterIcon: false,
+  },
+  "provider-status": {
+    defaults: { row: 0, position: 2, align: "right", fill: "none" },
+    description: "Shows quota status for configured providers.",
+    symbolKey: "providerStatus",
   },
   "diff-added": {
     defaults: { row: 1, position: 6, align: "left", fill: "none" },

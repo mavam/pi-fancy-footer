@@ -17,6 +17,7 @@ import {
   CONTEXT_BAR_STYLES,
   DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
+  DEFAULT_PROVIDER_STATUS_CONFIG,
   FOOTER_CONFIG_FILE,
   FOOTER_ICON_FAMILIES,
   FOOTER_MIN_WIDTH_OPTIONS,
@@ -27,10 +28,14 @@ import {
   FOOTER_WIDGET_IDS,
   FOOTER_WIDGET_META,
   MAX_FOOTER_REFRESH_MS,
+  MAX_PROVIDER_STATUS_CACHE_TTL_MS,
+  MAX_PROVIDER_STATUS_REFRESH_MS,
   MAX_WIDGET_MIN_WIDTH,
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
+  MIN_PROVIDER_STATUS_CACHE_TTL_MS,
+  MIN_PROVIDER_STATUS_REFRESH_MS,
   type BuiltInFooterWidgetId,
   type CompactionSettingsSnapshot,
   type NormalizedFancyFooterWidgetContribution,
@@ -60,6 +65,28 @@ const contextBarStyleSchema = literalUnion(
 const footerWidgetAlignSchema = literalUnion(["left", "middle", "right"]);
 const footerWidgetFillSchema = literalUnion(["none", "grow"]);
 const footerWidgetIconModeSchema = literalUnion(["default", "hide"]);
+const providerStatusProviderSchema = literalUnion(["openai-codex"]);
+
+const providerStatusConfigSchema = Type.Object(
+  {
+    refreshMs: Type.Optional(
+      Type.Integer({
+        minimum: MIN_PROVIDER_STATUS_REFRESH_MS,
+        maximum: MAX_PROVIDER_STATUS_REFRESH_MS,
+      }),
+    ),
+    cacheTtlMs: Type.Optional(
+      Type.Integer({
+        minimum: MIN_PROVIDER_STATUS_CACHE_TTL_MS,
+        maximum: MAX_PROVIDER_STATUS_CACHE_TTL_MS,
+      }),
+    ),
+    providers: Type.Optional(Type.Array(providerStatusProviderSchema)),
+    showCredits: Type.Optional(Type.Boolean()),
+    showReset: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
 
 const footerWidgetConfigOverrideSchema = Type.Object(
   {
@@ -92,6 +119,7 @@ const footerConfigFileSchema = Type.Object(
     contextBarStyle: Type.Optional(contextBarStyleSchema),
     defaultTextColor: Type.Optional(footerWidgetColorSchema),
     defaultIconColor: Type.Optional(footerWidgetColorSchema),
+    providerStatus: Type.Optional(providerStatusConfigSchema),
     widgets: Type.Optional(
       Type.Object(
         Object.fromEntries(
@@ -170,6 +198,22 @@ function pruneWidgetOverrides(
   return pruned;
 }
 
+function parseProviderStatusConfig(
+  input: FooterConfigSnapshot["providerStatus"] | undefined,
+): FooterConfigSnapshot["providerStatus"] {
+  const providers = input?.providers ?? DEFAULT_PROVIDER_STATUS_CONFIG.providers;
+  return {
+    refreshMs:
+      input?.refreshMs ?? DEFAULT_PROVIDER_STATUS_CONFIG.refreshMs,
+    cacheTtlMs:
+      input?.cacheTtlMs ?? DEFAULT_PROVIDER_STATUS_CONFIG.cacheTtlMs,
+    providers: providers.includes("openai-codex") ? ["openai-codex"] : [],
+    showCredits:
+      input?.showCredits ?? DEFAULT_PROVIDER_STATUS_CONFIG.showCredits,
+    showReset: input?.showReset ?? DEFAULT_PROVIDER_STATUS_CONFIG.showReset,
+  };
+}
+
 function parseFooterConfig(
   filePath: string,
   value: unknown,
@@ -193,6 +237,7 @@ function parseFooterConfig(
       input.defaultTextColor ?? DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor:
       input.defaultIconColor ?? DEFAULT_FOOTER_CONFIG.defaultIconColor,
+    providerStatus: parseProviderStatusConfig(input.providerStatus),
     widgets: pruneWidgetOverrides(
       input.widgets as Record<string, FooterWidgetConfigOverride> | undefined,
     ) as Partial<Record<BuiltInFooterWidgetId, FooterWidgetConfigOverride>>,
@@ -324,6 +369,21 @@ function toFooterConfigObject(
     defaultTextColor: config.defaultTextColor,
     defaultIconColor: config.defaultIconColor,
   };
+
+  if (
+    config.providerStatus.refreshMs !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.refreshMs ||
+    config.providerStatus.cacheTtlMs !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.cacheTtlMs ||
+    config.providerStatus.showCredits !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.showCredits ||
+    config.providerStatus.showReset !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.showReset ||
+    config.providerStatus.providers.join(",") !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.providers.join(",")
+  ) {
+    out.providerStatus = structuredClone(config.providerStatus);
+  }
 
   if (Object.keys(widgets).length > 0) out.widgets = widgets;
   if (Object.keys(extensionWidgets).length > 0) {

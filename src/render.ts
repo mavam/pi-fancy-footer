@@ -24,6 +24,7 @@ import {
   type GitInfo,
   type PreparedWidget,
   type PreparedWidgetGroup,
+  type ProviderStatusSnapshot,
   type SessionUsageMetrics,
   type WidgetRenderContext,
   type ContextBarStyleDef,
@@ -42,6 +43,11 @@ import {
   normalizePath,
   toNumber,
 } from "./shared.ts";
+import {
+  CODEX_USAGE_URL,
+  formatProviderStatusText,
+  providerStatusColor,
+} from "./provider-status.ts";
 
 function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
   let latest: SessionUsageMetrics["latest"];
@@ -615,6 +621,29 @@ function buildFooterWidgets(
       },
     },
     {
+      ...baseWidgetDefaults("provider-status", iconFamily),
+      styled: true,
+      visible: ({ providerStatus, providerStatusConfig }) =>
+        formatProviderStatusText(providerStatus, providerStatusConfig) !== "",
+      renderText: ({
+        providerStatus,
+        providerStatusConfig,
+        theme,
+        defaultTextColor,
+      }) => {
+        const text = formatProviderStatusText(
+          providerStatus,
+          providerStatusConfig,
+        );
+        if (!text) return "";
+        const color = providerStatusColor(providerStatus);
+        return formatTerminalHyperlink(
+          providerStatus?.url ?? CODEX_USAGE_URL,
+          theme.fg(color === "dim" ? defaultTextColor : color, text),
+        );
+      },
+    },
+    {
       ...baseWidgetDefaults("diff-added", iconFamily),
       visible: ({ metrics }) => metrics.added > 0,
       renderText: ({ metrics }) => `${metrics.added}`,
@@ -829,6 +858,7 @@ export function renderFooterLines(
   compactionSettings: CompactionSettingsSnapshot,
   footerConfig: FooterConfigSnapshot,
   extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[] = [],
+  providerStatus?: ProviderStatusSnapshot,
 ): string[] {
   if (width <= 0) return ["", ""];
 
@@ -845,6 +875,8 @@ export function renderFooterLines(
     ctx,
     compactionSettings,
     metrics,
+    providerStatus,
+    providerStatusConfig: footerConfig.providerStatus,
     defaultIconColor: footerConfig.defaultIconColor,
     defaultTextColor: footerConfig.defaultTextColor,
   };

@@ -10,10 +10,12 @@ import {
   EMPTY_GIT_INFO,
   FOOTER_WIDGET_COLORS,
   MAX_FOOTER_REFRESH_MS,
+  MAX_PROVIDER_STATUS_REFRESH_MS,
   MAX_WIDGET_MIN_WIDTH,
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
+  MIN_PROVIDER_STATUS_REFRESH_MS,
   clampInt,
   isFooterWidgetColor,
   isFooterWidgetId,
@@ -21,6 +23,7 @@ import {
   type FancyFooterWidgetContribution,
   type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
+  type ProviderStatusSnapshot,
   type SessionUsageMetrics,
 } from "./shared.ts";
 import {
@@ -43,10 +46,15 @@ import {
 } from "./api.ts";
 import { openFooterConfigEditor } from "./config-editor.ts";
 import { collectSessionUsageMetrics, renderFooterLines } from "./render.ts";
+import {
+  collectProviderStatus,
+  updateProviderStatusFromHeaders,
+} from "./provider-status.ts";
 
 interface ActiveFooterControls {
   requestRender: () => void;
   reschedule: () => void;
+  updateProviderStatus: (status: ProviderStatusSnapshot) => void;
 }
 
 const extensionWidgetColorSchema = Type.Union(
@@ -100,6 +108,7 @@ export default function (pi: ExtensionAPI) {
     contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
+    providerStatus: { ...DEFAULT_FOOTER_CONFIG.providerStatus },
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
     extensionWidgets: { ...DEFAULT_FOOTER_CONFIG.extensionWidgets },
   };
@@ -226,11 +235,15 @@ export default function (pi: ExtensionAPI) {
       const instanceId = ++footerInstanceId;
       const fallbackThinkingLevel = pi.getThinkingLevel();
       let currentGit = { ...EMPTY_GIT_INFO };
+      let providerStatus: ProviderStatusSnapshot | undefined;
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
       let refreshQueued = false;
       let pullRequestRefreshing = false;
       let pullRequestRefreshQueued = false;
+      let providerStatusRefreshing = false;
+      let providerStatusRefreshQueued = false;
+      let providerStatusRefreshAt = 0;
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -255,6 +268,45 @@ export default function (pi: ExtensionAPI) {
         footerConfig.widgets["pull-request"]?.enabled !== false ||
         isPullRequestReviewThreadsWidgetEnabled() ||
         isPullRequestCiStatusWidgetEnabled();
+
+      const isProviderStatusWidgetEnabled = () =>
+        footerConfig.widgets["provider-status"]?.enabled !== false;
+
+      const refreshProviderStatus = async (force = false) => {
+        if (!isActiveFooter() || !isProviderStatusWidgetEnabled()) return;
+        const now = Date.now();
+        const refreshMs = clampInt(
+          footerConfig.providerStatus.refreshMs,
+          MIN_PROVIDER_STATUS_REFRESH_MS,
+          MAX_PROVIDER_STATUS_REFRESH_MS,
+        );
+        if (!force && providerStatusRefreshAt + refreshMs > now) return;
+        if (providerStatusRefreshing) {
+          providerStatusRefreshQueued = true;
+          return;
+        }
+
+        providerStatusRefreshing = true;
+        try {
+          do {
+            providerStatusRefreshQueued = false;
+            if (!isActiveFooter() || !isProviderStatusWidgetEnabled()) {
+              continue;
+            }
+
+            providerStatusRefreshAt = Date.now();
+            const next = await collectProviderStatus(
+              pi,
+              footerConfig.providerStatus,
+            );
+            if (!isActiveFooter()) return;
+            providerStatus = next;
+            requestRender();
+          } while (isActiveFooter() && providerStatusRefreshQueued);
+        } finally {
+          providerStatusRefreshing = false;
+        }
+      };
 
       // Keep networked PR discovery off the local git refresh path.
       const refreshPullRequest = async () => {
@@ -337,6 +389,7 @@ export default function (pi: ExtensionAPI) {
             currentGit = git;
             requestRender();
             void refreshPullRequest();
+            void refreshProviderStatus();
           } while (isActiveFooter() && refreshQueued);
         } finally {
           refreshing = false;
@@ -370,9 +423,15 @@ export default function (pi: ExtensionAPI) {
       activeFooterControls = {
         requestRender,
         reschedule: scheduleRefresh,
+        updateProviderStatus: (status) => {
+          if (!isActiveFooter()) return;
+          providerStatus = status;
+          requestRender();
+        },
       };
 
       void refreshGit();
+      void refreshProviderStatus(true);
       scheduleRefresh();
 
       return {
@@ -398,6 +457,7 @@ export default function (pi: ExtensionAPI) {
             compactionSettings,
             footerConfig,
             extensionWidgets,
+            providerStatus,
           );
         },
       };
@@ -443,6 +503,12 @@ export default function (pi: ExtensionAPI) {
 
   pi.events.on(FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT, () => {
     activeFooterControls?.requestRender();
+  });
+
+  pi.on("after_provider_response", async (event) => {
+    const next = await updateProviderStatusFromHeaders(event.headers ?? {});
+    if (!next) return;
+    activeFooterControls?.updateProviderStatus(next);
   });
 
   pi.on("session_before_compact", async (event) => {
