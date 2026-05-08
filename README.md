@@ -6,9 +6,9 @@ footer.
 
 ![screenshot](screenshots/screenshot.png)
 
-## 📦 Install
+## 🚀 Installation
 
-```bash
+```sh
 pi install npm:pi-fancy-footer
 ```
 
@@ -273,6 +273,12 @@ widget. Each style defines three symbols for used, free, and reserved cells:
 | `specks`           | `•`  | `◦`  | `•`      |
 
 <!-- markdownlint-enable MD013 MD060 -->
+
+## 🧹 Uninstall
+
+```sh
+pi remove npm:pi-fancy-footer
+```
 
 ## 📄 License
 
