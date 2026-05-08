@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { buildWorkflowRunsPath, selectPullRequestCiStatus } from "./ci.ts";
 import {
   createGitHubRepositoryContext,

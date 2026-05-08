@@ -1,6 +1,6 @@
 # ✨ pi-fancy-footer
 
-A [pi](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
+A [pi](https://github.com/earendil-works/pi-mono/tree/main/packages/coding-agent)
 extension that replaces the default footer with a compact, two-line fancy status
 footer.
 
@@ -154,7 +154,7 @@ Other pi extensions can contribute fancy-footer widgets.
 If your extension depends on `pi-fancy-footer`, import the helper API from `pi-fancy-footer/api`:
 
 ```ts
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { contributeFancyFooterWidgets } from "pi-fancy-footer/api";
 
 export default function (pi: ExtensionAPI) {

@@ -1,4 +1,4 @@
-import type { ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 
 export type ThinkingLevel =
   | "off"

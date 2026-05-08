@@ -6,13 +6,13 @@ import {
   getAgentDir,
   getSettingsListTheme,
   type Theme,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import {
   Container,
   type SettingItem,
   SettingsList,
   Text,
-} from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-tui";
 import {
   CONTEXT_BAR_STYLES,
   DEFAULT_COMPACTION_SETTINGS,
