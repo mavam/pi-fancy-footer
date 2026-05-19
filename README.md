@@ -189,7 +189,8 @@ Each contributed widget defines:
 - `label` - display name in `/fancy-footer` (defaults to `id`)
 - `description` - help text in the config UI (defaults to `label`/`id`)
 - `row`, `order`, `align`, `grow`, and `minWidth` - optional default layout controls
-- `icon` - a single icon, per-family icon map, function, or `false`
+- `icon` - a single icon, per-family icon map, function, or `false`/omitted
+  to render without a leading icon
 - optional `textColor` and `styled`
 
 ## 🔣 Icon families
