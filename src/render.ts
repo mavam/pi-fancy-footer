@@ -37,7 +37,6 @@ import {
   getContextBarStyle,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
-  isFooterWidgetId,
   normalizeModel,
   resolveFancyFooterWidgetIcon,
   normalizePath,
@@ -691,7 +690,7 @@ function applyWidgetConfigOverrides(
     let icon = widget.icon;
     if (override.icon === "hide") {
       icon = undefined;
-    } else if (!icon && isFooterWidgetId(widget.id)) {
+    } else if (!icon) {
       icon = getDefaultWidgetIcon(widget.id, iconFamily);
     }
 

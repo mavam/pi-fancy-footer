@@ -36,6 +36,7 @@ test("default widget icons honor widgets without built-in footer icons", () => {
     color: "text",
   });
   assert.equal(getDefaultWidgetIcon("git-status", "emoji"), undefined);
+  assert.equal(getDefaultWidgetIcon("vendor.my-widget", "emoji"), undefined);
 });
 
 test("isFooterIconFamily accepts all valid families and rejects invalid ones", () => {

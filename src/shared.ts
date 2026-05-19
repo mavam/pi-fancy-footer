@@ -774,9 +774,10 @@ export function getWidgetSettingIcon(
 }
 
 export function getDefaultWidgetIcon(
-  widgetId: BuiltInFooterWidgetId,
+  widgetId: string,
   iconFamily: FooterIconFamily,
 ): FooterWidgetIcon | undefined {
+  if (!isFooterWidgetId(widgetId)) return undefined;
   const meta = FOOTER_WIDGET_META[widgetId];
   if (meta.hasFooterIcon === false) return undefined;
   return { text: getWidgetSettingIcon(widgetId, iconFamily), color: "text" };
