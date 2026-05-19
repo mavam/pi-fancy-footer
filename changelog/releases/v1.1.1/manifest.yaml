@@ -1,0 +1,9 @@
+created: 2026-05-19
+title: Current Pi compatibility and iconless widgets
+intro: >-
+  This release keeps pi-fancy-footer compatible with current Pi package scopes and
+  makes extension widget rendering more robust. Users can build against the latest
+  Pi packages and safely display widgets that intentionally omit icons.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.1.0
