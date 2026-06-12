@@ -9,10 +9,13 @@ import {
 } from "@earendil-works/pi-tui";
 import {
   createFooterConfigSections,
+  plainSettingValue,
   type FooterConfigSectionId,
 } from "./config.ts";
 import {
-  isContextBarStyleId,
+  isGaugeStyleId,
+  MIN_GAUGE_WIDTH,
+  MAX_GAUGE_WIDTH,
   isFooterIconFamily,
   isFooterWidgetColor,
   type NormalizedFancyFooterWidgetContribution,
@@ -87,15 +90,47 @@ export async function openFooterConfigEditor({
         case "iconFamily":
           if (isFooterIconFamily(newValue)) draft.iconFamily = newValue;
           break;
-        case "contextBarStyle":
-          if (isContextBarStyleId(newValue)) draft.contextBarStyle = newValue;
+        case "gaugeStyle": {
+          const style = plainSettingValue(newValue);
+          if (isGaugeStyleId(style)) draft.gaugeStyle = style;
           break;
-        case "defaultTextColor":
-          if (isFooterWidgetColor(newValue)) draft.defaultTextColor = newValue;
+        }
+        case "gaugeColorOk": {
+          const color = plainSettingValue(newValue);
+          if (isFooterWidgetColor(color)) draft.gaugeColors.ok = color;
           break;
-        case "defaultIconColor":
-          if (isFooterWidgetColor(newValue)) draft.defaultIconColor = newValue;
+        }
+        case "gaugeColorWarning": {
+          const color = plainSettingValue(newValue);
+          if (isFooterWidgetColor(color)) draft.gaugeColors.warning = color;
           break;
+        }
+        case "gaugeColorError": {
+          const color = plainSettingValue(newValue);
+          if (isFooterWidgetColor(color)) draft.gaugeColors.error = color;
+          break;
+        }
+        case "gaugeWidth": {
+          const parsed = Number(newValue);
+          if (
+            Number.isInteger(parsed) &&
+            parsed >= MIN_GAUGE_WIDTH &&
+            parsed <= MAX_GAUGE_WIDTH
+          ) {
+            draft.gaugeWidth = parsed;
+          }
+          break;
+        }
+        case "defaultTextColor": {
+          const color = plainSettingValue(newValue);
+          if (isFooterWidgetColor(color)) draft.defaultTextColor = color;
+          break;
+        }
+        case "defaultIconColor": {
+          const color = plainSettingValue(newValue);
+          if (isFooterWidgetColor(color)) draft.defaultIconColor = color;
+          break;
+        }
       }
     };
 
