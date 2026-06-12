@@ -1,0 +1,10 @@
+created: 2026-06-12
+title: Unified quota and context gauges
+intro: >-
+  The footer now presents context usage and provider quota windows as compact gauges,
+  making resource pressure easier to scan at a glance. This release also simplifies
+  gauge configuration, removes the separate context usage widget, and improves validation
+  errors for renamed or mistyped settings.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.1.1
