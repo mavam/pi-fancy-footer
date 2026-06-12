@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   FOOTER_ICON_FAMILIES,
   FOOTER_WIDGET_IDS,
   closeOpenTerminalHyperlinks,
   formatTerminalHyperlink,
-  getContextBarSegments,
+  buildGauge,
+  getGaugeStyle,
   getDefaultWidgetIcon,
   getThinkingLevelFromEntries,
   getWidgetSettingIcon,
@@ -69,17 +69,30 @@ test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.deepEqual(DEFAULT_FOOTER_CONFIG.extensionWidgets, {});
 });
 
-test("getContextBarSegments does not cap wide bars", () => {
-  const segments = getContextBarSegments(
-    280,
-    272_000,
-    0,
-    DEFAULT_COMPACTION_SETTINGS,
-  );
+test("buildGauge fills cells with the remaining share", () => {
+  const style = getGaugeStyle("parallelograms");
 
-  assert.equal(segments.cells, 280);
-  assert.equal(segments.safeCells, 263);
-  assert.equal(segments.usedCells, 0);
+  assert.deepEqual(buildGauge(80, style, 5), {
+    filledGlyphs: "▰▰▰▰",
+    emptyGlyphs: "▱",
+    percentText: "80%",
+    color: "success",
+  });
+  assert.deepEqual(buildGauge(10, style, 5), {
+    filledGlyphs: "▰",
+    emptyGlyphs: "▱▱▱▱",
+    percentText: "10%",
+    color: "error",
+  });
+});
+
+test("buildGauge keeps at least one cell visible near the edges", () => {
+  const style = getGaugeStyle("parallelograms");
+
+  assert.equal(buildGauge(1, style, 5).filledGlyphs, "▰");
+  assert.equal(buildGauge(99, style, 5).emptyGlyphs, "▱");
+  assert.equal(buildGauge(0, style, 5).filledGlyphs, "");
+  assert.equal(buildGauge(100, style, 5).emptyGlyphs, "");
 });
 
 test("resolveFancyFooterWidgetIcon resolves icon strings and family maps", () => {
@@ -154,15 +167,15 @@ test("widgetSummary returns 'default' when no override exists", () => {
 });
 
 test("widgetSummary returns 'default' when override matches built-in defaults", () => {
-  // context-bar defaults: row 0, position 0, align middle, fill grow
+  // context-bar defaults: row 0, position 0, align left, fill none
   const config = withWidgets({
-    "context-bar": { row: 0, position: 0, align: "middle", fill: "grow" },
+    "context-bar": { row: 0, position: 0, align: "left", fill: "none" },
   });
   assert.equal(widgetSummary(config, "context-bar"), "default");
 });
 
 test("widgetSummary shows only deltas from defaults", () => {
-  // context-bar default: row 0, position 0, middle, grow
+  // context-bar default: row 0, position 0, left, none
   // Only icon hidden is a real change.
   assert.equal(
     widgetSummary(
@@ -179,13 +192,13 @@ test("widgetSummary shows only deltas from defaults", () => {
         "context-bar": {
           row: 1,
           position: 3,
-          align: "left",
+          align: "middle",
           icon: "hide",
         },
       }),
       "context-bar",
     ),
-    "row:1 pos:3 align:left icon:hidden",
+    "row:1 pos:3 align:middle icon:hidden",
   );
 });
 
@@ -259,21 +272,21 @@ test("widgetSummary shows icon color overrides for the PR CI status widget", () 
 });
 
 test("widgetSummary shows fill only when it differs from the widget default", () => {
-  // context-bar defaults to fill:grow, so fill:grow is not a delta.
-  assert.equal(
-    widgetSummary(
-      withWidgets({ "context-bar": { fill: "grow" } }),
-      "context-bar",
-    ),
-    "default",
-  );
-  // fill:none on context-bar IS a delta.
+  // context-bar defaults to fill:none, so fill:none is not a delta.
   assert.equal(
     widgetSummary(
       withWidgets({ "context-bar": { fill: "none" } }),
       "context-bar",
     ),
-    "fill:none",
+    "default",
+  );
+  // fill:grow on context-bar IS a delta.
+  assert.equal(
+    widgetSummary(
+      withWidgets({ "context-bar": { fill: "grow" } }),
+      "context-bar",
+    ),
+    "fill:grow",
   );
   // model defaults to fill:none, so fill:grow IS a delta.
   assert.equal(
@@ -290,4 +303,22 @@ test("widgetSummary shows minWidth override", () => {
     ),
     "width:12",
   );
+});
+
+test("buildGauge used mode fills with consumption", () => {
+  const style = getGaugeStyle("parallelograms");
+
+  assert.deepEqual(buildGauge(80, style, 5, "used"), {
+    filledGlyphs: "▰",
+    emptyGlyphs: "▱▱▱▱",
+    percentText: "20%",
+    color: "success",
+  });
+  assert.deepEqual(buildGauge(10, style, 5, "used"), {
+    filledGlyphs: "▰▰▰▰",
+    emptyGlyphs: "▱",
+    percentText: "90%",
+    color: "error",
+  });
+  assert.equal(buildGauge(100, style, 5, "used").filledGlyphs, "");
 });

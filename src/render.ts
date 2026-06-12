@@ -11,7 +11,6 @@ import {
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
   type BuiltInFooterWidgetId,
-  type CompactionSettingsSnapshot,
   type FancyFooterWidgetResult,
   type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
@@ -24,18 +23,21 @@ import {
   type GitInfo,
   type PreparedWidget,
   type PreparedWidgetGroup,
+  type ProviderStatusConfigSnapshot,
   type ProviderStatusSnapshot,
   type SessionUsageMetrics,
   type WidgetRenderContext,
-  type ContextBarStyleDef,
-  type ContextBarStyleId,
+  type GaugeColorsSnapshot,
+  type GaugeFillMode,
+  type GaugeStyleDef,
+  buildGauge,
+  gaugeColorFor,
   clampInt,
   closeOpenTerminalHyperlinks,
   formatThinkingLevel,
   formatTerminalHyperlink,
-  getContextBarSegments,
   getThinkingLevelFromEntries,
-  getContextBarStyle,
+  getGaugeStyle,
   getDefaultWidgetIcon,
   getStatuslineSymbols,
   normalizeModel,
@@ -44,10 +46,63 @@ import {
   toNumber,
 } from "./shared.ts";
 import {
-  CODEX_USAGE_URL,
+  buildProviderStatusGauge,
+  formatProviderStatusReset,
   formatProviderStatusText,
   providerStatusColor,
 } from "./provider-status.ts";
+
+function buildProviderStatusPart(
+  snapshot: ProviderStatusSnapshot,
+  config: Pick<
+    ProviderStatusConfigSnapshot,
+    "display" | "showCredits" | "showReset"
+  >,
+  barStyle: GaugeStyleDef,
+  gaugeWidth: number,
+  gaugeColors: GaugeColorsSnapshot,
+  theme: Theme,
+  defaultTextColor: WidgetRenderContext["defaultTextColor"],
+): string {
+  const text = formatProviderStatusText(snapshot, config);
+  if (!text) return "";
+
+  const gauge =
+    config.display === "gauge"
+      ? buildProviderStatusGauge(snapshot, barStyle, gaugeWidth)
+      : [];
+  let body: string;
+  if (gauge.length > 0) {
+    const pieces = gauge.map(
+      (segment) =>
+        theme.fg(defaultTextColor, `${segment.label} `) +
+        theme.fg(gaugeColorFor(segment.color, gaugeColors), segment.filledGlyphs) +
+        theme.fg("dim", segment.emptyGlyphs) +
+        theme.fg(defaultTextColor, ` ${segment.percentText}`),
+    );
+    const extras: string[] = [];
+    if (config.showReset && snapshot.primary?.resetAt) {
+      const reset = formatProviderStatusReset(snapshot.primary.resetAt);
+      if (reset) extras.push(`reset:${reset}`);
+    }
+    if (config.showCredits && snapshot.credits) {
+      extras.push(`cr:${snapshot.credits}`);
+    }
+    body =
+      pieces.join(" ") +
+      (extras.length > 0
+        ? theme.fg(defaultTextColor, ` ${extras.join(" ")}`)
+        : "");
+  } else {
+    const color = providerStatusColor(snapshot);
+    body = theme.fg(
+      color === "dim" ? defaultTextColor : gaugeColorFor(color, gaugeColors),
+      text,
+    );
+  }
+
+  return body;
+}
 
 function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
   let latest: SessionUsageMetrics["latest"];
@@ -78,37 +133,27 @@ export function collectSessionUsageMetrics(
   return getUsageData(ctx.sessionManager.getBranch());
 }
 
-function buildBricks(
+function contextLeftPercent(totalTokens: number, usedTokens: number): number {
+  const total = Math.max(1, Math.floor(totalTokens));
+  const used = Math.max(0, Math.min(total, Math.floor(usedTokens)));
+  return ((total - used) / total) * 100;
+}
+
+function renderGauge(
+  leftPercent: number,
+  style: GaugeStyleDef,
   cells: number,
-  totalTokens: number,
-  usedTokens: number,
-  settings: CompactionSettingsSnapshot,
+  mode: GaugeFillMode,
+  colors: GaugeColorsSnapshot,
   theme: Theme,
-  usedColor: FooterConfigSnapshot["defaultIconColor"],
-  barStyle: ContextBarStyleDef,
+  textColor: WidgetRenderContext["defaultTextColor"],
 ): string {
-  const {
-    cells: n,
-    usedCells,
-    safeCells,
-  } = getContextBarSegments(cells, totalTokens, usedTokens, settings);
-  if (n === 0) return "";
-
-  let out = "";
-
-  for (let i = 0; i < usedCells; i++) {
-    out += theme.fg(usedColor, barStyle.used);
-  }
-
-  for (let i = usedCells; i < safeCells; i++) {
-    out += theme.fg("dim", barStyle.free);
-  }
-
-  for (let i = Math.max(usedCells, safeCells); i < n; i++) {
-    out += theme.fg("dim", barStyle.reserved);
-  }
-
-  return out;
+  const gauge = buildGauge(leftPercent, style, cells, mode);
+  return (
+    theme.fg(gaugeColorFor(gauge.color, colors), gauge.filledGlyphs) +
+    theme.fg("dim", gauge.emptyGlyphs) +
+    theme.fg(textColor, ` ${gauge.percentText}`)
+  );
 }
 
 function buildGitStatus(
@@ -476,7 +521,6 @@ function computeFooterMetrics(
     ),
   );
 
-  const usedK = Math.floor(usedTokensForBar / 1000);
   const totalK = Math.max(1, Math.floor(totalTokens / 1000));
 
   return {
@@ -484,7 +528,6 @@ function computeFooterMetrics(
     thinking,
     totalTokens,
     usedTokensForBar,
-    usedK,
     totalK,
     totalCost,
     locationText: git.repository || normalizePath(ctx.cwd),
@@ -526,7 +569,7 @@ function baseWidgetDefaults(
 
 function buildFooterWidgets(
   iconFamily: FooterIconFamily,
-  barStyle: ContextBarStyleDef,
+  barStyle: GaugeStyleDef,
 ): FooterWidget[] {
   return [
     {
@@ -544,26 +587,23 @@ function buildFooterWidgets(
     },
     {
       ...baseWidgetDefaults("context-bar", iconFamily),
-      minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
-      renderText: (
-        { metrics, compactionSettings, theme, defaultIconColor },
-        availableWidth = 0,
-      ) =>
-        buildBricks(
-          Math.max(0, Math.floor(availableWidth)),
-          metrics.totalTokens,
-          metrics.usedTokensForBar,
-          compactionSettings,
-          theme,
-          defaultIconColor,
+      renderText: ({
+        metrics,
+        theme,
+        gaugeWidth,
+        gaugeColors,
+        defaultTextColor,
+      }) =>
+        renderGauge(
+          contextLeftPercent(metrics.totalTokens, metrics.usedTokensForBar),
           barStyle,
+          gaugeWidth,
+          "used",
+          gaugeColors,
+          theme,
+          defaultTextColor,
         ),
-    },
-    {
-      ...baseWidgetDefaults("context-usage", iconFamily),
-      visible: ({ width }) => width >= 40,
-      renderText: ({ metrics }) => `${metrics.usedK}k`,
     },
     {
       ...baseWidgetDefaults("total-cost", iconFamily),
@@ -623,24 +663,33 @@ function buildFooterWidgets(
     {
       ...baseWidgetDefaults("provider-status", iconFamily),
       styled: true,
-      visible: ({ providerStatus, providerStatusConfig }) =>
-        formatProviderStatusText(providerStatus, providerStatusConfig) !== "",
+      visible: ({ providerStatuses, providerStatusConfig }) =>
+        providerStatuses.some(
+          (snapshot) =>
+            formatProviderStatusText(snapshot, providerStatusConfig) !== "",
+        ),
       renderText: ({
-        providerStatus,
+        providerStatuses,
         providerStatusConfig,
         theme,
+        gaugeWidth,
+        gaugeColors,
         defaultTextColor,
       }) => {
-        const text = formatProviderStatusText(
-          providerStatus,
-          providerStatusConfig,
-        );
-        if (!text) return "";
-        const color = providerStatusColor(providerStatus);
-        return formatTerminalHyperlink(
-          providerStatus?.url ?? CODEX_USAGE_URL,
-          theme.fg(color === "dim" ? defaultTextColor : color, text),
-        );
+        const parts: string[] = [];
+        for (const snapshot of providerStatuses) {
+          const part = buildProviderStatusPart(
+            snapshot,
+            providerStatusConfig,
+            barStyle,
+            gaugeWidth,
+            gaugeColors,
+            theme,
+            defaultTextColor,
+          );
+          if (part) parts.push(part);
+        }
+        return parts.join(" ");
       },
     },
     {
@@ -855,10 +904,9 @@ export function renderFooterLines(
   fallbackThinkingLevel: string,
   theme: Theme,
   usageMetrics: SessionUsageMetrics,
-  compactionSettings: CompactionSettingsSnapshot,
   footerConfig: FooterConfigSnapshot,
   extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[] = [],
-  providerStatus?: ProviderStatusSnapshot,
+  providerStatuses: readonly ProviderStatusSnapshot[] = [],
 ): string[] {
   if (width <= 0) return ["", ""];
 
@@ -873,15 +921,16 @@ export function renderFooterLines(
     width,
     theme,
     ctx,
-    compactionSettings,
+    gaugeWidth: footerConfig.gaugeWidth,
+    gaugeColors: footerConfig.gaugeColors,
     metrics,
-    providerStatus,
+    providerStatuses,
     providerStatusConfig: footerConfig.providerStatus,
     defaultIconColor: footerConfig.defaultIconColor,
     defaultTextColor: footerConfig.defaultTextColor,
   };
 
-  const barStyle = getContextBarStyle(footerConfig.contextBarStyle);
+  const barStyle = getGaugeStyle(footerConfig.gaugeStyle);
   const widgets = applyWidgetConfigOverrides(
     [
       ...buildFooterWidgets(footerConfig.iconFamily, barStyle),

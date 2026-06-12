@@ -5,7 +5,6 @@ import {
 import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import {
-  DEFAULT_COMPACTION_SETTINGS,
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
   FOOTER_WIDGET_COLORS,
@@ -19,7 +18,6 @@ import {
   clampInt,
   isFooterWidgetColor,
   isFooterWidgetId,
-  type CompactionSettingsSnapshot,
   type FancyFooterWidgetContribution,
   type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
@@ -28,9 +26,7 @@ import {
 } from "./shared.ts";
 import {
   cloneFooterConfig,
-  coerceCompactionSettings,
   getFooterConfigPath,
-  loadCompactionSettings,
   loadFooterConfig,
   writeFooterConfigSnapshot,
 } from "./config.ts";
@@ -54,6 +50,7 @@ import {
 interface ActiveFooterControls {
   requestRender: () => void;
   reschedule: () => void;
+  rescheduleProviderStatus: () => void;
   updateProviderStatus: (status: ProviderStatusSnapshot) => void;
 }
 
@@ -99,13 +96,12 @@ const extensionWidgetMetadataSchema = Type.Object(
 const validateExtensionWidgetMetadata = Compile(extensionWidgetMetadataSchema);
 
 export default function (pi: ExtensionAPI) {
-  let compactionSettings: CompactionSettingsSnapshot = {
-    ...DEFAULT_COMPACTION_SETTINGS,
-  };
   let footerConfig: FooterConfigSnapshot = {
     refreshMs: DEFAULT_FOOTER_CONFIG.refreshMs,
     iconFamily: DEFAULT_FOOTER_CONFIG.iconFamily,
-    contextBarStyle: DEFAULT_FOOTER_CONFIG.contextBarStyle,
+    gaugeStyle: DEFAULT_FOOTER_CONFIG.gaugeStyle,
+    gaugeWidth: DEFAULT_FOOTER_CONFIG.gaugeWidth,
+    gaugeColors: { ...DEFAULT_FOOTER_CONFIG.gaugeColors },
     defaultTextColor: DEFAULT_FOOTER_CONFIG.defaultTextColor,
     defaultIconColor: DEFAULT_FOOTER_CONFIG.defaultIconColor,
     providerStatus: { ...DEFAULT_FOOTER_CONFIG.providerStatus },
@@ -151,7 +147,10 @@ export default function (pi: ExtensionAPI) {
       const errors = Array.from(
         validateExtensionWidgetMetadata.Errors(metadata),
       )
-        .map((error) => `${error.path || "/"}: ${error.message}`)
+        .map(
+          (error) =>
+            `${(error as { instancePath?: string }).instancePath || "/"}: ${error.message}`,
+        )
         .join(", ");
       console.warn(
         `Ignoring fancy-footer widget '${String(widget.id ?? "<unknown>")}' with invalid metadata: ${errors}`,
@@ -228,14 +227,13 @@ export default function (pi: ExtensionAPI) {
   const installFooter = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
 
-    compactionSettings = loadCompactionSettings(ctx.cwd);
     footerConfig = loadFooterConfig();
 
     ctx.ui.setFooter((tui, theme, footerData) => {
       const instanceId = ++footerInstanceId;
       const fallbackThinkingLevel = pi.getThinkingLevel();
       let currentGit = { ...EMPTY_GIT_INFO };
-      let providerStatus: ProviderStatusSnapshot | undefined;
+      let providerStatuses = new Map<string, ProviderStatusSnapshot>();
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
       let refreshQueued = false;
@@ -246,6 +244,7 @@ export default function (pi: ExtensionAPI) {
       let providerStatusRefreshAt = 0;
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+      let providerStatusTimer: ReturnType<typeof setTimeout> | undefined;
 
       const isActiveFooter = () => !disposed && instanceId === footerInstanceId;
 
@@ -300,7 +299,9 @@ export default function (pi: ExtensionAPI) {
               footerConfig.providerStatus,
             );
             if (!isActiveFooter()) return;
-            providerStatus = next;
+            providerStatuses = new Map(
+              next.map((snapshot) => [snapshot.provider, snapshot]),
+            );
             requestRender();
           } while (isActiveFooter() && providerStatusRefreshQueued);
         } finally {
@@ -380,7 +381,6 @@ export default function (pi: ExtensionAPI) {
             refreshQueued = false;
             if (!isActiveFooter()) continue;
 
-            compactionSettings = loadCompactionSettings(ctx.cwd);
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
@@ -389,7 +389,6 @@ export default function (pi: ExtensionAPI) {
             currentGit = git;
             requestRender();
             void refreshPullRequest();
-            void refreshProviderStatus();
           } while (isActiveFooter() && refreshQueued);
         } finally {
           refreshing = false;
@@ -413,6 +412,23 @@ export default function (pi: ExtensionAPI) {
         }, refreshMs);
       };
 
+      const scheduleProviderStatusRefresh = () => {
+        if (!isActiveFooter()) return;
+        if (providerStatusTimer) clearTimeout(providerStatusTimer);
+
+        const refreshMs = clampInt(
+          footerConfig.providerStatus.refreshMs,
+          MIN_PROVIDER_STATUS_REFRESH_MS,
+          MAX_PROVIDER_STATUS_REFRESH_MS,
+        );
+        providerStatusTimer = setTimeout(() => {
+          if (!isActiveFooter()) return;
+          void refreshProviderStatus().finally(() => {
+            scheduleProviderStatusRefresh();
+          });
+        }, refreshMs);
+      };
+
       const onBranchChange = footerData.onBranchChange(() => {
         if (!isActiveFooter()) return;
         usageMetrics = collectSessionUsageMetrics(ctx);
@@ -423,9 +439,10 @@ export default function (pi: ExtensionAPI) {
       activeFooterControls = {
         requestRender,
         reschedule: scheduleRefresh,
+        rescheduleProviderStatus: scheduleProviderStatusRefresh,
         updateProviderStatus: (status) => {
           if (!isActiveFooter()) return;
-          providerStatus = status;
+          providerStatuses.set(status.provider, status);
           requestRender();
         },
       };
@@ -433,6 +450,7 @@ export default function (pi: ExtensionAPI) {
       void refreshGit();
       void refreshProviderStatus(true);
       scheduleRefresh();
+      scheduleProviderStatusRefresh();
 
       return {
         invalidate() {},
@@ -440,6 +458,7 @@ export default function (pi: ExtensionAPI) {
           disposed = true;
           onBranchChange();
           if (refreshTimer) clearTimeout(refreshTimer);
+          if (providerStatusTimer) clearTimeout(providerStatusTimer);
           if (activeFooterControls?.requestRender === requestRender) {
             activeFooterControls = undefined;
           }
@@ -454,10 +473,11 @@ export default function (pi: ExtensionAPI) {
             fallbackThinkingLevel,
             theme,
             usageMetrics,
-            compactionSettings,
             footerConfig,
             extensionWidgets,
-            providerStatus,
+            Array.from(providerStatuses.values()).sort((a, b) =>
+              a.provider.localeCompare(b.provider),
+            ),
           );
         },
       };
@@ -480,6 +500,7 @@ export default function (pi: ExtensionAPI) {
           writeFooterConfigSnapshot(draft);
           footerConfig = loadFooterConfig();
           activeFooterControls?.reschedule();
+          activeFooterControls?.rescheduleProviderStatus();
           activeFooterControls?.requestRender();
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
@@ -506,17 +527,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("after_provider_response", async (event) => {
-    const next = await updateProviderStatusFromHeaders(event.headers ?? {});
-    if (!next) return;
-    activeFooterControls?.updateProviderStatus(next);
-  });
+    if (footerConfig.widgets["provider-status"]?.enabled === false) return;
 
-  pi.on("session_before_compact", async (event) => {
-    compactionSettings = coerceCompactionSettings(
-      event.preparation.settings,
-      compactionSettings,
+    const updated = await updateProviderStatusFromHeaders(
+      event.headers ?? {},
+      footerConfig.providerStatus,
     );
-    activeFooterControls?.requestRender();
+    for (const snapshot of updated) {
+      activeFooterControls?.updateProviderStatus(snapshot);
+    }
   });
 
   pi.on("session_shutdown", async () => {

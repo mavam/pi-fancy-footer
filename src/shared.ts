@@ -30,12 +30,8 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiFailed: "",
     pullRequestCiOkay: "",
     providerStatus: "󰓅",
-    contextUsed: "━",
-    contextFree: "─",
-    contextReserved: "┄",
     contextBarMarker: "󰾆",
     contextCapacityMarker: "",
-    contextUsageMarker: "",
     gitAhead: "",
     gitBehind: "",
     gitDiverged: "",
@@ -55,12 +51,8 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiFailed: "❌",
     pullRequestCiOkay: "✅",
     providerStatus: "📊",
-    contextUsed: "■",
-    contextFree: "□",
-    contextReserved: "▣",
     contextBarMarker: "🔋",
     contextCapacityMarker: "💾",
-    contextUsageMarker: "📈",
     gitAhead: "🔼",
     gitBehind: "🔽",
     gitDiverged: "🔀",
@@ -80,12 +72,8 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiFailed: "✕",
     pullRequestCiOkay: "✓",
     providerStatus: "%",
-    contextUsed: "■",
-    contextFree: "□",
-    contextReserved: "▣",
     contextBarMarker: "◧",
     contextCapacityMarker: "□",
-    contextUsageMarker: "■",
     gitAhead: "↑",
     gitBehind: "↓",
     gitDiverged: "↕",
@@ -105,12 +93,8 @@ export const STATUSLINE_SYMBOLS = {
     pullRequestCiFailed: "x",
     pullRequestCiOkay: "+",
     providerStatus: "%",
-    contextUsed: "#",
-    contextFree: "-",
-    contextReserved: ":",
     contextBarMarker: "|",
     contextCapacityMarker: "[]",
-    contextUsageMarker: "~",
     gitAhead: "^",
     gitBehind: "_",
     gitDiverged: "<>",
@@ -122,87 +106,88 @@ export const STATUSLINE_SYMBOLS = {
 
 export type StatuslineSymbols = (typeof STATUSLINE_SYMBOLS)[FooterIconFamily];
 
-// ── Context bar styles ─────────────────────────────────────────────────
+// ── Gauge styles ───────────────────────────────────────────────────────
 
-export interface ContextBarStyleDef {
+export interface GaugeStyleDef {
   readonly label: string;
-  readonly used: string;
-  readonly free: string;
-  readonly reserved: string;
+  readonly filled: string;
+  readonly empty: string;
 }
 
-export const CONTEXT_BAR_STYLES = [
-  { label: "blocks", used: "■", free: "□", reserved: "▨" },
-  { label: "lines", used: "━", free: "─", reserved: "┄" },
-  { label: "circles", used: "●", free: "○", reserved: "◎" },
-  { label: "parallelograms", used: "▰", free: "▱", reserved: "▰" },
-  { label: "diamonds", used: "◆", free: "◇", reserved: "❖" },
-  { label: "bars", used: "█", free: "░", reserved: "▒" },
-  { label: "stars", used: "★", free: "☆", reserved: "✭" },
-  { label: "specks", used: "•", free: "◦", reserved: "•" },
-] as const satisfies readonly ContextBarStyleDef[];
+export const GAUGE_STYLES = [
+  { label: "blocks", filled: "■", empty: "□" },
+  { label: "lines", filled: "━", empty: "─" },
+  { label: "circles", filled: "●", empty: "○" },
+  { label: "parallelograms", filled: "▰", empty: "▱" },
+  { label: "diamonds", filled: "◆", empty: "◇" },
+  { label: "bars", filled: "█", empty: "░" },
+  { label: "stars", filled: "★", empty: "☆" },
+  { label: "specks", filled: "•", empty: "◦" },
+] as const satisfies readonly GaugeStyleDef[];
 
-export type ContextBarStyleId = (typeof CONTEXT_BAR_STYLES)[number]["label"];
+export type GaugeStyleId = (typeof GAUGE_STYLES)[number]["label"];
 
-export const CONTEXT_BAR_STYLE_IDS = CONTEXT_BAR_STYLES.map(
+export const GAUGE_STYLE_IDS = GAUGE_STYLES.map(
   (s) => s.label,
-) as readonly ContextBarStyleId[];
+) as readonly GaugeStyleId[];
 
-export const DEFAULT_CONTEXT_BAR_STYLE: ContextBarStyleId = "blocks";
+export const DEFAULT_GAUGE_STYLE: GaugeStyleId = "blocks";
 
-export function isContextBarStyleId(
-  value: unknown,
-): value is ContextBarStyleId {
+export function isGaugeStyleId(value: unknown): value is GaugeStyleId {
   return (
     typeof value === "string" &&
-    (CONTEXT_BAR_STYLE_IDS as readonly string[]).includes(value)
+    (GAUGE_STYLE_IDS as readonly string[]).includes(value)
   );
 }
 
-export function getContextBarStyle(id: ContextBarStyleId): ContextBarStyleDef {
-  return (
-    CONTEXT_BAR_STYLES.find((s) => s.label === id) ?? CONTEXT_BAR_STYLES[0]
-  );
+export function getGaugeStyle(id: GaugeStyleId): GaugeStyleDef {
+  return GAUGE_STYLES.find((s) => s.label === id) ?? GAUGE_STYLES[0];
 }
 
-export interface ContextBarSegments {
-  cells: number;
-  usedCells: number;
-  safeCells: number;
+export type GaugeSeverity = "success" | "warning" | "error";
+
+export interface GaugeSegment {
+  filledGlyphs: string;
+  emptyGlyphs: string;
+  percentText: string;
+  color: GaugeSeverity;
 }
 
-export function getContextBarSegments(
+export function gaugeSeverity(leftPercent: number): GaugeSeverity {
+  if (leftPercent < 25) return "error";
+  if (leftPercent < 60) return "warning";
+  return "success";
+}
+
+export type GaugeFillMode = "remaining" | "used";
+
+// Mini gauge over a resource with `leftPercent` remaining. In "remaining"
+// mode (battery style) filled cells and the percent label show what is
+// left; in "used" mode they show consumption growing from the left.
+// Either way the color reflects how close the resource is to exhaustion,
+// and the gauge never reads completely full or empty unless it truly is.
+export function buildGauge(
+  leftPercent: number,
+  style: GaugeStyleDef,
   cells: number,
-  totalTokens: number,
-  usedTokens: number,
-  settings: CompactionSettingsSnapshot,
-): ContextBarSegments {
-  const n = Math.max(0, Math.floor(cells));
-  if (n === 0) return { cells: 0, usedCells: 0, safeCells: 0 };
+  mode: GaugeFillMode = "remaining",
+): GaugeSegment {
+  const left = Math.max(0, Math.min(100, leftPercent));
+  const shown = mode === "remaining" ? left : 100 - left;
+  const n = Math.max(1, Math.floor(cells));
+  let filledCells = Math.round((shown / 100) * n);
+  if (shown > 0 && filledCells === 0) filledCells = 1;
+  if (shown < 100 && filledCells === n) filledCells = n - 1;
+  return {
+    filledGlyphs: style.filled.repeat(filledCells),
+    emptyGlyphs: style.empty.repeat(n - filledCells),
+    percentText: formatGaugePercent(shown),
+    color: gaugeSeverity(left),
+  };
+}
 
-  const total = Math.max(1, Math.floor(totalTokens));
-  const clampedUsedTokens = Math.max(
-    0,
-    Math.min(total, Math.floor(usedTokens)),
-  );
-
-  const reserveTokens = settings.enabled
-    ? Math.max(0, Math.floor(settings.reserveTokens))
-    : 0;
-  const safeTokens = Math.max(0, Math.min(total, total - reserveTokens));
-
-  let safeCells = Math.floor((safeTokens * n) / total);
-  safeCells = Math.max(0, Math.min(n, safeCells));
-
-  if (settings.enabled && reserveTokens > 0 && n > 1 && safeCells >= n) {
-    safeCells = n - 1;
-  }
-
-  let usedCells = Math.floor((clampedUsedTokens * n) / total);
-  if (clampedUsedTokens > 0 && usedCells === 0) usedCells = 1;
-  usedCells = Math.max(0, Math.min(n, usedCells));
-
-  return { cells: n, usedCells, safeCells };
+export function formatGaugePercent(value: number): string {
+  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
 }
 
 export const GIT_REFRESH_MS = 5000;
@@ -218,17 +203,28 @@ export const MAX_PROVIDER_STATUS_REFRESH_MS = 3_600_000;
 export const MIN_PROVIDER_STATUS_CACHE_TTL_MS = 0;
 export const MAX_PROVIDER_STATUS_CACHE_TTL_MS = 3_600_000;
 
-export interface CompactionSettingsSnapshot {
-  enabled: boolean;
-  reserveTokens: number;
-  keepRecentTokens: number;
+export const MIN_GAUGE_WIDTH = 3;
+export const MAX_GAUGE_WIDTH = 40;
+export const DEFAULT_GAUGE_WIDTH = 5;
+
+export interface GaugeColorsSnapshot {
+  ok: FooterWidgetColor;
+  warning: FooterWidgetColor;
+  error: FooterWidgetColor;
 }
 
-export const DEFAULT_COMPACTION_SETTINGS: CompactionSettingsSnapshot = {
-  enabled: true,
-  reserveTokens: 16_384,
-  keepRecentTokens: 20_000,
+export const DEFAULT_GAUGE_COLORS: GaugeColorsSnapshot = {
+  ok: "accent",
+  warning: "warning",
+  error: "error",
 };
+
+export function gaugeColorFor(
+  severity: GaugeSeverity,
+  colors: GaugeColorsSnapshot,
+): FooterWidgetColor {
+  return severity === "success" ? colors.ok : colors[severity];
+}
 
 export interface UsageSnapshot {
   input: number;
@@ -253,6 +249,7 @@ export interface GitCounts {
 export type PullRequestCiState = "running" | "failed" | "okay";
 
 export interface ProviderStatusWindow {
+  label: string;
   leftPercent: number;
   usedPercent: number;
   resetAt?: number;
@@ -261,7 +258,7 @@ export interface ProviderStatusWindow {
 export type ProviderStatusState = "ok" | "warning" | "error" | "unavailable";
 
 export interface ProviderStatusSnapshot {
-  provider: "openai-codex";
+  provider: string;
   source: "api" | "headers" | "cache";
   fetchedAt: string;
   state: ProviderStatusState;
@@ -333,7 +330,6 @@ export const FOOTER_WIDGET_IDS = [
   "thinking",
   "context-capacity",
   "context-bar",
-  "context-usage",
   "total-cost",
   "location",
   "branch",
@@ -362,6 +358,7 @@ export const FOOTER_POSITION_OPTIONS = [
 export const FOOTER_MIN_WIDTH_OPTIONS = [
   0, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32,
 ] as const;
+export const GAUGE_WIDTH_OPTIONS = [3, 4, 5, 6, 8, 10, 12, 16, 20] as const;
 
 export type FooterWidgetState = "default" | "enabled" | "disabled";
 export type FooterWidgetIconMode = "default" | "hide";
@@ -381,7 +378,6 @@ export interface FooterMetrics {
   thinking: string;
   totalTokens: number;
   usedTokensForBar: number;
-  usedK: number;
   totalK: number;
   totalCost: number;
   locationText: string;
@@ -402,12 +398,13 @@ export interface WidgetRenderContext {
   width: number;
   theme: Theme;
   ctx: ExtensionContext;
-  compactionSettings: CompactionSettingsSnapshot;
+  gaugeWidth: number;
+  gaugeColors: GaugeColorsSnapshot;
   metrics: FooterMetrics;
-  providerStatus?: ProviderStatusSnapshot;
+  providerStatuses: readonly ProviderStatusSnapshot[];
   providerStatusConfig: Pick<
     ProviderStatusConfigSnapshot,
-    "showCredits" | "showReset"
+    "display" | "showCredits" | "showReset"
   >;
   defaultIconColor: FooterWidgetColor;
   defaultTextColor: FooterWidgetColor;
@@ -456,7 +453,9 @@ export interface FooterWidgetConfigOverride {
 export interface FooterConfigSnapshot {
   refreshMs: number;
   iconFamily: FooterIconFamily;
-  contextBarStyle: ContextBarStyleId;
+  gaugeStyle: GaugeStyleId;
+  gaugeWidth: number;
+  gaugeColors: GaugeColorsSnapshot;
   defaultTextColor: FooterWidgetColor;
   defaultIconColor: FooterWidgetColor;
   providerStatus: ProviderStatusConfigSnapshot;
@@ -464,10 +463,20 @@ export interface FooterConfigSnapshot {
   extensionWidgets: Record<string, FooterWidgetConfigOverride>;
 }
 
+export const PROVIDER_STATUS_PROVIDER_IDS = ["openai-codex"] as const;
+
+export type ProviderStatusProviderId =
+  (typeof PROVIDER_STATUS_PROVIDER_IDS)[number];
+
+export const PROVIDER_STATUS_DISPLAYS = ["gauge", "text"] as const;
+
+export type ProviderStatusDisplay = (typeof PROVIDER_STATUS_DISPLAYS)[number];
+
 export interface ProviderStatusConfigSnapshot {
   refreshMs: number;
   cacheTtlMs: number;
-  providers: readonly "openai-codex"[];
+  providers: readonly string[];
+  display: ProviderStatusDisplay;
   showCredits: boolean;
   showReset: boolean;
 }
@@ -476,6 +485,7 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   refreshMs: 60_000,
   cacheTtlMs: 60_000,
   providers: ["openai-codex"],
+  display: "gauge",
   showCredits: false,
   showReset: false,
 };
@@ -483,7 +493,9 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {
   refreshMs: GIT_REFRESH_MS,
   iconFamily: "nerd",
-  contextBarStyle: DEFAULT_CONTEXT_BAR_STYLE,
+  gaugeStyle: DEFAULT_GAUGE_STYLE,
+  gaugeWidth: DEFAULT_GAUGE_WIDTH,
+  gaugeColors: DEFAULT_GAUGE_COLORS,
   defaultTextColor: "dim",
   defaultIconColor: "text",
   providerStatus: DEFAULT_PROVIDER_STATUS_CONFIG,
@@ -567,19 +579,14 @@ export const FOOTER_WIDGET_META: Record<
     symbolKey: "thinking",
   },
   "context-capacity": {
-    defaults: { row: 0, position: 2, align: "left", fill: "none" },
+    defaults: { row: 0, position: 0, align: "right", fill: "none" },
     description: "Shows the total context window in thousands of tokens.",
     symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
-    defaults: { row: 0, position: 0, align: "middle", fill: "grow" },
-    description: "Shows a bar for current context usage.",
+    defaults: { row: 0, position: 0, align: "left", fill: "none" },
+    description: "Shows a mini gauge of remaining context.",
     symbolKey: "contextBarMarker",
-  },
-  "context-usage": {
-    defaults: { row: 0, position: 0, align: "right", fill: "none" },
-    description: "Shows used context in thousands of tokens.",
-    symbolKey: "contextUsageMarker",
   },
   "total-cost": {
     defaults: { row: 0, position: 1, align: "right", fill: "none" },
@@ -621,7 +628,7 @@ export const FOOTER_WIDGET_META: Record<
     hasFooterIcon: false,
   },
   "provider-status": {
-    defaults: { row: 0, position: 2, align: "right", fill: "none" },
+    defaults: { row: 0, position: 1, align: "left", fill: "none" },
     description: "Shows quota status for configured providers.",
     symbolKey: "providerStatus",
   },

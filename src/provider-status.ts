@@ -2,18 +2,56 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
+  type GaugeSegment,
+  type GaugeStyleDef,
   type ProviderStatusConfigSnapshot,
   type ProviderStatusSnapshot,
   type ProviderStatusState,
   type ProviderStatusWindow,
+  buildGauge,
+  formatGaugePercent,
+  gaugeSeverity,
 } from "./shared.ts";
 
 export const CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage";
-const CODEX_USAGE_ENDPOINT = "https://chatgpt.com/backend-api/codex/usage";
+const CODEX_USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_PRIMARY_WINDOW_LABEL = "5h";
+const CODEX_SECONDARY_WINDOW_LABEL = "7d";
 
 type HeaderLike = Record<string, string | number | boolean | undefined | null>;
+
+export interface ProviderStatusSource {
+  id: string;
+  label: string;
+  usageUrl: string;
+  fetch(pi: ExtensionAPI): Promise<ProviderStatusSnapshot>;
+  parseHeaders(
+    headers: HeaderLike,
+    now?: Date,
+  ): ProviderStatusSnapshot | undefined;
+}
+
+const CODEX_SOURCE: ProviderStatusSource = {
+  id: "openai-codex",
+  label: "Codex",
+  usageUrl: CODEX_USAGE_URL,
+  fetch: fetchCodexProviderStatus,
+  parseHeaders: parseCodexRateLimitHeaders,
+};
+
+export const PROVIDER_STATUS_SOURCES: readonly ProviderStatusSource[] = [
+  CODEX_SOURCE,
+];
+
+function enabledProviderStatusSources(
+  config: Pick<ProviderStatusConfigSnapshot, "providers">,
+): readonly ProviderStatusSource[] {
+  return PROVIDER_STATUS_SOURCES.filter((source) =>
+    config.providers.includes(source.id),
+  );
+}
 
 interface AuthCredentials {
   source: "pi" | "codex";
@@ -39,10 +77,14 @@ export function formatProviderStatusText(
 
   const parts: string[] = [];
   if (snapshot.primary) {
-    parts.push(`5h:${formatPercent(snapshot.primary.leftPercent)}`);
+    parts.push(
+      `${snapshot.primary.label}:${formatGaugePercent(snapshot.primary.leftPercent)}`,
+    );
   }
   if (snapshot.secondary) {
-    parts.push(`7d:${formatPercent(snapshot.secondary.leftPercent)}`);
+    parts.push(
+      `${snapshot.secondary.label}:${formatGaugePercent(snapshot.secondary.leftPercent)}`,
+    );
   }
   if (config.showReset && snapshot.primary?.resetAt) {
     const reset = formatReset(snapshot.primary.resetAt);
@@ -64,29 +106,63 @@ export function providerStatusColor(
   return "success";
 }
 
+export interface ProviderStatusGaugeSegment extends GaugeSegment {
+  label: string;
+}
+
+export function buildProviderStatusGauge(
+  snapshot: ProviderStatusSnapshot | undefined,
+  style: GaugeStyleDef,
+  cells: number,
+): ProviderStatusGaugeSegment[] {
+  if (!snapshot) return [];
+  const segments: ProviderStatusGaugeSegment[] = [];
+  for (const window of [snapshot.primary, snapshot.secondary]) {
+    if (!window) continue;
+    segments.push({
+      label: window.label,
+      ...buildGauge(window.leftPercent, style, cells),
+    });
+  }
+  return segments;
+}
+
 export async function collectProviderStatus(
   pi: ExtensionAPI,
   config: ProviderStatusConfigSnapshot,
-): Promise<ProviderStatusSnapshot | undefined> {
-  if (!config.providers.includes("openai-codex")) return undefined;
+): Promise<ProviderStatusSnapshot[]> {
+  const snapshots = await Promise.all(
+    enabledProviderStatusSources(config).map((source) =>
+      collectProviderStatusFromSource(pi, source, config),
+    ),
+  );
+  return snapshots;
+}
 
-  const cached = await readProviderStatusCache();
+async function collectProviderStatusFromSource(
+  pi: ExtensionAPI,
+  source: ProviderStatusSource,
+  config: ProviderStatusConfigSnapshot,
+): Promise<ProviderStatusSnapshot> {
+  const cached = await readProviderStatusCache(source.id);
   if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
     return { ...cached, source: "cache" };
   }
 
   try {
-    const snapshot = await fetchCodexProviderStatus(pi);
+    const snapshot = await source.fetch(pi);
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
   } catch (error) {
-    if (cached !== undefined) return { ...cached, source: "cache" };
+    if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
+      return { ...cached, source: "cache" };
+    }
     return {
-      provider: "openai-codex",
+      provider: source.id,
       source: "api",
       fetchedAt: new Date().toISOString(),
       state: "unavailable",
-      url: CODEX_USAGE_URL,
+      url: source.usageUrl,
       error: error instanceof Error ? error.message : String(error),
     };
   }
@@ -94,22 +170,45 @@ export async function collectProviderStatus(
 
 export async function updateProviderStatusFromHeaders(
   headers: HeaderLike,
-): Promise<ProviderStatusSnapshot | undefined> {
-  const parsed = parseCodexRateLimitHeaders(headers);
-  if (!parsed) return undefined;
+  config?: ProviderStatusConfigSnapshot,
+): Promise<ProviderStatusSnapshot[]> {
+  const sources = config
+    ? enabledProviderStatusSources(config)
+    : PROVIDER_STATUS_SOURCES;
 
-  const cached = await readProviderStatusCache();
-  const merged = mergeProviderStatus(cached, parsed);
-  await writeProviderStatusCache(merged).catch(() => undefined);
-  return merged;
+  const updated: ProviderStatusSnapshot[] = [];
+  for (const source of sources) {
+    const parsed = source.parseHeaders(headers);
+    if (!parsed) continue;
+
+    const cached = await readProviderStatusCache(source.id);
+    const freshCached =
+      config && isProviderStatusFresh(cached, config.cacheTtlMs)
+        ? cached
+        : undefined;
+    const merged = mergeProviderStatus(freshCached, parsed);
+    await writeProviderStatusCache(merged).catch(() => undefined);
+    updated.push(merged);
+  }
+  return updated;
 }
 
 export function parseCodexRateLimitHeaders(
   headers: HeaderLike,
   now = new Date(),
 ): ProviderStatusSnapshot | undefined {
-  const primary = parseHeaderWindow(headers, "x-codex-primary", now);
-  const secondary = parseHeaderWindow(headers, "x-codex-secondary", now);
+  const primary = parseHeaderWindow(
+    headers,
+    "x-codex-primary",
+    CODEX_PRIMARY_WINDOW_LABEL,
+    now,
+  );
+  const secondary = parseHeaderWindow(
+    headers,
+    "x-codex-secondary",
+    CODEX_SECONDARY_WINDOW_LABEL,
+    now,
+  );
   const credits = headerValue(headers, "x-codex-credits-balance");
   if (!primary && !secondary && credits === undefined) return undefined;
 
@@ -137,10 +236,12 @@ export function normalizeCodexUsageResponse(
   const rateLimit = objectValue(obj.rate_limit);
   const primary = normalizeApiWindow(
     objectValue(rateLimit?.primary_window),
+    CODEX_PRIMARY_WINDOW_LABEL,
     now,
   );
   const secondary = normalizeApiWindow(
     objectValue(rateLimit?.secondary_window),
+    CODEX_SECONDARY_WINDOW_LABEL,
     now,
   );
   const creditsObj = objectValue(obj.credits);
@@ -368,12 +469,12 @@ async function persistAuth(auth: AuthCredentials): Promise<void> {
   await writeJsonAtomic(auth.path, raw);
 }
 
-async function readProviderStatusCache(): Promise<
-  ProviderStatusSnapshot | undefined
-> {
+async function readProviderStatusCache(
+  providerId: string,
+): Promise<ProviderStatusSnapshot | undefined> {
   try {
     const parsed = JSON.parse(
-      await readFile(providerStatusCachePath(), "utf8"),
+      await readFile(providerStatusCachePath(providerId), "utf8"),
     ) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return undefined;
@@ -387,7 +488,7 @@ async function readProviderStatusCache(): Promise<
 async function writeProviderStatusCache(
   snapshot: ProviderStatusSnapshot,
 ): Promise<void> {
-  await writeJsonAtomic(providerStatusCachePath(), snapshot);
+  await writeJsonAtomic(providerStatusCachePath(snapshot.provider), snapshot);
 }
 
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
@@ -419,6 +520,7 @@ function mergeProviderStatus(
 function parseHeaderWindow(
   headers: HeaderLike,
   prefix: string,
+  label: string,
   now: Date,
 ): ProviderStatusWindow | undefined {
   const usedPercent = numberString(
@@ -428,27 +530,41 @@ function parseHeaderWindow(
     numberString(headerValue(headers, `${prefix}-reset-at`)),
   );
   if (usedPercent === undefined && resetAt === undefined) return undefined;
-  return windowFromUsedPercent(usedPercent ?? 0, resetAt, now);
+  return windowFromUsedPercent(label, usedPercent ?? 0, resetAt, now);
 }
 
 function normalizeApiWindow(
   value: Record<string, unknown> | undefined,
+  fallbackLabel: string,
   now: Date,
 ): ProviderStatusWindow | undefined {
   if (!value) return undefined;
   const usedPercent = numberValue(value.used_percent);
   const resetAt = normalizeResetAt(numberValue(value.reset_at));
   if (usedPercent === undefined && resetAt === undefined) return undefined;
-  return windowFromUsedPercent(usedPercent ?? 0, resetAt, now);
+  const label =
+    windowLabelFromSeconds(numberValue(value.limit_window_seconds)) ??
+    fallbackLabel;
+  return windowFromUsedPercent(label, usedPercent ?? 0, resetAt, now);
+}
+
+function windowLabelFromSeconds(seconds: number | undefined): string | undefined {
+  if (seconds === undefined || seconds <= 0) return undefined;
+  if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
+  if (seconds % 3_600 === 0) return `${seconds / 3_600}h`;
+  if (seconds % 60 === 0) return `${seconds / 60}m`;
+  return undefined;
 }
 
 function windowFromUsedPercent(
+  label: string,
   usedPercent: number,
   resetAt: number | undefined,
   _now: Date,
 ): ProviderStatusWindow {
   const clampedUsed = Math.max(0, Math.min(100, usedPercent));
   return {
+    label,
     usedPercent: clampedUsed,
     leftPercent: Math.max(0, Math.min(100, 100 - clampedUsed)),
     ...(resetAt !== undefined ? { resetAt } : {}),
@@ -463,14 +579,12 @@ function computeProviderStatusState(
     (value): value is number => value !== undefined,
   );
   if (values.length === 0) return "unavailable";
-  const lowest = Math.min(...values);
-  if (lowest < 25) return "error";
-  if (lowest < 60) return "warning";
-  return "ok";
+  const severity = gaugeSeverity(Math.min(...values));
+  return severity === "success" ? "ok" : severity;
 }
 
-function formatPercent(value: number): string {
-  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
+export function formatProviderStatusReset(resetAt: number): string {
+  return formatReset(resetAt);
 }
 
 function formatReset(resetAt: number): string {
@@ -486,11 +600,11 @@ function normalizeResetAt(value: number | undefined): number | undefined {
   return value > 10_000_000_000 ? Math.round(value / 1000) : value;
 }
 
-function providerStatusCachePath(): string {
+function providerStatusCachePath(providerId: string): string {
   const base =
     process.env.XDG_CACHE_HOME ||
     join(process.env.HOME || process.env.USERPROFILE || ".", ".cache");
-  return join(base, "pi-fancy-footer", "provider-status", "openai-codex.json");
+  return join(base, "pi-fancy-footer", "provider-status", `${providerId}.json`);
 }
 
 function homePath(relative: string): string {

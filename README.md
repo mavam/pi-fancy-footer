@@ -16,8 +16,7 @@ pi install npm:pi-fancy-footer
 
 - Active model + thinking level
 - Provider quota status for OpenAI Codex
-- Context window capacity and approximate usage
-- Context usage bar with compaction reserve tail
+- Context window capacity and a mini gauge of remaining context
 - Total session cost
 - Repo / path, branch, commit, open PR number, unresolved PR review
   threads, and PR CI status
@@ -60,23 +59,28 @@ Create `~/.pi/agent/fancy-footer.json`:
 {
   "refreshMs": 3000,
   "iconFamily": "unicode",
-  "contextBarStyle": "blocks",
+  "gaugeStyle": "blocks",
+  "gaugeWidth": 5,
+  "gaugeColors": {
+    "ok": "accent",
+    "warning": "warning",
+    "error": "error"
+  },
   "defaultTextColor": "dim",
   "defaultIconColor": "text",
   "providerStatus": {
     "refreshMs": 60000,
     "cacheTtlMs": 60000,
     "providers": ["openai-codex"],
+    "display": "gauge",
     "showCredits": false,
     "showReset": false
   },
   "widgets": {
     "context-bar": {
-      "align": "middle",
+      "align": "left",
       "row": 0,
-      "position": 0,
-      "fill": "grow",
-      "minWidth": 12
+      "position": 0
     },
     "total-cost": {
       "enabled": false
@@ -105,9 +109,15 @@ Top-level settings:
 - `refreshMs` (number)
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
-- `contextBarStyle`
+- `gaugeStyle`
   (`blocks` | `lines` | `circles` | `parallelograms` | `diamonds` | `bars` |
   `stars` | `specks`)
+- `gaugeWidth` - cells spanned by the context and provider status gauges
+  (3-40, default 5)
+- `gaugeColors` - fill colors per gauge severity; each of `ok`, `warning`,
+  and `error` accepts a widget color. Defaults to `accent` / `warning` /
+  `error`, so healthy gauges blend into the theme and only stand out when
+  running low
 - `defaultTextColor`
   (`text` | `accent` | `muted` | `dim` | `success` | `error` | `warning`)
 - `defaultIconColor`
@@ -116,6 +126,8 @@ Top-level settings:
   - `refreshMs` - provider status refresh interval in milliseconds
   - `cacheTtlMs` - cache freshness window in milliseconds
   - `providers` - supported provider adapters (`openai-codex`)
+  - `display` - render quota windows as a mini `gauge` (default) or plain
+    `text`
   - `showCredits` - include provider-specific credit balance when available
   - `showReset` - include the primary reset time when available
 
@@ -139,7 +151,6 @@ Built-in widget IDs:
 - `thinking`
 - `context-capacity`
 - `context-bar`
-- `context-usage`
 - `total-cost`
 - `location`
 - `branch`
@@ -226,7 +237,6 @@ leading widget icon.
 | `thinking`                    | `󰧑`     | `🧠`       | `✦`     | `?`      |
 | `context-capacity`            | ``     | `💾`       | `□`     | `[]`     |
 | `context-bar`                 | `󰾆`     | `🔋`       | `◧`     | `\|`     |
-| `context-usage`               | ``     | `📈`       | `■`     | `~`      |
 | `total-cost`                  | `󰇁`     | `💲`       | `$`     | `$`      |
 | `location`                    | ``     | `📁`       | `⌂`     | `/`      |
 | `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
@@ -244,17 +254,23 @@ leading widget icon.
 Notes:
 
 - Most widgets use a leading icon.
-- `context-bar` renders a bar whose characters are controlled by
-  `contextBarStyle`, not `iconFamily`. Used cells are colored with the widget
-  icon color; free and reserved cells stay dim.
-- `context-bar` grows to fill the remaining horizontal space on its row,
-  including on wide terminals.
+- `context-bar` renders a battery-style mini gauge of remaining context,
+  e.g. `■■■□□ 55%`, spanning `gaugeWidth` cells with the glyphs from
+  `gaugeStyle` (not `iconFamily`). Filled cells show the remaining share,
+  colored via `gaugeColors` by how close the context is to exhaustion; empty
+  cells stay dim. It sits on the left of the top row by default, with provider quota
+  gauges on the right.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
 - `provider-status` shows provider quota windows, currently for OpenAI Codex,
-  as `5h:95% 7d:97%`. It uses existing pi OpenAI Codex credentials from
+  as battery-style mini gauges per window, e.g. `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
+  where filled cells show the remaining quota and each window is colored by
+  how close it is to exhaustion. The gauge spans `gaugeWidth` cells and
+  reuses the configured `gaugeStyle` glyphs; set `providerStatus.display` to
+  `text` for the
+  compact `5h:95% 7d:97%` form. It uses existing pi OpenAI Codex credentials from
   `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`, and caches status under
   `~/.cache/pi-fancy-footer/provider-status/`.
@@ -273,27 +289,24 @@ Notes:
 - `pull-request-ci-status` shows GitHub Actions workflow runs for the current
   PR head commit. It links to the relevant run and switches to failed as soon as
   one workflow fails, even when other workflows are still running.
-- Reads compaction settings from:
-  - `~/.pi/agent/settings.json`
-  - `<project>/.pi/settings.json`
+## 🧱 Gauge styles
 
-## 🧱 Context bar styles
-
-The `contextBarStyle` setting controls the characters used by the `context-bar`
-widget. Each style defines three symbols for used, free, and reserved cells:
+The `gaugeStyle` setting controls the characters used by the `context-bar`
+and `provider-status` gauges. Each style defines symbols for filled and empty
+cells:
 
 <!-- markdownlint-disable MD013 MD060 -->
 
-| Style              | Used | Free | Reserved |
-| ------------------ | ---- | ---- | -------- |
-| `blocks` (default) | `■`  | `□`  | `▨`      |
-| `lines`            | `━`  | `─`  | `┄`      |
-| `circles`          | `●`  | `○`  | `◎`      |
-| `parallelograms`   | `▰`  | `▱`  | `▰`      |
-| `diamonds`         | `◆`  | `◇`  | `❖`      |
-| `bars`             | `█`  | `░`  | `▒`      |
-| `stars`            | `★`  | `☆`  | `✭`      |
-| `specks`           | `•`  | `◦`  | `•`      |
+| Style              | Filled | Empty |
+| ------------------ | ------ | ----- |
+| `blocks` (default) | `■`    | `□`   |
+| `lines`            | `━`    | `─`   |
+| `circles`          | `●`    | `○`   |
+| `parallelograms`   | `▰`    | `▱`   |
+| `diamonds`         | `◆`    | `◇`   |
+| `bars`             | `█`    | `░`   |
+| `stars`            | `★`    | `☆`   |
+| `specks`           | `•`    | `◦`   |
 
 <!-- markdownlint-enable MD013 MD060 -->
 
