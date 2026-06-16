@@ -16,9 +16,15 @@ import {
 export const CODEX_USAGE_URL = "https://chatgpt.com/codex/settings/usage";
 const CODEX_USAGE_ENDPOINT = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CODEX_PRIMARY_WINDOW_LABEL = "5h";
 const CODEX_SECONDARY_WINDOW_LABEL = "7d";
+export const CLAUDE_USAGE_URL = "https://claude.ai/settings/usage";
+const CLAUDE_USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage";
+const CLAUDE_CLIENT_ID = "https://claude.ai/oauth/claude-code-client-metadata";
+const CLAUDE_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+const CLAUDE_PRIMARY_WINDOW_LABEL = "5h";
+const CLAUDE_SECONDARY_WINDOW_LABEL = "7d";
 
 type HeaderLike = Record<string, string | number | boolean | undefined | null>;
 
@@ -41,8 +47,17 @@ const CODEX_SOURCE: ProviderStatusSource = {
   parseHeaders: parseCodexRateLimitHeaders,
 };
 
+const ANTHROPIC_SOURCE: ProviderStatusSource = {
+  id: "anthropic",
+  label: "Claude",
+  usageUrl: CLAUDE_USAGE_URL,
+  fetch: fetchClaudeProviderStatus,
+  parseHeaders: () => undefined,
+};
+
 export const PROVIDER_STATUS_SOURCES: readonly ProviderStatusSource[] = [
   CODEX_SOURCE,
+  ANTHROPIC_SOURCE,
 ];
 
 type ModelLike = {
@@ -70,23 +85,47 @@ function looksLikeOpenAIModel(value: string): boolean {
   );
 }
 
+function looksLikeAnthropicModel(value: string): boolean {
+  if (!value) return false;
+
+  const normalized = value.replace(/[/_:\s]+/g, "-");
+  return (
+    normalized.includes("anthropic") ||
+    normalized.includes("claude") ||
+    /(^|-)(sonnet|opus|haiku)(?:-|$)/.test(normalized)
+  );
+}
+
+function looksLikeProviderModel(providerId: string, value: string): boolean {
+  if (providerId === CODEX_SOURCE.id) return looksLikeOpenAIModel(value);
+  if (providerId === ANTHROPIC_SOURCE.id) return looksLikeAnthropicModel(value);
+  return true;
+}
+
 export function isProviderStatusRelevantToModel(
   providerId: string,
   model: ModelLike | string | undefined,
 ): boolean {
-  if (providerId !== CODEX_SOURCE.id) return true;
+  if (
+    providerId !== CODEX_SOURCE.id &&
+    providerId !== ANTHROPIC_SOURCE.id
+  ) {
+    return true;
+  }
 
-  if (typeof model === "string") return looksLikeOpenAIModel(modelValue(model));
+  if (typeof model === "string") {
+    return looksLikeProviderModel(providerId, modelValue(model));
+  }
   if (!model) return false;
 
   const provider = modelValue(model.provider) || modelValue(model.providerId);
-  if (provider) return looksLikeOpenAIModel(provider);
+  if (provider) return looksLikeProviderModel(providerId, provider);
 
   return [
     modelValue(model.id),
     modelValue(model.name),
     modelValue(model.displayName),
-  ].some(looksLikeOpenAIModel);
+  ].some((value) => looksLikeProviderModel(providerId, value));
 }
 
 function enabledProviderStatusSources(
@@ -98,6 +137,7 @@ function enabledProviderStatusSources(
 }
 
 interface AuthCredentials {
+  provider: "openai-codex" | "anthropic";
   source: "pi" | "codex";
   path: string;
   accessToken: string;
@@ -304,6 +344,36 @@ export function normalizeCodexUsageResponse(
   };
 }
 
+export function normalizeClaudeUsageResponse(
+  value: unknown,
+  now = new Date(),
+): ProviderStatusSnapshot | undefined {
+  const obj = objectValue(value);
+  if (!obj) return undefined;
+
+  const primary = normalizeClaudeUsageWindow(
+    objectValue(obj.five_hour),
+    CLAUDE_PRIMARY_WINDOW_LABEL,
+    now,
+  );
+  const secondary = normalizeClaudeUsageWindow(
+    objectValue(obj.seven_day),
+    CLAUDE_SECONDARY_WINDOW_LABEL,
+    now,
+  );
+  if (!primary && !secondary) return undefined;
+
+  return {
+    provider: "anthropic",
+    source: "api",
+    fetchedAt: now.toISOString(),
+    state: computeProviderStatusState(primary, secondary),
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    url: CLAUDE_USAGE_URL,
+  };
+}
+
 export function isProviderStatusFresh(
   snapshot: ProviderStatusSnapshot | undefined,
   maxAgeMs: number,
@@ -318,7 +388,7 @@ export function isProviderStatusFresh(
 async function fetchCodexProviderStatus(
   _pi: ExtensionAPI,
 ): Promise<ProviderStatusSnapshot> {
-  let auth = await resolveAuth();
+  let auth = await resolveCodexAuth();
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const response = await fetch(CODEX_USAGE_ENDPOINT, {
@@ -354,15 +424,74 @@ async function fetchCodexProviderStatus(
   throw new Error("Codex usage request failed after auth refresh");
 }
 
-async function resolveAuth(): Promise<AuthCredentials> {
-  const pi = await readAuthFile("pi", homePath(".pi/agent/auth.json"));
+async function fetchClaudeProviderStatus(
+  _pi: ExtensionAPI,
+): Promise<ProviderStatusSnapshot> {
+  let auth = await resolveClaudeAuth();
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await fetch(CLAUDE_USAGE_ENDPOINT, {
+      headers: {
+        authorization: `Bearer ${auth.accessToken}`,
+        accept: "application/json",
+        "user-agent": "pi-fancy-footer",
+      },
+    });
+    const text = await response.text();
+
+    if (response.ok) {
+      const parsed = normalizeClaudeUsageResponse(JSON.parse(text));
+      if (parsed) return parsed;
+      throw new Error("Claude usage response did not contain quota data");
+    }
+
+    if (
+      (response.status === 401 || response.status === 403) &&
+      attempt === 0 &&
+      auth.refreshToken
+    ) {
+      auth = await refreshAuth(auth);
+      continue;
+    }
+
+    throw new Error(
+      `Claude usage request failed (${response.status}): ${text.slice(0, 500)}`,
+    );
+  }
+
+  throw new Error("Claude usage request failed after auth refresh");
+}
+
+async function resolveCodexAuth(): Promise<AuthCredentials> {
+  const pi = await readAuthFile(
+    "pi",
+    homePath(".pi/agent/auth.json"),
+    "openai-codex",
+  );
   if (pi) return refreshIfNeeded(pi);
 
-  const codex = await readAuthFile("codex", homePath(".codex/auth.json"));
+  const codex = await readAuthFile(
+    "codex",
+    homePath(".codex/auth.json"),
+    "openai-codex",
+  );
   if (codex) return refreshIfNeeded(codex);
 
   throw new Error(
     "No usable Codex OAuth credentials found. Run pi /login for OpenAI Codex or `codex login` first.",
+  );
+}
+
+async function resolveClaudeAuth(): Promise<AuthCredentials> {
+  const pi = await readAuthFile(
+    "pi",
+    homePath(".pi/agent/auth.json"),
+    "anthropic",
+  );
+  if (pi) return refreshIfNeeded(pi);
+
+  throw new Error(
+    "No usable Anthropic OAuth credentials found. Run pi /login for Claude/Anthropic first.",
   );
 }
 
@@ -375,22 +504,38 @@ async function refreshIfNeeded(auth: AuthCredentials): Promise<AuthCredentials> 
 async function refreshAuth(auth: AuthCredentials): Promise<AuthCredentials> {
   if (!auth.refreshToken) return auth;
 
+  const refreshConfig =
+    auth.provider === "anthropic"
+      ? {
+          clientId: CLAUDE_CLIENT_ID,
+          tokenUrl: CLAUDE_TOKEN_URL,
+          label: "Anthropic",
+        }
+      : {
+          clientId: CODEX_CLIENT_ID,
+          tokenUrl: CODEX_TOKEN_URL,
+          label: "Codex",
+        };
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: auth.refreshToken,
-    client_id: CODEX_CLIENT_ID,
+    client_id: refreshConfig.clientId,
   }).toString();
 
-  const result = await localRefresh(body);
+  const result = await localRefresh(body, refreshConfig.tokenUrl);
 
   if (result.code !== 0 || !result.stdout) {
-    throw new Error(result.stderr || "Failed to refresh Codex auth");
+    throw new Error(
+      result.stderr || `Failed to refresh ${refreshConfig.label} auth`,
+    );
   }
 
   const refreshed = JSON.parse(result.stdout) as Record<string, unknown>;
   const accessToken = stringValue(refreshed.access_token);
   if (!accessToken) {
-    throw new Error("Codex auth refresh did not return access_token");
+    throw new Error(
+      `${refreshConfig.label} auth refresh did not return access_token`,
+    );
   }
 
   const refreshToken = stringValue(refreshed.refresh_token) ?? auth.refreshToken;
@@ -409,9 +554,10 @@ async function refreshAuth(auth: AuthCredentials): Promise<AuthCredentials> {
 
 async function localRefresh(
   body: string,
+  tokenUrl: string,
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   try {
-    const response = await fetch(TOKEN_URL, {
+    const response = await fetch(tokenUrl, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body,
@@ -431,12 +577,13 @@ async function localRefresh(
 async function readAuthFile(
   source: "pi" | "codex",
   path: string,
+  provider: AuthCredentials["provider"],
 ): Promise<AuthCredentials | undefined> {
   try {
     const raw = JSON.parse(await readFile(path, "utf8")) as unknown;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
     return source === "pi"
-      ? parsePiAuth(raw as Record<string, unknown>, path)
+      ? parsePiAuth(raw as Record<string, unknown>, path, provider)
       : parseCodexAuth(raw as Record<string, unknown>, path);
   } catch {
     return undefined;
@@ -446,11 +593,13 @@ async function readAuthFile(
 function parsePiAuth(
   raw: Record<string, unknown>,
   path: string,
+  provider: AuthCredentials["provider"],
 ): AuthCredentials | undefined {
-  const entry = objectValue(raw["openai-codex"]);
+  const entry = objectValue(raw[provider]);
   const accessToken = stringValue(entry?.access);
   if (!accessToken) return undefined;
   return {
+    provider,
     source: "pi",
     path,
     accessToken,
@@ -475,6 +624,7 @@ function parseCodexAuth(
   const accessToken = stringValue(tokens?.access_token);
   if (!accessToken) return undefined;
   return {
+    provider: "openai-codex",
     source: "codex",
     path,
     accessToken,
@@ -495,11 +645,12 @@ async function persistAuth(auth: AuthCredentials): Promise<void> {
   >;
 
   if (auth.source === "pi") {
-    const entry = objectValue(raw["openai-codex"]);
+    const entry = objectValue(raw[auth.provider]);
     if (entry) {
       entry.access = auth.accessToken;
       if (auth.refreshToken) entry.refresh = auth.refreshToken;
       if (auth.expiresAtMs) entry.expires = auth.expiresAtMs;
+      if (auth.accountId) entry.accountId = auth.accountId;
     }
   } else {
     const tokens = objectValue(raw.tokens);
@@ -592,6 +743,25 @@ function normalizeApiWindow(
   return windowFromUsedPercent(label, usedPercent ?? 0, resetAt, now);
 }
 
+function normalizeClaudeUsageWindow(
+  value: Record<string, unknown> | undefined,
+  fallbackLabel: string,
+  now: Date,
+): ProviderStatusWindow | undefined {
+  if (!value) return undefined;
+  const usedPercent =
+    numberValue(value.utilization) ??
+    numberString(stringValue(value.utilization));
+  if (usedPercent === undefined) return undefined;
+
+  return windowFromUsedPercent(
+    fallbackLabel,
+    usedPercent,
+    resetAtFromTimestamp(stringValue(value.resets_at)),
+    now,
+  );
+}
+
 function windowLabelFromSeconds(seconds: number | undefined): string | undefined {
   if (seconds === undefined || seconds <= 0) return undefined;
   if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
@@ -642,6 +812,12 @@ function formatReset(resetAt: number): string {
 function normalizeResetAt(value: number | undefined): number | undefined {
   if (value === undefined) return undefined;
   return value > 10_000_000_000 ? Math.round(value / 1000) : value;
+}
+
+function resetAtFromTimestamp(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.round(parsed / 1000) : undefined;
 }
 
 function providerStatusCachePath(providerId: string): string {

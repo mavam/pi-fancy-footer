@@ -10,6 +10,7 @@ test("footerConfigValidationErrors accepts a valid config", () => {
     footerConfigValidationErrors({
       gaugeStyle: "bars",
       gaugeWidth: 8,
+      providerStatus: { providers: ["openai-codex", "anthropic"] },
       widgets: { "context-bar": { row: 0 } },
     }),
     [],

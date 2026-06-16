@@ -15,7 +15,7 @@ pi install npm:pi-fancy-footer
 ## 📊 What it shows
 
 - Active model + thinking level
-- Provider quota status for OpenAI Codex models
+- Provider quota status for OpenAI Codex and Claude models
 - Context window capacity and a mini gauge of remaining context
 - Total session cost
 - Repo / path, branch, commit, open PR number, unresolved PR review
@@ -71,7 +71,7 @@ Create `~/.pi/agent/fancy-footer.json`:
   "providerStatus": {
     "refreshMs": 60000,
     "cacheTtlMs": 60000,
-    "providers": ["openai-codex"],
+    "providers": ["openai-codex", "anthropic"],
     "display": "gauge",
     "showCredits": false,
     "showReset": false
@@ -125,7 +125,7 @@ Top-level settings:
 - `providerStatus`:
   - `refreshMs` - provider status refresh interval in milliseconds
   - `cacheTtlMs` - cache freshness window in milliseconds
-  - `providers` - supported provider adapters (`openai-codex`)
+  - `providers` - supported provider adapters (`openai-codex`, `anthropic`)
   - `display` - render quota windows as a mini `gauge` (default) or plain
     `text`
   - `showCredits` - include provider-specific credit balance when available
@@ -265,20 +265,24 @@ Notes:
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
-- `provider-status` shows provider quota windows, currently for OpenAI Codex
-  models, as battery-style mini gauges per window, e.g.
+- `provider-status` shows provider quota windows for OpenAI Codex and Claude
+  models as battery-style mini gauges per window, e.g.
   `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
   where filled cells show the remaining quota and each window is colored by
   how close it is to exhaustion. The gauge spans `gaugeWidth` cells and
   reuses the configured `gaugeStyle` glyphs; set `providerStatus.display` to
   `text` for the
-  compact `5h:95% 7d:97%` form. It uses existing pi OpenAI Codex credentials from
-  `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
-  `~/.codex/auth.json`, and caches status under
-  `~/.cache/pi-fancy-footer/provider-status/`. The widget is hidden when the
-  active model selection is not OpenAI/Codex-backed.
+  compact `5h:95% 7d:97%` form. Codex uses existing pi OpenAI Codex credentials
+  from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
+  `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
+  `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly
+  windows. Status is cached under `~/.cache/pi-fancy-footer/provider-status/`.
+  The widget is hidden when the active model selection is not backed by the
+  status provider.
 - `provider-status` also refreshes from `x-codex-*` provider response headers
-  when pi exposes them, avoiding a separate status request after provider calls.
+  when pi exposes them, avoiding a separate Codex status request after provider
+  calls. Claude status refreshes from the Claude.ai usage endpoint, not
+  provider response headers.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and
   `ascii` palettes.
 - `nerd` keeps the original Nerd Font look. `emoji`, `unicode`, and `ascii`

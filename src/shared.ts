@@ -463,7 +463,10 @@ export interface FooterConfigSnapshot {
   extensionWidgets: Record<string, FooterWidgetConfigOverride>;
 }
 
-export const PROVIDER_STATUS_PROVIDER_IDS = ["openai-codex"] as const;
+export const PROVIDER_STATUS_PROVIDER_IDS = [
+  "openai-codex",
+  "anthropic",
+] as const;
 
 export type ProviderStatusProviderId =
   (typeof PROVIDER_STATUS_PROVIDER_IDS)[number];
@@ -484,7 +487,7 @@ export interface ProviderStatusConfigSnapshot {
 export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   refreshMs: 60_000,
   cacheTtlMs: 60_000,
-  providers: ["openai-codex"],
+  providers: ["openai-codex", "anthropic"],
   display: "gauge",
   showCredits: false,
   showReset: false,
