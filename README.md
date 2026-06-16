@@ -15,7 +15,7 @@ pi install npm:pi-fancy-footer
 ## 📊 What it shows
 
 - Active model + thinking level
-- Provider quota status for OpenAI Codex
+- Provider quota status for OpenAI Codex models
 - Context window capacity and a mini gauge of remaining context
 - Total session cost
 - Repo / path, branch, commit, open PR number, unresolved PR review
@@ -265,8 +265,9 @@ Notes:
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
-- `provider-status` shows provider quota windows, currently for OpenAI Codex,
-  as battery-style mini gauges per window, e.g. `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
+- `provider-status` shows provider quota windows, currently for OpenAI Codex
+  models, as battery-style mini gauges per window, e.g.
+  `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
   where filled cells show the remaining quota and each window is colored by
   how close it is to exhaustion. The gauge spans `gaugeWidth` cells and
   reuses the configured `gaugeStyle` glyphs; set `providerStatus.display` to
@@ -274,7 +275,8 @@ Notes:
   compact `5h:95% 7d:97%` form. It uses existing pi OpenAI Codex credentials from
   `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`, and caches status under
-  `~/.cache/pi-fancy-footer/provider-status/`.
+  `~/.cache/pi-fancy-footer/provider-status/`. The widget is hidden when the
+  active model selection is not OpenAI/Codex-backed.
 - `provider-status` also refreshes from `x-codex-*` provider response headers
   when pi exposes them, avoiding a separate status request after provider calls.
 - `iconFamily` lets you choose between `nerd`, `emoji`, `unicode`, and

@@ -49,6 +49,7 @@ import {
   buildProviderStatusGauge,
   formatProviderStatusReset,
   formatProviderStatusText,
+  isProviderStatusRelevantToModel,
   providerStatusColor,
 } from "./provider-status.ts";
 
@@ -917,6 +918,9 @@ export function renderFooterLines(
     usageMetrics,
     footerConfig.iconFamily,
   );
+  const activeProviderStatuses = providerStatuses.filter((snapshot) =>
+    isProviderStatusRelevantToModel(snapshot.provider, ctx.model),
+  );
   const renderCtx: WidgetRenderContext = {
     width,
     theme,
@@ -924,7 +928,7 @@ export function renderFooterLines(
     gaugeWidth: footerConfig.gaugeWidth,
     gaugeColors: footerConfig.gaugeColors,
     metrics,
-    providerStatuses,
+    providerStatuses: activeProviderStatuses,
     providerStatusConfig: footerConfig.providerStatus,
     defaultIconColor: footerConfig.defaultIconColor,
     defaultTextColor: footerConfig.defaultTextColor,
