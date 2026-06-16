@@ -45,6 +45,50 @@ export const PROVIDER_STATUS_SOURCES: readonly ProviderStatusSource[] = [
   CODEX_SOURCE,
 ];
 
+type ModelLike = {
+  id?: unknown;
+  name?: unknown;
+  displayName?: unknown;
+  provider?: unknown;
+  providerId?: unknown;
+};
+
+function modelValue(value: unknown): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function looksLikeOpenAIModel(value: string): boolean {
+  if (!value) return false;
+
+  const normalized = value.replace(/[/_:\s]+/g, "-");
+  return (
+    normalized.includes("openai") ||
+    normalized.includes("codex") ||
+    normalized.includes("chatgpt") ||
+    /(^|-)gpt(?:[0-9-]|$)/.test(normalized) ||
+    /(^|-)o[134](?:-|$)/.test(normalized)
+  );
+}
+
+export function isProviderStatusRelevantToModel(
+  providerId: string,
+  model: ModelLike | string | undefined,
+): boolean {
+  if (providerId !== CODEX_SOURCE.id) return true;
+
+  if (typeof model === "string") return looksLikeOpenAIModel(modelValue(model));
+  if (!model) return false;
+
+  const provider = modelValue(model.provider) || modelValue(model.providerId);
+  if (provider) return looksLikeOpenAIModel(provider);
+
+  return [
+    modelValue(model.id),
+    modelValue(model.name),
+    modelValue(model.displayName),
+  ].some(looksLikeOpenAIModel);
+}
+
 function enabledProviderStatusSources(
   config: Pick<ProviderStatusConfigSnapshot, "providers">,
 ): readonly ProviderStatusSource[] {

@@ -7,6 +7,7 @@ import {
   buildProviderStatusGauge,
   collectProviderStatus,
   formatProviderStatusText,
+  isProviderStatusRelevantToModel,
   normalizeCodexUsageResponse,
   parseCodexRateLimitHeaders,
   providerStatusColor,
@@ -134,6 +135,37 @@ test("formatProviderStatusText can show provider-specific credits without window
       showReset: false,
     }),
     "cr:42",
+  );
+});
+
+test("isProviderStatusRelevantToModel limits Codex status to OpenAI-like models", () => {
+  assert.equal(
+    isProviderStatusRelevantToModel("openai-codex", {
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }),
+    false,
+  );
+  assert.equal(
+    isProviderStatusRelevantToModel("openai-codex", {
+      id: "gpt-5-codex",
+      name: "GPT-5 Codex",
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderStatusRelevantToModel("openai-codex", {
+      provider: "openai",
+      id: "o3",
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderStatusRelevantToModel("other-provider", {
+      id: "claude-sonnet-4",
+    }),
+    true,
   );
 });
 
