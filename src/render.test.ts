@@ -30,6 +30,23 @@ const providerStatus: ProviderStatusSnapshot = {
   },
 };
 
+const claudeProviderStatus: ProviderStatusSnapshot = {
+  provider: "anthropic",
+  source: "api",
+  fetchedAt: "2026-06-16T10:00:00Z",
+  state: "ok",
+  primary: {
+    label: "5h",
+    leftPercent: 100,
+    usedPercent: 0,
+  },
+  secondary: {
+    label: "7d",
+    leftPercent: 92,
+    usedPercent: 8,
+  },
+};
+
 const footerConfig: FooterConfigSnapshot = {
   ...DEFAULT_FOOTER_CONFIG,
   iconFamily: "ascii",
@@ -97,4 +114,44 @@ test("renderFooterLines shows Codex provider status for OpenAI models", () => {
   );
 
   assert.match(lines.join("\n"), /5h:95%/);
+});
+
+test("renderFooterLines shows Anthropic provider status for Claude models", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    footerConfig,
+    [],
+    [claudeProviderStatus],
+  );
+
+  assert.match(lines.join("\n"), /5h:100% 7d:92%/);
+});
+
+test("renderFooterLines hides Anthropic provider status for OpenAI models", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "openai",
+      id: "gpt-5-codex",
+      name: "GPT-5 Codex",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    footerConfig,
+    [],
+    [claudeProviderStatus],
+  );
+
+  assert.doesNotMatch(lines.join("\n"), /5h:100%/);
 });

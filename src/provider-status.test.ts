@@ -8,6 +8,7 @@ import {
   collectProviderStatus,
   formatProviderStatusText,
   isProviderStatusRelevantToModel,
+  normalizeClaudeUsageResponse,
   normalizeCodexUsageResponse,
   parseCodexRateLimitHeaders,
   providerStatusColor,
@@ -26,6 +27,10 @@ const providerStatusConfig: ProviderStatusConfigSnapshot = {
   display: "gauge",
   showCredits: false,
   showReset: false,
+};
+const anthropicProviderStatusConfig: ProviderStatusConfigSnapshot = {
+  ...providerStatusConfig,
+  providers: ["anthropic"],
 };
 
 test("normalizeCodexUsageResponse extracts primary and secondary quota windows", () => {
@@ -62,6 +67,63 @@ test("normalizeCodexUsageResponse extracts primary and secondary quota windows",
   });
   assert.equal(snapshot?.credits, "553.9");
   assert.equal(snapshot?.state, "ok");
+});
+
+test("normalizeClaudeUsageResponse extracts five-hour and weekly usage windows", () => {
+  const fiveHourReset = "2026-06-16T15:20:00.365459+00:00";
+  const weeklyReset = "2026-06-16T23:00:00.365483+00:00";
+  const snapshot = normalizeClaudeUsageResponse(
+    {
+      five_hour: {
+        utilization: 0,
+        resets_at: fiveHourReset,
+      },
+      seven_day: {
+        utilization: 8,
+        resets_at: weeklyReset,
+      },
+      seven_day_sonnet: {
+        utilization: 99,
+        resets_at: weeklyReset,
+      },
+      extra_usage: {
+        utilization: 75,
+      },
+    },
+    now,
+  );
+
+  assert.deepEqual(snapshot?.primary, {
+    label: "5h",
+    usedPercent: 0,
+    leftPercent: 100,
+    resetAt: Math.round(Date.parse(fiveHourReset) / 1000),
+  });
+  assert.deepEqual(snapshot?.secondary, {
+    label: "7d",
+    usedPercent: 8,
+    leftPercent: 92,
+    resetAt: Math.round(Date.parse(weeklyReset) / 1000),
+  });
+  assert.equal(snapshot?.provider, "anthropic");
+  assert.equal(snapshot?.state, "ok");
+});
+
+test("normalizeClaudeUsageResponse ignores responses without supported windows", () => {
+  assert.equal(
+    normalizeClaudeUsageResponse(
+      {
+        seven_day_sonnet: {
+          utilization: 10,
+        },
+        extra_usage: {
+          utilization: 20,
+        },
+      },
+      now,
+    ),
+    undefined,
+  );
 });
 
 test("parseCodexRateLimitHeaders accepts case-insensitive x-codex headers", () => {
@@ -169,6 +231,31 @@ test("isProviderStatusRelevantToModel limits Codex status to OpenAI-like models"
   );
 });
 
+test("isProviderStatusRelevantToModel limits Anthropic status to Claude-like models", () => {
+  assert.equal(
+    isProviderStatusRelevantToModel("anthropic", {
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderStatusRelevantToModel("anthropic", {
+      id: "claude-opus-4",
+    }),
+    true,
+  );
+  assert.equal(
+    isProviderStatusRelevantToModel("anthropic", {
+      provider: "openai",
+      id: "gpt-5-codex",
+    }),
+    false,
+  );
+  assert.equal(isProviderStatusRelevantToModel("anthropic", undefined), false);
+});
+
 test("providerStatusColor derives semantic color from status", () => {
   assert.equal(
     providerStatusColor(
@@ -260,6 +347,18 @@ test("updateProviderStatusFromHeaders honors disabled providers", async () => {
       ...providerStatusConfig,
       providers: [],
     },
+  );
+
+  assert.deepEqual(updated, []);
+});
+
+test("updateProviderStatusFromHeaders ignores Anthropic response headers", async () => {
+  const updated = await updateProviderStatusFromHeaders(
+    {
+      "anthropic-ratelimit-requests-remaining": "10",
+      "anthropic-ratelimit-tokens-remaining": "1000",
+    },
+    anthropicProviderStatusConfig,
   );
 
   assert.deepEqual(updated, []);
