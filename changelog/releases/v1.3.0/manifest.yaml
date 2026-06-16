@@ -1,0 +1,8 @@
+created: 2026-06-16
+title: Claude usage limits in provider status
+intro: >-
+  The provider status footer now displays Claude usage limits alongside Codex quotas,
+  and hides the Codex status for non-OpenAI models.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.2.0
