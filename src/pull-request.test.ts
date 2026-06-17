@@ -25,6 +25,21 @@ test("createGitHubRepositoryContext derives repository and PR lookup plan from r
   });
 });
 
+test("createGitHubRepositoryContext supports GitHub Enterprise hosts", () => {
+  const context = createGitHubRepositoryContext(
+    "remote.origin.url git@github.example.com:org/repo.git",
+    "origin/main",
+  );
+
+  assert.equal(context.repository, "org/repo");
+  assert.equal(context.pullRequestLookupEnabled, true);
+  assert.deepEqual(context.pullRequestLookupPlan, {
+    baseRepositories: ["org/repo"],
+    headOwners: ["org"],
+    allowCurrentBranchFallback: true,
+  });
+});
+
 test("parseGitHubPullRequestUrl extracts owner, repository, and PR number", () => {
   assert.deepEqual(
     parseGitHubPullRequestUrl("https://github.com/org/repo/pull/42"),

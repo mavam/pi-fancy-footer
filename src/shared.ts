@@ -762,7 +762,8 @@ export function formatThinkingLevel(level: string): string {
 }
 
 export function parseGitHubRemote(url: string): string {
-  const match = url.match(/github\.com[:/](.+\/.+?)(?:\.git)?$/);
+  // Match github.com and GitHub Enterprise hosts (e.g. github.example.com).
+  const match = url.match(/github[\w.-]*\.[a-z]+[:/](.+\/.+?)(?:\.git)?$/i);
   return match?.[1] ?? "";
 }
 
