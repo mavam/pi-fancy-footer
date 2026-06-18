@@ -6,10 +6,10 @@ import {
   parsePullRequest,
   parsePullRequestReviewThreadsPage,
   selectPullRequestFromGraphQL,
-  splitGitHubRepository,
 } from "./pull-request.ts";
 import {
   EMPTY_GIT_INFO,
+  type GitHubRepositoryRef,
   type GitInfo,
   parseNumstat,
   toNumber,
@@ -117,12 +117,11 @@ async function execGit(
 async function collectPullRequestFromBaseRepository(
   pi: ExtensionAPI,
   cwd: string,
-  baseRepository: string,
+  baseRepository: GitHubRepositoryRef,
   branch: string,
   headOwners: string[],
 ): Promise<GitInfo["pullRequest"]> {
-  const repository = splitGitHubRepository(baseRepository);
-  if (!repository || !branch) return undefined;
+  if (!branch) return undefined;
 
   const result = await execResult(
     pi,
@@ -130,12 +129,14 @@ async function collectPullRequestFromBaseRepository(
     [
       "api",
       "graphql",
+      "--hostname",
+      baseRepository.host,
       "-f",
       `query=${PULL_REQUEST_QUERY}`,
       "-F",
-      `owner=${repository.owner}`,
+      `owner=${baseRepository.owner}`,
       "-F",
-      `name=${repository.name}`,
+      `name=${baseRepository.name}`,
       "-F",
       `branch=${branch}`,
     ],
@@ -144,7 +145,9 @@ async function collectPullRequestFromBaseRepository(
   );
   if (result.code !== 0 || !result.stdout) return undefined;
 
-  return selectPullRequestFromGraphQL(result.stdout, headOwners);
+  const pullRequest = selectPullRequestFromGraphQL(result.stdout, headOwners);
+  if (!pullRequest) return undefined;
+  return { ...pullRequest, host: pullRequest.host ?? baseRepository.host };
 }
 
 async function collectCurrentBranchPullRequest(
@@ -178,6 +181,8 @@ async function collectPullRequestReviewThreadCount(
     const args = [
       "api",
       "graphql",
+      "--hostname",
+      location.host,
       "-f",
       `query=${PULL_REQUEST_REVIEW_THREADS_QUERY}`,
       "-F",
@@ -221,11 +226,14 @@ async function collectPullRequestCiStatus(
     pullRequest.headRefOid ?? "",
   );
   if (!path) return undefined;
+  const location = parseGitHubPullRequestUrl(pullRequest.url);
+  const host = pullRequest.host ?? location?.host;
+  if (!host) return undefined;
 
   const result = await execResult(
     pi,
     "gh",
-    ["api", path],
+    ["api", "--hostname", host, path],
     cwd,
     GITHUB_COMMAND_TIMEOUT_MS,
   );

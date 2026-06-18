@@ -1,13 +1,13 @@
 import {
   type GitHubPullRequest,
+  type GitHubRepositoryRef,
   parseGitHubRemote,
   toNumber,
 } from "./shared.ts";
 
 interface GitHubRemote {
   name: string;
-  repository: string;
-  owner: string;
+  ref: GitHubRepositoryRef;
 }
 
 interface PullRequestCandidate {
@@ -18,6 +18,7 @@ interface PullRequestCandidate {
 }
 
 export interface GitHubPullRequestLocation {
+  host: string;
   owner: string;
   name: string;
   number: number;
@@ -30,7 +31,7 @@ export interface PullRequestReviewThreadsPage {
 }
 
 export interface PullRequestLookupPlan {
-  baseRepositories: string[];
+  baseRepositories: GitHubRepositoryRef[];
   headOwners: string[];
   allowCurrentBranchFallback: boolean;
 }
@@ -61,21 +62,13 @@ function parseRemoteName(ref: string): string {
   return ref.slice(0, slash);
 }
 
-function parseRepositoryOwner(repository: string): string {
-  const slash = repository.indexOf("/");
-  if (slash <= 0) return "";
-  return repository.slice(0, slash);
-}
-
 function parseGitHubRemotes(remoteUrls: string): GitHubRemote[] {
   const remotes: GitHubRemote[] = [];
 
   for (const [name, url] of parseRemoteUrls(remoteUrls)) {
-    const repository = parseGitHubRemote(url);
-    if (!repository) continue;
-    const owner = parseRepositoryOwner(repository);
-    if (!owner) continue;
-    remotes.push({ name, repository, owner });
+    const ref = parseGitHubRemote(url);
+    if (!ref) continue;
+    remotes.push({ name, ref });
   }
 
   return remotes;
@@ -85,6 +78,7 @@ function orderedRemoteValues<T>(
   remotes: GitHubRemote[],
   preferredNames: string[],
   pick: (remote: GitHubRemote) => T,
+  keyFor: (value: T) => string = String,
 ): T[] {
   const byName = new Map(remotes.map((remote) => [remote.name, remote]));
   const ordered: T[] = [];
@@ -98,7 +92,7 @@ function orderedRemoteValues<T>(
     const remote = byName.get(remoteName);
     if (!remote) continue;
     const value = pick(remote);
-    const key = String(value);
+    const key = keyFor(value);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     ordered.push(value);
@@ -115,7 +109,7 @@ function selectGitHubRepository(
     orderedRemoteValues(
       remotes,
       [preferredRemote, "origin", "upstream"],
-      (remote) => remote.repository,
+      (remote) => remote.ref.repository,
     )[0] ?? ""
   );
 }
@@ -123,12 +117,13 @@ function selectGitHubRepository(
 function selectPullRequestBaseRepositories(
   remotes: GitHubRemote[],
   preferredRemote: string,
-): string[] {
+): GitHubRepositoryRef[] {
   // PRs often live in the upstream repo even when the branch tracks a fork remote.
   return orderedRemoteValues(
     remotes,
     ["upstream", preferredRemote, "origin"],
-    (remote) => remote.repository,
+    (remote) => remote.ref,
+    (ref) => `${ref.host}/${ref.repository}`,
   );
 }
 
@@ -139,7 +134,7 @@ function selectPullRequestHeadOwners(
   return orderedRemoteValues(
     remotes,
     [preferredRemote, "origin", "upstream"],
-    (remote) => remote.owner,
+    (remote) => remote.ref.owner,
   );
 }
 
@@ -178,9 +173,12 @@ function selectPullRequest(
 
   if (!bestCandidate) return undefined;
 
+  const location = parseGitHubPullRequestUrl(bestCandidate.url);
+
   return {
     number: bestCandidate.number,
     url: bestCandidate.url,
+    ...(location ? { host: location.host } : {}),
     ...(bestCandidate.headRefOid
       ? { headRefOid: bestCandidate.headRefOid }
       : {}),
@@ -244,17 +242,6 @@ export function createGitHubRepositoryContext(
   };
 }
 
-export function splitGitHubRepository(
-  repository: string,
-): { owner: string; name: string } | undefined {
-  const slash = repository.indexOf("/");
-  if (slash <= 0 || slash >= repository.length - 1) return undefined;
-  return {
-    owner: repository.slice(0, slash),
-    name: repository.slice(slash + 1),
-  };
-}
-
 export function parsePullRequest(
   output: string,
 ): GitHubPullRequest | undefined {
@@ -269,7 +256,13 @@ export function parsePullRequest(
     const headRefOid =
       typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
     if (number <= 0 || !url) return undefined;
-    return { number, url, ...(headRefOid ? { headRefOid } : {}) };
+    const location = parseGitHubPullRequestUrl(url);
+    return {
+      number,
+      url,
+      ...(location ? { host: location.host } : {}),
+      ...(headRefOid ? { headRefOid } : {}),
+    };
   } catch {
     return undefined;
   }
@@ -279,14 +272,15 @@ export function parseGitHubPullRequestUrl(
   url: string,
 ): GitHubPullRequestLocation | undefined {
   const match = url.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/,
+    /^https:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/,
   );
   if (!match) return undefined;
 
-  const [, owner, name, numberText] = match;
+  const [, rawHost, owner, name, numberText] = match;
+  const hostRef = parseGitHubRemote(`https://${rawHost}/${owner}/${name}.git`);
   const number = Math.max(0, Math.floor(toNumber(numberText)));
-  if (!owner || !name || number <= 0) return undefined;
-  return { owner, name, number };
+  if (!hostRef || number <= 0) return undefined;
+  return { host: hostRef.host, owner, name, number };
 }
 
 export function parsePullRequestReviewThreadsPage(

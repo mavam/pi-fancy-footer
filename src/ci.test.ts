@@ -77,6 +77,13 @@ test("buildWorkflowRunsPath creates GitHub Actions runs endpoint", () => {
     "repos/org/repo/actions/runs?head_sha=abc123&per_page=100",
   );
   assert.equal(
+    buildWorkflowRunsPath(
+      "https://github.example.com/org/repo/pull/42",
+      "abc123",
+    ),
+    "repos/org/repo/actions/runs?head_sha=abc123&per_page=100",
+  );
+  assert.equal(
     buildWorkflowRunsPath("https://example.com/x/y/pull/1", "abc"),
     undefined,
   );

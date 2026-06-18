@@ -129,6 +129,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   assert.deepEqual(result.pullRequest, {
     number: 7,
     url: "https://github.com/org/repo/pull/7",
+    host: "github.com",
   });
   assert.equal(result.pullRequestLookupEnabled, true);
   assert.notEqual(result.pullRequestLookupAt, 0);
@@ -223,6 +224,7 @@ test("collectPullRequestInfo includes unresolved review thread count", async () 
   assert.deepEqual(result.pullRequest, {
     number: 12,
     url: "https://github.com/me/repo/pull/12",
+    host: "github.com",
     unresolvedReviewThreadCount: 2,
   });
 });
@@ -271,7 +273,9 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
     if (
       command === "gh" &&
       args[0] === "api" &&
-      args[1] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
+      args[1] === "--hostname" &&
+      args[2] === "github.com" &&
+      args[3] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
     ) {
       return {
         code: 0,
@@ -306,12 +310,135 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
   assert.deepEqual(result.pullRequest, {
     number: 12,
     url: "https://github.com/me/repo/pull/12",
+    host: "github.com",
     headRefOid: "abc123",
     ciStatus: {
       state: "failed",
       url: "https://github.com/me/repo/actions/runs/2",
     },
   });
+});
+
+test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", async () => {
+  const { pi, calls } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
+      return { code: 0, stdout: "origin/feature\n", stderr: "" };
+    }
+
+    if (command === "git" && gitSubcommand(args) === "config") {
+      return {
+        code: 0,
+        stdout: "remote.origin.url git@github.example.com:me/repo.git",
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args[1] === "graphql" &&
+      args[2] === "--hostname" &&
+      args[3] === "github.example.com" &&
+      args.includes("branch=feature")
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    number: 12,
+                    url: "https://github.example.com/me/repo/pull/12",
+                    headRefOid: "abc123",
+                    headRepositoryOwner: { login: "me" },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args[1] === "graphql" &&
+      args[2] === "--hostname" &&
+      args[3] === "github.example.com" &&
+      args.includes("number=12")
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: {
+                    hasNextPage: false,
+                    endCursor: null,
+                  },
+                  nodes: [{ isResolved: false }],
+                },
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    if (
+      command === "gh" &&
+      args[0] === "api" &&
+      args[1] === "--hostname" &&
+      args[2] === "github.example.com" &&
+      args[3] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
+    ) {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          workflow_runs: [
+            {
+              status: "completed",
+              conclusion: "success",
+              html_url: "https://github.example.com/me/repo/actions/runs/1",
+              updated_at: "2026-01-01T10:00:00Z",
+            },
+          ],
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+
+  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
+    includeCiStatus: true,
+  });
+
+  assert.deepEqual(result.pullRequest, {
+    number: 12,
+    url: "https://github.example.com/me/repo/pull/12",
+    host: "github.example.com",
+    headRefOid: "abc123",
+    unresolvedReviewThreadCount: 1,
+    ciStatus: {
+      state: "okay",
+      url: "https://github.example.com/me/repo/actions/runs/1",
+    },
+  });
+  assert.equal(
+    calls
+      .filter((call) => call.command === "gh" && call.args[0] === "api")
+      .every((call) => call.args.includes("github.example.com")),
+    true,
+  );
 });
 
 test("collectPullRequestInfo skips GitHub CLI lookups when the repository has no GitHub remote", async () => {
