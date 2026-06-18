@@ -1,0 +1,9 @@
+created: 2026-06-18
+title: GitHub Enterprise PR widget lookups
+intro: >-
+  The PR widgets now target GitHub Enterprise hosts consistently for pull request,
+  review-thread, and CI lookups. This fixes Enterprise remotes that were recognized
+  for display but queried through the wrong GitHub host.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.3.0
