@@ -272,12 +272,20 @@ export interface ProviderStatusSnapshot {
 export interface GitHubPullRequest {
   number: number;
   url: string;
+  host?: string;
   headRefOid?: string;
   unresolvedReviewThreadCount?: number;
   ciStatus?: {
     state: PullRequestCiState;
     url: string;
   };
+}
+
+export interface GitHubRepositoryRef {
+  host: string;
+  owner: string;
+  name: string;
+  repository: string;
 }
 
 export interface GitInfo {
@@ -761,10 +769,40 @@ export function formatThinkingLevel(level: string): string {
   return normalized;
 }
 
-export function parseGitHubRemote(url: string): string {
-  // Match github.com and GitHub Enterprise hosts (e.g. github.example.com).
-  const match = url.match(/github[\w.-]*\.[a-z]+[:/](.+\/.+?)(?:\.git)?$/i);
-  return match?.[1] ?? "";
+function parseGitHubHost(host: string): string {
+  const normalized = host.toLowerCase();
+  if (normalized === "github.com") return normalized;
+  if (/^github(?:[.-][a-z0-9][a-z0-9-]*)+\.[a-z]{2,}$/i.test(normalized)) {
+    return normalized;
+  }
+  return "";
+}
+
+export function parseGitHubRemote(url: string): GitHubRepositoryRef | undefined {
+  const trimmed = url.trim();
+  const scpLike = trimmed.includes("://")
+    ? undefined
+    : trimmed.match(/^.+@([^:/]+):([^/][^:]*\/[^:]+)$/);
+  const urlLike = trimmed.match(
+    /^(?:https?:\/\/|ssh:\/\/.+@)([^/:]+)(?::\d+)?\/(.+\/.+)$/,
+  );
+  const match = scpLike ?? urlLike;
+  if (!match) return undefined;
+
+  const [, rawHost, rawRepository] = match;
+  const host = parseGitHubHost(rawHost ?? "");
+  if (!host || !rawRepository) return undefined;
+
+  const repository = rawRepository.replace(/\.git$/i, "");
+  const slash = repository.indexOf("/");
+  if (slash <= 0 || slash >= repository.length - 1) return undefined;
+
+  return {
+    host,
+    owner: repository.slice(0, slash),
+    name: repository.slice(slash + 1),
+    repository,
+  };
 }
 
 export function formatTerminalHyperlink(url: string, text: string): string {

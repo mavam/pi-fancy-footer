@@ -289,8 +289,9 @@ Notes:
   work better in terminals that don't use a Nerd Font.
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
-- The PR widgets appear only for open GitHub pull requests and rely on the
-  GitHub CLI (`gh`) being available and authenticated.
+- The PR widgets appear only for open GitHub and GitHub Enterprise pull
+  requests on GitHub-style hosts such as `github.example.com`; they rely on the
+  GitHub CLI (`gh`) being available and authenticated for the remote host.
 - `pull-request-review-threads` counts unresolved GitHub review threads
   on the current PR.
 - `pull-request-ci-status` shows GitHub Actions workflow runs for the current
