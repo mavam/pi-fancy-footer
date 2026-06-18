@@ -2,6 +2,7 @@
 title: GitHub Enterprise PR widget lookups
 type: bugfix
 authors:
+  - theli-ua
   - mavam
   - codex
 prs:
