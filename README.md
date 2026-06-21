@@ -277,9 +277,9 @@ Notes:
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly
   windows. Status is cached under `~/.cache/pi-fancy-footer/provider-status/`;
-  transient refresh failures keep showing cached quota windows until their reset
-  times pass instead of hiding the widget. The widget is hidden when the active
-  model selection is not backed by the status provider.
+  when a refresh fails, cached quota windows keep showing until their reset times
+  pass instead of hiding the widget. The widget is hidden when the active model
+  selection is not backed by the status provider.
 - `provider-status` also refreshes from `x-codex-*` provider response headers
   when pi exposes them, avoiding a separate Codex status request after provider
   calls. Claude status refreshes from the Claude.ai usage endpoint, not

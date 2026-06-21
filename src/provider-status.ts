@@ -32,16 +32,6 @@ type TokenRefreshResult =
   | { ok: true; stdout: string }
   | { ok: false; error: Error };
 
-class ProviderStatusHttpError extends Error {
-  status: number;
-
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "ProviderStatusHttpError";
-    this.status = status;
-  }
-}
-
 export interface ProviderStatusSource {
   id: string;
   label: string;
@@ -249,40 +239,36 @@ async function collectProviderStatusFromSource(
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
   } catch (error) {
-    if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
-      return { ...cached, source: "cache" };
-    }
-    const stale = staleProviderStatusFallback(cached, error);
-    if (stale) return stale;
-    return {
-      provider: source.id,
-      source: "api",
-      fetchedAt: new Date().toISOString(),
-      state: "unavailable",
-      url: source.usageUrl,
-      error: providerStatusErrorMessage(error),
-    };
+    // A refresh failed. The cached quota windows remain valid until they
+    // reset, regardless of why the refresh failed, so keep showing whichever
+    // windows are still in effect.
+    return (
+      displayableCachedStatus(cached, error) ??
+      unavailableProviderStatus(source, error)
+    );
   }
 }
 
-function staleProviderStatusFallback(
+// Projects a cached snapshot onto the windows that are still in effect, i.e.
+// have not reset yet. Returns undefined when nothing is left to display.
+function displayableCachedStatus(
   cached: ProviderStatusSnapshot | undefined,
   error: unknown,
   now = new Date(),
 ): ProviderStatusSnapshot | undefined {
-  if (!cached || !isTransientProviderStatusError(error)) return undefined;
+  if (!cached) return undefined;
 
-  const primary = usableStaleProviderStatusWindow(cached.primary, now);
-  const secondary = usableStaleProviderStatusWindow(cached.secondary, now);
+  const primary = windowInEffect(cached.primary, now);
+  const secondary = windowInEffect(cached.secondary, now);
   if (!primary && !secondary) return undefined;
 
   const {
     primary: _expiredPrimary,
     secondary: _expiredSecondary,
-    ...cachedWithoutWindows
+    ...rest
   } = cached;
   return {
-    ...cachedWithoutWindows,
+    ...rest,
     source: "cache",
     state: computeProviderStatusState(primary, secondary),
     ...(primary ? { primary } : {}),
@@ -291,7 +277,10 @@ function staleProviderStatusFallback(
   };
 }
 
-function usableStaleProviderStatusWindow(
+// A window is in effect while its reset time is still in the future. Windows
+// without a reset time have no intrinsic lifetime, so they are not shown once
+// the refresh that would confirm them has failed.
+function windowInEffect(
   window: ProviderStatusWindow | undefined,
   now: Date,
 ): ProviderStatusWindow | undefined {
@@ -302,21 +291,22 @@ function usableStaleProviderStatusWindow(
     : undefined;
 }
 
-function providerStatusErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function unavailableProviderStatus(
+  source: ProviderStatusSource,
+  error: unknown,
+): ProviderStatusSnapshot {
+  return {
+    provider: source.id,
+    source: "api",
+    fetchedAt: new Date().toISOString(),
+    state: "unavailable",
+    url: source.usageUrl,
+    error: providerStatusErrorMessage(error),
+  };
 }
 
-function isTransientProviderStatusError(error: unknown): boolean {
-  if (error instanceof ProviderStatusHttpError) {
-    return error.status === 429 || (error.status >= 500 && error.status < 600);
-  }
-  if (!(error instanceof Error)) return true;
-  return (
-    /\((?:429|5\d\d)\)/.test(error.message) ||
-    /\b(?:fetch failed|network|timeout|timed out|ECONN|EAI_AGAIN|ENOTFOUND)\b/i.test(
-      error.message,
-    )
-  );
+function providerStatusErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function updateProviderStatusFromHeaders(
@@ -483,9 +473,8 @@ async function fetchCodexProviderStatus(
       continue;
     }
 
-    throw new ProviderStatusHttpError(
+    throw new Error(
       `Codex usage request failed (${response.status}): ${text.slice(0, 500)}`,
-      response.status,
     );
   }
 
@@ -522,9 +511,8 @@ async function fetchClaudeProviderStatus(
       continue;
     }
 
-    throw new ProviderStatusHttpError(
+    throw new Error(
       `Claude usage request failed (${response.status}): ${text.slice(0, 500)}`,
-      response.status,
     );
   }
 
@@ -642,9 +630,8 @@ async function requestTokenRefresh(
     if (!response.ok) {
       return {
         ok: false,
-        error: new ProviderStatusHttpError(
+        error: new Error(
           `${label} failed (${response.status}): ${text.slice(0, 500)}`,
-          response.status,
         ),
       };
     }
