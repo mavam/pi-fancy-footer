@@ -14,10 +14,7 @@ import {
   providerStatusColor,
   updateProviderStatusFromHeaders,
 } from "./provider-status.ts";
-import {
-  getGaugeStyle,
-  type ProviderStatusConfigSnapshot,
-} from "./shared.ts";
+import { getGaugeStyle, type ProviderStatusConfigSnapshot } from "./shared.ts";
 
 const now = new Date("2026-05-06T10:00:00Z");
 const providerStatusConfig: ProviderStatusConfigSnapshot = {
@@ -336,6 +333,295 @@ test("collectProviderStatus does not present expired cache as live status after 
   assert.equal(snapshot?.state, "unavailable");
   assert.equal(snapshot?.primary, undefined);
   assert.match(snapshot?.error ?? "", /No usable Codex OAuth credentials/);
+});
+
+test("collectProviderStatus keeps cached quota in effect after a failed refresh", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+      status: 429,
+    });
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 3_600;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 5,
+        leftPercent: 95,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 12,
+        leftPercent: 88,
+        resetAt: futureResetAt,
+      },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "cache");
+  assert.equal(snapshot?.state, "ok");
+  assert.deepEqual(snapshot?.primary, {
+    label: "5h",
+    usedPercent: 5,
+    leftPercent: 95,
+    resetAt: futureResetAt,
+  });
+  assert.deepEqual(snapshot?.secondary, {
+    label: "7d",
+    usedPercent: 12,
+    leftPercent: 88,
+    resetAt: futureResetAt,
+  });
+  assert.match(snapshot?.error ?? "", /429/);
+});
+
+test("collectProviderStatus hides cached quota once its windows reset", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  globalThis.fetch = async () => new Response("rate limited", { status: 429 });
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: { label: "5h", usedPercent: 5, leftPercent: 95, resetAt: 1 },
+      secondary: {
+        label: "7d",
+        usedPercent: 12,
+        leftPercent: 88,
+        resetAt: 1,
+      },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "api");
+  assert.equal(snapshot?.state, "unavailable");
+  assert.equal(snapshot?.primary, undefined);
+  assert.equal(snapshot?.secondary, undefined);
+  assert.match(snapshot?.error ?? "", /429/);
+});
+
+test("collectProviderStatus keeps cached quota in effect after a failed auth refresh", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  globalThis.fetch = async () => new Response("rate limited", { status: 429 });
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({
+      anthropic: {
+        access: "expired-access-token",
+        refresh: "test-refresh-token",
+        expires: Date.now() - 60_000,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 3_600;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 5,
+        leftPercent: 95,
+        resetAt: futureResetAt,
+      },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "cache");
+  assert.equal(snapshot?.state, "ok");
+  assert.equal(snapshot?.primary?.resetAt, futureResetAt);
+  assert.match(snapshot?.error ?? "", /429/);
+});
+
+test("collectProviderStatus keeps cached quota in effect regardless of the failure cause", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  // A non-retryable failure (e.g. revoked credentials) must not invalidate a
+  // quota window that has not reset yet.
+  globalThis.fetch = async () => new Response("forbidden", { status: 403 });
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 3_600;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 5,
+        leftPercent: 95,
+        resetAt: futureResetAt,
+      },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "cache");
+  assert.equal(snapshot?.state, "ok");
+  assert.equal(snapshot?.primary?.resetAt, futureResetAt);
+  assert.match(snapshot?.error ?? "", /403/);
 });
 
 test("updateProviderStatusFromHeaders honors disabled providers", async () => {

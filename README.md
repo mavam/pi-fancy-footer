@@ -276,9 +276,10 @@ Notes:
   from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly
-  windows. Status is cached under `~/.cache/pi-fancy-footer/provider-status/`.
-  The widget is hidden when the active model selection is not backed by the
-  status provider.
+  windows. Status is cached under `~/.cache/pi-fancy-footer/provider-status/`;
+  when a refresh fails, cached quota windows keep showing until their reset times
+  pass instead of hiding the widget. The widget is hidden when the active model
+  selection is not backed by the status provider.
 - `provider-status` also refreshes from `x-codex-*` provider response headers
   when pi exposes them, avoiding a separate Codex status request after provider
   calls. Claude status refreshes from the Claude.ai usage endpoint, not
@@ -297,6 +298,7 @@ Notes:
 - `pull-request-ci-status` shows GitHub Actions workflow runs for the current
   PR head commit. It links to the relevant run and switches to failed as soon as
   one workflow fails, even when other workflows are still running.
+
 ## 🧱 Gauge styles
 
 The `gaugeStyle` setting controls the characters used by the `context-bar`

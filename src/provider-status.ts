@@ -28,6 +28,10 @@ const CLAUDE_SECONDARY_WINDOW_LABEL = "7d";
 
 type HeaderLike = Record<string, string | number | boolean | undefined | null>;
 
+type TokenRefreshResult =
+  | { ok: true; stdout: string }
+  | { ok: false; error: Error };
+
 export interface ProviderStatusSource {
   id: string;
   label: string;
@@ -106,10 +110,7 @@ export function isProviderStatusRelevantToModel(
   providerId: string,
   model: ModelLike | string | undefined,
 ): boolean {
-  if (
-    providerId !== CODEX_SOURCE.id &&
-    providerId !== ANTHROPIC_SOURCE.id
-  ) {
+  if (providerId !== CODEX_SOURCE.id && providerId !== ANTHROPIC_SOURCE.id) {
     return true;
   }
 
@@ -238,18 +239,74 @@ async function collectProviderStatusFromSource(
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
   } catch (error) {
-    if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
-      return { ...cached, source: "cache" };
-    }
-    return {
-      provider: source.id,
-      source: "api",
-      fetchedAt: new Date().toISOString(),
-      state: "unavailable",
-      url: source.usageUrl,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    // A refresh failed. The cached quota windows remain valid until they
+    // reset, regardless of why the refresh failed, so keep showing whichever
+    // windows are still in effect.
+    return (
+      displayableCachedStatus(cached, error) ??
+      unavailableProviderStatus(source, error)
+    );
   }
+}
+
+// Projects a cached snapshot onto the windows that are still in effect, i.e.
+// have not reset yet. Returns undefined when nothing is left to display.
+function displayableCachedStatus(
+  cached: ProviderStatusSnapshot | undefined,
+  error: unknown,
+  now = new Date(),
+): ProviderStatusSnapshot | undefined {
+  if (!cached) return undefined;
+
+  const primary = windowInEffect(cached.primary, now);
+  const secondary = windowInEffect(cached.secondary, now);
+  if (!primary && !secondary) return undefined;
+
+  const {
+    primary: _expiredPrimary,
+    secondary: _expiredSecondary,
+    ...rest
+  } = cached;
+  return {
+    ...rest,
+    source: "cache",
+    state: computeProviderStatusState(primary, secondary),
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    error: providerStatusErrorMessage(error),
+  };
+}
+
+// A window is in effect while its reset time is still in the future. Windows
+// without a reset time have no intrinsic lifetime, so they are not shown once
+// the refresh that would confirm them has failed.
+function windowInEffect(
+  window: ProviderStatusWindow | undefined,
+  now: Date,
+): ProviderStatusWindow | undefined {
+  if (!window?.resetAt) return undefined;
+  const resetAtMs = window.resetAt * 1000;
+  return Number.isFinite(resetAtMs) && resetAtMs > now.getTime()
+    ? window
+    : undefined;
+}
+
+function unavailableProviderStatus(
+  source: ProviderStatusSource,
+  error: unknown,
+): ProviderStatusSnapshot {
+  return {
+    provider: source.id,
+    source: "api",
+    fetchedAt: new Date().toISOString(),
+    state: "unavailable",
+    url: source.usageUrl,
+    error: providerStatusErrorMessage(error),
+  };
+}
+
+function providerStatusErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function updateProviderStatusFromHeaders(
@@ -495,7 +552,9 @@ async function resolveClaudeAuth(): Promise<AuthCredentials> {
   );
 }
 
-async function refreshIfNeeded(auth: AuthCredentials): Promise<AuthCredentials> {
+async function refreshIfNeeded(
+  auth: AuthCredentials,
+): Promise<AuthCredentials> {
   if (!auth.refreshToken || !auth.expiresAtMs) return auth;
   if (auth.expiresAtMs > Date.now() + 5 * 60 * 1000) return auth;
   return refreshAuth(auth);
@@ -522,12 +581,15 @@ async function refreshAuth(auth: AuthCredentials): Promise<AuthCredentials> {
     client_id: refreshConfig.clientId,
   }).toString();
 
-  const result = await localRefresh(body, refreshConfig.tokenUrl);
+  const result = await requestTokenRefresh(
+    body,
+    refreshConfig.tokenUrl,
+    `${refreshConfig.label} auth refresh`,
+  );
 
-  if (result.code !== 0 || !result.stdout) {
-    throw new Error(
-      result.stderr || `Failed to refresh ${refreshConfig.label} auth`,
-    );
+  if (!result.ok) throw result.error;
+  if (!result.stdout) {
+    throw new Error(`Failed to refresh ${refreshConfig.label} auth`);
   }
 
   const refreshed = JSON.parse(result.stdout) as Record<string, unknown>;
@@ -538,7 +600,8 @@ async function refreshAuth(auth: AuthCredentials): Promise<AuthCredentials> {
     );
   }
 
-  const refreshToken = stringValue(refreshed.refresh_token) ?? auth.refreshToken;
+  const refreshToken =
+    stringValue(refreshed.refresh_token) ?? auth.refreshToken;
   const expiresIn = numberValue(refreshed.expires_in);
   const next: AuthCredentials = {
     ...auth,
@@ -552,10 +615,11 @@ async function refreshAuth(auth: AuthCredentials): Promise<AuthCredentials> {
   return next;
 }
 
-async function localRefresh(
+async function requestTokenRefresh(
   body: string,
   tokenUrl: string,
-): Promise<{ code: number; stdout: string; stderr: string }> {
+  label: string,
+): Promise<TokenRefreshResult> {
   try {
     const response = await fetch(tokenUrl, {
       method: "POST",
@@ -563,13 +627,19 @@ async function localRefresh(
       body,
     });
     const text = await response.text();
-    if (!response.ok) return { code: 1, stdout: "", stderr: text };
-    return { code: 0, stdout: text, stderr: "" };
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: new Error(
+          `${label} failed (${response.status}): ${text.slice(0, 500)}`,
+        ),
+      };
+    }
+    return { ok: true, stdout: text };
   } catch (error) {
     return {
-      code: -1,
-      stdout: "",
-      stderr: error instanceof Error ? error.message : String(error),
+      ok: false,
+      error: error instanceof Error ? error : new Error(String(error)),
     };
   }
 }
@@ -705,7 +775,7 @@ function mergeProviderStatus(
     ...update,
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
-    ...(update.credits ?? existing.credits
+    ...((update.credits ?? existing.credits)
       ? { credits: update.credits ?? existing.credits }
       : {}),
     state: computeProviderStatusState(primary, secondary),
@@ -762,7 +832,9 @@ function normalizeClaudeUsageWindow(
   );
 }
 
-function windowLabelFromSeconds(seconds: number | undefined): string | undefined {
+function windowLabelFromSeconds(
+  seconds: number | undefined,
+): string | undefined {
   if (seconds === undefined || seconds <= 0) return undefined;
   if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
   if (seconds % 3_600 === 0) return `${seconds / 3_600}h`;
@@ -854,7 +926,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function numberString(value: string | undefined): number | undefined {
