@@ -241,6 +241,13 @@ async function collectProviderStatusFromSource(
     if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
       return { ...cached, source: "cache" };
     }
+    if (cached && isTransientProviderStatusError(error)) {
+      return {
+        ...cached,
+        source: "cache",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
     return {
       provider: source.id,
       source: "api",
@@ -250,6 +257,16 @@ async function collectProviderStatusFromSource(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function isTransientProviderStatusError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  return (
+    /\((?:429|5\d\d)\)/.test(error.message) ||
+    /\b(?:fetch failed|network|timeout|timed out|ECONN|EAI_AGAIN|ENOTFOUND)\b/i.test(
+      error.message,
+    )
+  );
 }
 
 export async function updateProviderStatusFromHeaders(

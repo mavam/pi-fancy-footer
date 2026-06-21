@@ -338,6 +338,78 @@ test("collectProviderStatus does not present expired cache as live status after 
   assert.match(snapshot?.error ?? "", /No usable Codex OAuth credentials/);
 });
 
+test("collectProviderStatus keeps stale cache after transient refresh failure", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+      status: 429,
+    });
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: { label: "5h", usedPercent: 5, leftPercent: 95 },
+      secondary: { label: "7d", usedPercent: 12, leftPercent: 88 },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "cache");
+  assert.equal(snapshot?.state, "ok");
+  assert.deepEqual(snapshot?.primary, {
+    label: "5h",
+    usedPercent: 5,
+    leftPercent: 95,
+  });
+  assert.deepEqual(snapshot?.secondary, {
+    label: "7d",
+    usedPercent: 12,
+    leftPercent: 88,
+  });
+  assert.match(snapshot?.error ?? "", /429/);
+});
+
 test("updateProviderStatusFromHeaders honors disabled providers", async () => {
   const updated = await updateProviderStatusFromHeaders(
     {
