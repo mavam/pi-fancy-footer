@@ -1,0 +1,9 @@
+created: 2026-06-21
+title: Provider quota display after refresh failures
+intro: >-
+  Provider quota widgets now keep showing valid cached hourly and weekly limits when
+  a refresh fails. This prevents transient provider errors from blanking usable quota
+  status in the footer before the cached windows reset.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.3.1
