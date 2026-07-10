@@ -146,6 +146,24 @@ test("getThinkingLevelFromEntries prefers the latest thinking change", () => {
   );
 });
 
+test("getThinkingLevelFromEntries preserves Pi thinking levels", () => {
+  assert.equal(getThinkingLevelFromEntries([], "max"), "max");
+  assert.equal(
+    getThinkingLevelFromEntries(
+      [{ type: "thinking_level_change", thinkingLevel: "max" }],
+      "off",
+    ),
+    "max",
+  );
+  assert.equal(
+    getThinkingLevelFromEntries(
+      [{ type: "thinking_level_change", thinkingLevel: "future" }],
+      "off",
+    ),
+    "future",
+  );
+});
+
 test("getThinkingLevelFromEntries falls back when the session has no change", () => {
   assert.equal(getThinkingLevelFromEntries([], "high"), "high");
   assert.equal(
