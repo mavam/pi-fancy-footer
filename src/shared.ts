@@ -6,7 +6,8 @@ export type ThinkingLevel =
   | "low"
   | "medium"
   | "high"
-  | "xhigh";
+  | "xhigh"
+  | "max";
 
 export const FOOTER_ICON_FAMILIES = [
   "nerd",
@@ -741,6 +742,7 @@ export function normalizeThinkingLevel(level: string): ThinkingLevel {
     case "medium":
     case "high":
     case "xhigh":
+    case "max":
       return level;
     default:
       return "off";

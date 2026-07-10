@@ -146,6 +146,17 @@ test("getThinkingLevelFromEntries prefers the latest thinking change", () => {
   );
 });
 
+test("getThinkingLevelFromEntries supports max thinking", () => {
+  assert.equal(getThinkingLevelFromEntries([], "max"), "max");
+  assert.equal(
+    getThinkingLevelFromEntries(
+      [{ type: "thinking_level_change", thinkingLevel: "max" }],
+      "off",
+    ),
+    "max",
+  );
+});
+
 test("getThinkingLevelFromEntries falls back when the session has no change", () => {
   assert.equal(getThinkingLevelFromEntries([], "high"), "high");
   assert.equal(

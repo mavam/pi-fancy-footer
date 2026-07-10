@@ -76,6 +76,34 @@ function contextWithModel(model: { id: string; name: string; provider?: string }
   };
 }
 
+test("renderFooterLines renders max thinking with the default text color", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+  };
+
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "max",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+
+  assert.match(lines.join("\n"), /\?max/);
+  assert.ok(colors.includes("dim:max"));
+  assert.equal(colors.includes("thinkingMax:max"), false);
+});
+
 test("renderFooterLines hides Codex provider status for non-OpenAI models", () => {
   const lines = renderFooterLines(
     120,
