@@ -26,6 +26,7 @@ import {
   type ProviderStatusConfigSnapshot,
   type ProviderStatusSnapshot,
   type SessionUsageMetrics,
+  type ThinkingLevel,
   type WidgetRenderContext,
   type GaugeColorsSnapshot,
   type GaugeFillMode,
@@ -461,7 +462,7 @@ function composeAlignedRow(
 function computeFooterMetrics(
   ctx: ExtensionContext,
   git: GitInfo,
-  fallbackThinkingLevel: string,
+  fallbackThinkingLevel: ThinkingLevel,
   usageMetrics: SessionUsageMetrics,
   iconFamily: FooterIconFamily,
 ): FooterMetrics {
@@ -902,7 +903,7 @@ export function renderFooterLines(
   width: number,
   ctx: ExtensionContext,
   git: GitInfo,
-  fallbackThinkingLevel: string,
+  fallbackThinkingLevel: ThinkingLevel,
   theme: Theme,
   usageMetrics: SessionUsageMetrics,
   footerConfig: FooterConfigSnapshot,

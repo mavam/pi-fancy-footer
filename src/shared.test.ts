@@ -146,7 +146,7 @@ test("getThinkingLevelFromEntries prefers the latest thinking change", () => {
   );
 });
 
-test("getThinkingLevelFromEntries supports max thinking", () => {
+test("getThinkingLevelFromEntries preserves Pi thinking levels", () => {
   assert.equal(getThinkingLevelFromEntries([], "max"), "max");
   assert.equal(
     getThinkingLevelFromEntries(
@@ -154,6 +154,13 @@ test("getThinkingLevelFromEntries supports max thinking", () => {
       "off",
     ),
     "max",
+  );
+  assert.equal(
+    getThinkingLevelFromEntries(
+      [{ type: "thinking_level_change", thinkingLevel: "future" }],
+      "off",
+    ),
+    "future",
   );
 });
 
