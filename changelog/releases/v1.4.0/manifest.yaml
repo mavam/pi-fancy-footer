@@ -1,0 +1,10 @@
+created: 2026-07-11
+title: Visual footer configuration
+intro: >-
+  Configure the fancy footer visually with a live preview that mirrors widget rows,
+  alignment, order, and settings, making customization immediate and intuitive. This
+  release also adds prompt-cache statistics, smarter context-bar sizing, and broader
+  thinking-level support.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.3.2
