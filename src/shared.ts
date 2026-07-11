@@ -565,6 +565,8 @@ export interface NormalizedFancyFooterWidgetContribution extends Omit<
 
 export interface FooterWidgetMeta {
   defaults: FooterWidgetEditorDefaults;
+  /** Compact label for the config editor when the full id doesn't fit. */
+  shortLabel: string;
   description: string;
   symbolKey: keyof StatuslineSymbols;
   hasFooterIcon?: boolean;
@@ -575,59 +577,70 @@ export const FOOTER_WIDGET_META: Record<
   FooterWidgetMeta
 > = {
   model: {
+    shortLabel: "model",
     defaults: { row: 1, position: 6, align: "right", fill: "none" },
     description: "Shows the active model.",
     symbolKey: "model",
   },
   thinking: {
+    shortLabel: "think",
     defaults: { row: 1, position: 7, align: "right", fill: "none" },
     description: "Shows the current thinking level.",
     symbolKey: "thinking",
   },
   "context-capacity": {
+    shortLabel: "capacity",
     defaults: { row: 0, position: 0, align: "right", fill: "none" },
     description: "Shows the total context window in thousands of tokens.",
     symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
+    shortLabel: "ctx-bar",
     defaults: { row: 0, position: 0, align: "left", fill: "none" },
     description:
       "Shows a mini gauge of remaining context. Set fill to grow for a full-width bar.",
     symbolKey: "contextBarMarker",
   },
   "total-cost": {
+    shortLabel: "cost",
     defaults: { row: 0, position: 1, align: "right", fill: "none" },
     description: "Shows the total session cost.",
     symbolKey: "currency",
   },
   location: {
+    shortLabel: "loc",
     defaults: { row: 1, position: 0, align: "left", fill: "none" },
     description: "Shows the repository name or current path.",
     symbolKey: "path",
   },
   branch: {
+    shortLabel: "branch",
     defaults: { row: 1, position: 1, align: "left", fill: "none" },
     description: "Shows the current Git branch.",
     symbolKey: "branch",
   },
   commit: {
+    shortLabel: "commit",
     defaults: { row: 1, position: 2, align: "left", fill: "none" },
     description: "Shows the short Git commit hash.",
     symbolKey: "commit",
   },
   "pull-request": {
+    shortLabel: "pr",
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
     description:
       "Shows the open GitHub pull request number for the current branch.",
     symbolKey: "pullRequest",
   },
   "pull-request-review-threads": {
+    shortLabel: "pr-threads",
     defaults: { row: 1, position: 4, align: "left", fill: "none" },
     description:
       "Shows unresolved GitHub pull request review threads for the current branch.",
     symbolKey: "pullRequestReviewThreads",
   },
   "pull-request-ci-status": {
+    shortLabel: "pr-ci",
     defaults: { row: 1, position: 5, align: "left", fill: "none" },
     description:
       "Shows the GitHub Actions CI status for the current pull request.",
@@ -635,21 +648,25 @@ export const FOOTER_WIDGET_META: Record<
     hasFooterIcon: false,
   },
   "provider-status": {
+    shortLabel: "quota",
     defaults: { row: 0, position: 1, align: "left", fill: "none" },
     description: "Shows quota status for configured providers.",
     symbolKey: "providerStatus",
   },
   "diff-added": {
+    shortLabel: "added",
     defaults: { row: 1, position: 6, align: "left", fill: "none" },
     description: "Shows added lines in your working tree.",
     symbolKey: "diffAdded",
   },
   "diff-removed": {
+    shortLabel: "removed",
     defaults: { row: 1, position: 7, align: "left", fill: "none" },
     description: "Shows removed lines in your working tree.",
     symbolKey: "diffRemoved",
   },
   "git-status": {
+    shortLabel: "git",
     defaults: { row: 1, position: 8, align: "left", fill: "none" },
     description: "Shows whether your branch is ahead, behind, or diverged.",
     symbolKey: "gitDiverged",

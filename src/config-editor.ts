@@ -52,8 +52,11 @@ interface ChipSpan {
   end: number;
 }
 
-// Chips drop their labels below this width so every widget stays visible.
-const ICON_ONLY_WIDTH = 50;
+// Each chip row independently degrades until it fits: full widget names,
+// then short names, then icons only. The status line under the preview
+// always shows the selected widget's full name.
+type ChipMode = "full" | "short" | "icon";
+const CHIP_MODES: readonly ChipMode[] = ["full", "short", "icon"];
 const CHIP_GAP = 2;
 
 export async function openFooterConfigEditor({
@@ -337,19 +340,21 @@ export async function openFooterConfigEditor({
 
     // ── preview rendering ────────────────────────────────────────────
 
-    const chipText = (chip: LayoutChip, iconOnly: boolean): string => {
+    const chipText = (chip: LayoutChip, mode: ChipMode): string => {
       const icon = chip.widget.defaultIcon?.text ?? "◌";
-      if (iconOnly) return icon;
+      if (mode === "icon") return icon;
+      const label =
+        mode === "full" ? chip.widget.label : chip.widget.shortLabel;
       const grow = chip.placement.fill === "grow" ? " ↔" : "";
-      return `${icon} ${chip.widget.label}${grow}`;
+      return `${icon} ${label}${grow}`;
     };
 
     const styledChip = (
       chip: LayoutChip,
-      iconOnly: boolean,
+      mode: ChipMode,
       selected: boolean,
     ): string => {
-      const plain = chipText(chip, iconOnly);
+      const plain = chipText(chip, mode);
       if (selected) return theme.inverse(plain);
       if (chip.placement.benched) return theme.fg("dim", plain);
 
@@ -357,10 +362,12 @@ export async function openFooterConfigEditor({
       const iconColor = chip.widget.defaultIcon
         ? draft.defaultIconColor
         : "dim";
-      if (iconOnly) return theme.fg(iconColor, icon);
+      if (mode === "icon") return theme.fg(iconColor, icon);
+      const label =
+        mode === "full" ? chip.widget.label : chip.widget.shortLabel;
       const grow =
         chip.placement.fill === "grow" ? theme.fg("dim", " ↔") : "";
-      return `${theme.fg(iconColor, icon)} ${chip.widget.label}${grow}`;
+      return `${theme.fg(iconColor, icon)} ${label}${grow}`;
     };
 
     interface PlacedChip {
@@ -369,45 +376,57 @@ export async function openFooterConfigEditor({
       width: number;
     }
 
+    const groupWidth = (chips: LayoutChip[], mode: ChipMode) =>
+      chips.reduce(
+        (acc, chip, index) =>
+          acc + visibleWidth(chipText(chip, mode)) + (index > 0 ? CHIP_GAP : 0),
+        0,
+      );
+
+    const rowFits = (
+      contentWidth: number,
+      row: LayoutRow,
+      mode: ChipMode,
+    ): boolean => {
+      const blocks = [
+        groupWidth(row.groups.left, mode),
+        groupWidth(row.groups.middle, mode),
+        groupWidth(row.groups.right, mode),
+      ].filter((width) => width > 0);
+      return (
+        blocks.reduce((acc, width) => acc + width, 0) +
+          (blocks.length - 1) * CHIP_GAP <=
+        contentWidth
+      );
+    };
+
+    // The widest mode in which the row fits; icons-only as a last resort.
+    const rowChipMode = (contentWidth: number, row: LayoutRow): ChipMode =>
+      CHIP_MODES.find((mode) => rowFits(contentWidth, row, mode)) ?? "icon";
+
     // Mirrors composeAlignedRow() in render.ts: left group flush left, right
     // group flush right, middle group centered. Falls back to a flat join
-    // when the row overflows.
+    // when the row overflows even icons-only.
     const placeRowChips = (
       contentWidth: number,
       row: LayoutRow,
-      iconOnly: boolean,
+      mode: ChipMode,
     ): PlacedChip[] => {
-      const groupWidths = (chips: LayoutChip[]) =>
-        chips.reduce(
-          (acc, chip, index) =>
-            acc +
-            visibleWidth(chipText(chip, iconOnly)) +
-            (index > 0 ? CHIP_GAP : 0),
-          0,
-        );
-
-      const leftWidth = groupWidths(row.groups.left);
-      const middleWidth = groupWidths(row.groups.middle);
-      const rightWidth = groupWidths(row.groups.right);
-      const blocks = [leftWidth, middleWidth, rightWidth].filter(
-        (width) => width > 0,
-      );
-      const fits =
-        blocks.reduce((acc, width) => acc + width, 0) +
-          (blocks.length - 1) * CHIP_GAP <=
-        contentWidth;
+      const leftWidth = groupWidth(row.groups.left, mode);
+      const middleWidth = groupWidth(row.groups.middle, mode);
+      const rightWidth = groupWidth(row.groups.right, mode);
 
       const placed: PlacedChip[] = [];
       const placeGroup = (chips: LayoutChip[], start: number) => {
         let column = start;
         for (const chip of chips) {
-          const width = visibleWidth(chipText(chip, iconOnly));
+          const width = visibleWidth(chipText(chip, mode));
           placed.push({ chip, column, width });
           column += width + CHIP_GAP;
         }
       };
 
-      if (!fits) {
+      if (!rowFits(contentWidth, row, mode)) {
         placeGroup(row.ordered, 0);
         return placed;
       }
@@ -433,7 +452,7 @@ export async function openFooterConfigEditor({
       width: number,
       gutter: string,
       placed: PlacedChip[],
-      iconOnly: boolean,
+      mode: ChipMode,
       selectedId: string | undefined,
     ): string => {
       const gutterWidth = visibleWidth(gutter);
@@ -446,7 +465,7 @@ export async function openFooterConfigEditor({
         }
         line += styledChip(
           entry.chip,
-          iconOnly,
+          mode,
           entry.chip.widget.id === selectedId,
         );
         chipSpans.set(entry.chip.widget.id, {
@@ -471,7 +490,6 @@ export async function openFooterConfigEditor({
         if (submenu) return submenu.render(width);
 
         const current = model();
-        const iconOnly = width < ICON_ONLY_WIDTH;
         const selectedId =
           selection.area === "globals" ? undefined : selection.widgetId;
         chipSpans = new Map();
@@ -499,23 +517,60 @@ export async function openFooterConfigEditor({
             continue;
           }
           const contentWidth = Math.max(10, width - gutterDigits - 2);
-          const placed = placeRowChips(contentWidth, row, iconOnly);
-          lines.push(renderChipLine(width, gutter, placed, iconOnly, selectedId));
+          const mode = rowChipMode(contentWidth, row);
+          const placed = placeRowChips(contentWidth, row, mode);
+          lines.push(renderChipLine(width, gutter, placed, mode, selectedId));
         }
 
         if (current.bench.length > 0) {
           lines.push(truncateToWidth(theme.fg("dim", "hidden"), width));
           const gutter = " ".repeat(gutterDigits + 2);
-          let placedBench: PlacedChip[] = [];
+          const contentWidth = Math.max(10, width - gutterDigits - 2);
+          const mode =
+            CHIP_MODES.find(
+              (candidate) =>
+                groupWidth(current.bench, candidate) <= contentWidth,
+            ) ?? "icon";
+          const placedBench: PlacedChip[] = [];
           let column = 0;
           for (const chip of current.bench) {
-            const chipWidth = visibleWidth(chipText(chip, iconOnly));
+            const chipWidth = visibleWidth(chipText(chip, mode));
             placedBench.push({ chip, column, width: chipWidth });
             column += chipWidth + CHIP_GAP;
           }
           lines.push(
-            renderChipLine(width, gutter, placedBench, iconOnly, selectedId),
+            renderChipLine(width, gutter, placedBench, mode, selectedId),
           );
+        }
+
+        if (selection.area !== "globals") {
+          const widgetId = selection.widgetId;
+          const chip =
+            current.rows
+              .flatMap((row) => row.ordered)
+              .find((entry) => entry.widget.id === widgetId) ??
+            current.bench.find((entry) => entry.widget.id === widgetId);
+          if (chip) {
+            const placement = chip.placement;
+            const group = placement.benched
+              ? current.bench
+              : current.rows[placement.row]!.groups[placement.align];
+            const index = group.findIndex(
+              (entry) => entry.widget.id === widgetId,
+            );
+            const info = placement.benched
+              ? "hidden"
+              : `row ${placement.row} · ${placement.align} · pos ${index}${
+                  placement.fill === "grow" ? " · grow" : ""
+                }`;
+            lines.push("");
+            lines.push(
+              truncateToWidth(
+                `${theme.inverse(chip.widget.label)} ${theme.fg("dim", `— ${info}`)}`,
+                width,
+              ),
+            );
+          }
         }
 
         lines.push("");

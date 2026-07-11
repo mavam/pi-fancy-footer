@@ -167,6 +167,7 @@ type WidgetConfigBucket = "widgets" | "extensionWidgets";
 export interface ConfigurableWidgetMeta {
   id: string;
   label: string;
+  shortLabel: string;
   description: string;
   defaults: {
     row: number;
@@ -511,6 +512,7 @@ export function buildConfigurableWidgets(
     ...FOOTER_WIDGET_IDS.map((widgetId) => ({
       id: widgetId,
       label: widgetId,
+      shortLabel: FOOTER_WIDGET_META[widgetId].shortLabel,
       description: FOOTER_WIDGET_META[widgetId].description,
       defaults: FOOTER_WIDGET_META[widgetId].defaults,
       defaultIcon: getDefaultWidgetIcon(widgetId, config.iconFamily),
@@ -520,6 +522,7 @@ export function buildConfigurableWidgets(
     ...extensionWidgets.map((widget) => ({
       id: widget.id,
       label: widget.label ?? widget.id,
+      shortLabel: widget.label ?? widget.id,
       description: widget.description,
       defaults: widget.defaults,
       defaultIcon: resolveFancyFooterWidgetIcon(widget.icon, config.iconFamily),
