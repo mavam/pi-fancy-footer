@@ -252,24 +252,24 @@ leading widget icon.
 
 | Widget                        | nerd    | emoji      | unicode | ascii    |
 | ----------------------------- | ------- | ---------- | ------- | -------- |
-| `model`                       | `󰚩`     | `🤖`       | `◉`     | `%`      |
-| `thinking`                    | `󰧑`     | `🧠`       | `✦`     | `?`      |
-| `context-capacity`            | ``     | `💾`       | `□`     | `[]`     |
 | `context-bar`                 | `󰾆`     | `🔋`       | `◧`     | `\|`     |
-| `total-cost`                  | `󰇁`     | `💲`       | `$`     | `$`      |
+| `context-capacity`            | ``     | `💾`       | `□`     | `[]`     |
+| `provider-status`             | `󰓅`     | `📊`       | `%`     | `%`      |
 | `cache-read`                  | `󰇚`     | `📥`       | `↧`     | `R`      |
 | `cache-write`                 | `󰕒`     | `📤`       | `↥`     | `W`      |
 | `cache-hit-rate`              | `󰀚`     | `🎯`       | `◎`     | `H`      |
+| `total-cost`                  | `󰇁`     | `💲`       | `$`     | `$`      |
 | `location`                    | ``     | `📁`       | `⌂`     | `/`      |
 | `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
 | `commit`                      | ``     | `🔖`       | `#`     | `#`      |
 | `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
 | `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
 | `pull-request-ci-status`      | `//` | `⏳/❌/✅` | `◷/✕/✓` | `~/x/+`  |
-| `provider-status`             | `󰓅`     | `📊`       | `%`     | `%`      |
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+| `model`                       | `󰚩`     | `🤖`       | `◉`     | `%`      |
+| `thinking`                    | `󰧑`     | `🧠`       | `✦`     | `?`      |
 
 <!-- markdownlint-enable MD013 MD060 -->
 
