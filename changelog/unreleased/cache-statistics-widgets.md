@@ -4,6 +4,8 @@ type: feature
 authors:
   - mavam
   - claude
+prs:
+  - 17
 created: 2026-07-11T09:54:23.908831Z
 ---
 
