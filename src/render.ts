@@ -37,6 +37,7 @@ import {
   closeOpenTerminalHyperlinks,
   formatThinkingLevel,
   formatTerminalHyperlink,
+  formatTokens,
   getThinkingLevelFromEntries,
   getGaugeStyle,
   getDefaultWidgetIcon,
@@ -109,6 +110,8 @@ function buildProviderStatusPart(
 function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
   let latest: SessionUsageMetrics["latest"];
   let totalCost = 0;
+  let totalCacheRead = 0;
+  let totalCacheWrite = 0;
 
   for (const entry of entries) {
     if (entry.type !== "message") continue;
@@ -124,9 +127,11 @@ function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
       cost: Math.max(0, toNumber(usage.cost?.total)),
     };
     totalCost += latest.cost;
+    totalCacheRead += latest.cacheRead;
+    totalCacheWrite += latest.cacheWrite;
   }
 
-  return { latest, totalCost };
+  return { latest, totalCost, totalCacheRead, totalCacheWrite };
 }
 
 export function collectSessionUsageMetrics(
@@ -162,14 +167,14 @@ function renderGauge(
 // followed by a bar that fills the allocated width.
 function renderGrowGauge(
   leftPercent: number,
-  usedK: number,
+  usedTokens: number,
   style: GaugeStyleDef,
   availableWidth: number,
   colors: GaugeColorsSnapshot,
   theme: Theme,
   textColor: WidgetRenderContext["defaultTextColor"],
 ): string {
-  const label = `${usedK}k `;
+  const label = `${formatTokens(usedTokens)} `;
   const cells = Math.max(1, Math.floor(availableWidth) - visibleWidth(label));
   const gauge = buildGauge(leftPercent, style, cells, "used");
   return (
@@ -487,7 +492,7 @@ function computeFooterMetrics(
   usageMetrics: SessionUsageMetrics,
   iconFamily: FooterIconFamily,
 ): FooterMetrics {
-  const { latest, totalCost } = usageMetrics;
+  const { latest, totalCost, totalCacheRead, totalCacheWrite } = usageMetrics;
 
   const contextUsage = ctx.getContextUsage();
   const totalTokens = Math.max(
@@ -544,15 +549,23 @@ function computeFooterMetrics(
     ),
   );
 
-  const totalK = Math.max(1, Math.floor(totalTokens / 1000));
+  const latestPromptTokens = latest
+    ? latest.input + latest.cacheRead + latest.cacheWrite
+    : 0;
+  const cacheHitRatePercent =
+    latest && latestPromptTokens > 0
+      ? (latest.cacheRead / latestPromptTokens) * 100
+      : undefined;
 
   return {
     model,
     thinking,
     totalTokens,
     usedTokensForBar,
-    totalK,
     totalCost,
+    totalCacheRead,
+    totalCacheWrite,
+    cacheHitRatePercent,
     locationText: git.repository || normalizePath(ctx.cwd),
     branch: git.branch,
     commit: git.commit,
@@ -573,7 +586,7 @@ function baseWidgetDefaults(
   iconFamily: FooterIconFamily,
 ): Pick<
   FooterWidget,
-  "id" | "location" | "align" | "fill" | "icon" | "textColor"
+  "id" | "location" | "align" | "fill" | "defaultEnabled" | "icon" | "textColor"
 > {
   const defaults = FOOTER_WIDGET_META[widgetId].defaults;
 
@@ -585,6 +598,7 @@ function baseWidgetDefaults(
     },
     align: defaults.align,
     fill: defaults.fill,
+    defaultEnabled: defaults.enabled,
     icon: getDefaultWidgetIcon(widgetId, iconFamily),
     textColor: "dim",
   };
@@ -606,7 +620,7 @@ function buildFooterWidgets(
     },
     {
       ...baseWidgetDefaults("context-capacity", iconFamily),
-      renderText: ({ metrics }) => `${metrics.totalK}k`,
+      renderText: ({ metrics }) => formatTokens(metrics.totalTokens),
     },
     {
       ...baseWidgetDefaults("context-bar", iconFamily),
@@ -633,7 +647,7 @@ function buildFooterWidgets(
         }
         return renderGrowGauge(
           leftPercent,
-          Math.floor(metrics.usedTokensForBar / 1000),
+          metrics.usedTokensForBar,
           barStyle,
           availableWidth,
           gaugeColors,
@@ -646,6 +660,27 @@ function buildFooterWidgets(
       ...baseWidgetDefaults("total-cost", iconFamily),
       visible: ({ width, metrics }) => width >= 60 && metrics.totalCost > 0,
       renderText: ({ metrics }) => metrics.totalCost.toFixed(2),
+    },
+    {
+      ...baseWidgetDefaults("cache-read", iconFamily),
+      visible: ({ width, metrics }) =>
+        width >= 60 && metrics.totalCacheRead > 0,
+      renderText: ({ metrics }) => formatTokens(metrics.totalCacheRead),
+    },
+    {
+      ...baseWidgetDefaults("cache-write", iconFamily),
+      visible: ({ width, metrics }) =>
+        width >= 60 && metrics.totalCacheWrite > 0,
+      renderText: ({ metrics }) => formatTokens(metrics.totalCacheWrite),
+    },
+    {
+      ...baseWidgetDefaults("cache-hit-rate", iconFamily),
+      visible: ({ width, metrics }) =>
+        width >= 60 &&
+        (metrics.totalCacheRead > 0 || metrics.totalCacheWrite > 0) &&
+        metrics.cacheHitRatePercent !== undefined,
+      renderText: ({ metrics }) =>
+        `${(metrics.cacheHitRatePercent ?? 0).toFixed(1)}%`,
     },
     {
       ...baseWidgetDefaults("location", iconFamily),
@@ -830,7 +865,7 @@ function applyWidgetConfigOverrides(
         availableWidth,
       );
 
-    if (override.enabled === false) {
+    if ((override.enabled ?? widget.defaultEnabled ?? true) === false) {
       visible = () => false;
     } else if (override.enabled === true) {
       visible = () => true;

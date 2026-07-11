@@ -57,7 +57,7 @@ export function effectivePlacement(
     ),
     align: override?.align ?? widget.defaults.align,
     fill: override?.fill ?? widget.defaults.fill,
-    benched: override?.enabled === false,
+    benched: (override?.enabled ?? widget.defaults.enabled ?? true) === false,
   };
 }
 
@@ -273,7 +273,8 @@ export function toggleFill(
 }
 
 // Benching only touches `enabled`, so a bench round-trip restores the exact
-// placement.
+// placement. The override is dropped when it matches the widget's default
+// enabled state.
 export function setBenched(
   config: FooterConfigSnapshot,
   widgets: readonly ConfigurableWidgetMeta[],
@@ -283,9 +284,10 @@ export function setBenched(
   const widget = widgets.find((entry) => entry.id === widgetId);
   if (!widget) return;
 
+  const defaultEnabled = widget.defaults.enabled ?? true;
   updateWidgetOverride(config, widget, (override) => {
-    if (benched) override.enabled = false;
-    else delete override.enabled;
+    if (benched === !defaultEnabled) delete override.enabled;
+    else override.enabled = !benched;
   });
 }
 

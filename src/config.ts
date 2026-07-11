@@ -175,6 +175,7 @@ export interface ConfigurableWidgetMeta {
     align: FooterWidgetAlign;
     fill: FooterWidgetFill;
     minWidth?: number;
+    enabled?: boolean;
   };
   defaultIcon?: { text: string; color: FooterWidgetColor };
   bucket: WidgetConfigBucket;

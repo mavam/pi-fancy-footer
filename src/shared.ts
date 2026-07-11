@@ -33,6 +33,9 @@ export const STATUSLINE_SYMBOLS = {
     diffAdded: "↗",
     diffRemoved: "↘",
     currency: "󰇁",
+    cacheRead: "󰇚",
+    cacheWrite: "󰕒",
+    cacheHitRate: "󰀚",
   },
   emoji: {
     thinking: "🧠",
@@ -54,6 +57,9 @@ export const STATUSLINE_SYMBOLS = {
     diffAdded: "➕",
     diffRemoved: "➖",
     currency: "💲",
+    cacheRead: "📥",
+    cacheWrite: "📤",
+    cacheHitRate: "🎯",
   },
   unicode: {
     thinking: "✦",
@@ -75,6 +81,9 @@ export const STATUSLINE_SYMBOLS = {
     diffAdded: "+",
     diffRemoved: "−",
     currency: "$",
+    cacheRead: "↧",
+    cacheWrite: "↥",
+    cacheHitRate: "◎",
   },
   ascii: {
     thinking: "?",
@@ -96,6 +105,9 @@ export const STATUSLINE_SYMBOLS = {
     diffAdded: "+",
     diffRemoved: "-",
     currency: "$",
+    cacheRead: "R",
+    cacheWrite: "W",
+    cacheHitRate: "H",
   },
 } as const;
 
@@ -185,6 +197,18 @@ export function formatGaugePercent(value: number): string {
   return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
 }
 
+// Compact token counts with SI-style units: 246, 1.2k, 246k, 1M, 1.2M, 12M.
+// Unlike pi's own footer, round values drop the trailing ".0".
+export function formatTokens(count: number): string {
+  const compact = (value: number, unit: string): string =>
+    `${value.toFixed(1).replace(/\.0$/, "")}${unit}`;
+  if (count < 1000) return `${count}`;
+  if (count < 10_000) return compact(count / 1000, "k");
+  if (count < 999_500) return `${Math.round(count / 1000)}k`;
+  if (count < 10_000_000) return compact(count / 1_000_000, "M");
+  return `${Math.round(count / 1_000_000)}M`;
+}
+
 export const GIT_REFRESH_MS = 5000;
 export const MIN_FOOTER_REFRESH_MS = 250;
 export const MAX_FOOTER_REFRESH_MS = 60_000;
@@ -231,6 +255,8 @@ export interface UsageSnapshot {
 export interface SessionUsageMetrics {
   latest: UsageSnapshot | undefined;
   totalCost: number;
+  totalCacheRead: number;
+  totalCacheWrite: number;
 }
 
 export interface GitCounts {
@@ -334,6 +360,9 @@ export const FOOTER_WIDGET_IDS = [
   "context-capacity",
   "context-bar",
   "total-cost",
+  "cache-read",
+  "cache-write",
+  "cache-hit-rate",
   "location",
   "branch",
   "commit",
@@ -381,8 +410,10 @@ export interface FooterMetrics {
   thinking: string;
   totalTokens: number;
   usedTokensForBar: number;
-  totalK: number;
   totalCost: number;
+  totalCacheRead: number;
+  totalCacheWrite: number;
+  cacheHitRatePercent: number | undefined;
   locationText: string;
   branch: string;
   commit: string;
@@ -420,6 +451,8 @@ export interface FooterWidget {
   location: FooterWidgetLocation;
   align: FooterWidgetAlign;
   fill?: FooterWidgetFill;
+  /** False for widgets that stay hidden unless a config override enables them. */
+  defaultEnabled?: boolean;
   minWidth?: FooterWidgetSize;
   icon?: FooterWidgetIcon;
   textColor?: FooterWidgetColor;
@@ -515,6 +548,8 @@ export interface FooterWidgetEditorDefaults {
   align: FooterWidgetAlign;
   fill: FooterWidgetFill;
   minWidth?: number;
+  /** Set to false for widgets that start on the bench until enabled. */
+  enabled?: boolean;
 }
 
 export type FancyFooterWidgetIcon =
@@ -590,8 +625,14 @@ export const FOOTER_WIDGET_META: Record<
   },
   "context-capacity": {
     shortLabel: "capacity",
-    defaults: { row: 0, position: 0, align: "right", fill: "none" },
-    description: "Shows the total context window in thousands of tokens.",
+    defaults: {
+      row: 0,
+      position: 1,
+      align: "left",
+      fill: "none",
+      enabled: false,
+    },
+    description: "Shows the total context window size.",
     symbolKey: "contextCapacityMarker",
   },
   "context-bar": {
@@ -603,9 +644,27 @@ export const FOOTER_WIDGET_META: Record<
   },
   "total-cost": {
     shortLabel: "cost",
-    defaults: { row: 0, position: 1, align: "right", fill: "none" },
+    defaults: { row: 0, position: 3, align: "right", fill: "none" },
     description: "Shows the total session cost.",
     symbolKey: "currency",
+  },
+  "cache-read": {
+    shortLabel: "cache-r",
+    defaults: { row: 0, position: 0, align: "right", fill: "none" },
+    description: "Shows cumulative cache-read tokens for the session.",
+    symbolKey: "cacheRead",
+  },
+  "cache-write": {
+    shortLabel: "cache-w",
+    defaults: { row: 0, position: 1, align: "right", fill: "none" },
+    description: "Shows cumulative cache-write tokens for the session.",
+    symbolKey: "cacheWrite",
+  },
+  "cache-hit-rate": {
+    shortLabel: "cache-hit",
+    defaults: { row: 0, position: 2, align: "right", fill: "none" },
+    description: "Shows the latest turn's prompt-cache hit rate.",
+    symbolKey: "cacheHitRate",
   },
   location: {
     shortLabel: "loc",
@@ -923,7 +982,8 @@ export function widgetSummary(
   const parts: string[] = [];
 
   if (override.enabled === true) parts.push("on");
-  if (override.enabled === false) parts.push("off");
+  if (override.enabled === false && (defaults.enabled ?? true))
+    parts.push("off");
 
   if (override.row !== undefined && override.row !== defaults.row)
     parts.push(`row:${override.row}`);

@@ -16,9 +16,12 @@ pi install npm:pi-fancy-footer
 
 - Active model + thinking level
 - Provider quota status for OpenAI Codex and Claude models
-- Context window capacity and a mini gauge of remaining context, which can
-  optionally grow into a full-width bar
+- A mini gauge of remaining context, which can optionally grow into a
+  full-width bar, plus an optional context-capacity widget (hidden by
+  default)
 - Total session cost
+- Prompt-cache statistics: cumulative cache-read/write tokens and the latest
+  turn's cache hit rate
 - Repo / path, branch, commit, open PR number, unresolved PR review
   threads, and PR CI status
 - Git diff stats and ahead/behind status
@@ -164,6 +167,9 @@ Built-in widget IDs:
 - `context-capacity`
 - `context-bar`
 - `total-cost`
+- `cache-read`
+- `cache-write`
+- `cache-hit-rate`
 - `location`
 - `branch`
 - `commit`
@@ -251,6 +257,9 @@ leading widget icon.
 | `context-capacity`            | ``     | `💾`       | `□`     | `[]`     |
 | `context-bar`                 | `󰾆`     | `🔋`       | `◧`     | `\|`     |
 | `total-cost`                  | `󰇁`     | `💲`       | `$`     | `$`      |
+| `cache-read`                  | `󰇚`     | `📥`       | `↧`     | `R`      |
+| `cache-write`                 | `󰕒`     | `📤`       | `↥`     | `W`      |
+| `cache-hit-rate`              | `󰀚`     | `🎯`       | `◎`     | `H`      |
 | `location`                    | ``     | `📁`       | `⌂`     | `/`      |
 | `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
 | `commit`                      | ``     | `🔖`       | `#`     | `#`      |
@@ -274,8 +283,20 @@ Notes:
   cells stay dim. It sits on the left of the top row by default, with provider quota
   gauges on the right. Set the widget's `fill` to `grow` (via `/fancy-footer`
   or the config file) to expand it into a full-width bar with the used tokens
-  in front, e.g. `246k ██████████░░░`, flanked by the `context-capacity`
-  widget (`272k`) on the right.
+  in front, e.g. `246k ██████████░░░`.
+- `context-capacity` shows the total context window in compact SI form
+  (`200k`, `1M`). It is hidden by default since the context bar already
+  conveys usage; enable it via `/fancy-footer` (it starts in the `hidden`
+  strip) or with `"context-capacity": { "enabled": true }`. It then sits
+  between the context bar and the provider quota gauges.
+- `cache-read` and `cache-write` show cumulative prompt-cache tokens for the
+  session in compact form (e.g. `246k`, `1.2M`). `cache-hit-rate` shows the
+  latest turn's cache hit rate, computed as
+  `cacheRead / (input + cacheRead + cacheWrite)`, matching the `R` / `W` /
+  `CH` stats in pi's built-in footer. All three sit on the right of the top
+  row by default, before `total-cost` (which stays rightmost), and hide when
+  the session has no cache activity or the terminal is narrower than 60
+  columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
