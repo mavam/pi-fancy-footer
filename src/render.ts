@@ -158,6 +158,27 @@ function renderGauge(
   );
 }
 
+// Renders the context bar when it grows across the row: a used-tokens label
+// followed by a bar that fills the allocated width.
+function renderGrowGauge(
+  leftPercent: number,
+  usedK: number,
+  style: GaugeStyleDef,
+  availableWidth: number,
+  colors: GaugeColorsSnapshot,
+  theme: Theme,
+  textColor: WidgetRenderContext["defaultTextColor"],
+): string {
+  const label = `${usedK}k `;
+  const cells = Math.max(1, Math.floor(availableWidth) - visibleWidth(label));
+  const gauge = buildGauge(leftPercent, style, cells, "used");
+  return (
+    theme.fg(textColor, label) +
+    theme.fg(gaugeColorFor(gauge.color, colors), gauge.filledGlyphs) +
+    theme.fg("dim", gauge.emptyGlyphs)
+  );
+}
+
 function buildGitStatus(
   counts: GitCounts,
   iconFamily: FooterIconFamily,
@@ -589,23 +610,37 @@ function buildFooterWidgets(
     },
     {
       ...baseWidgetDefaults("context-bar", iconFamily),
+      minWidth: ({ width }) => (width >= 100 ? 12 : width >= 70 ? 8 : 4),
       styled: true,
-      renderText: ({
-        metrics,
-        theme,
-        gaugeWidth,
-        gaugeColors,
-        defaultTextColor,
-      }) =>
-        renderGauge(
-          contextLeftPercent(metrics.totalTokens, metrics.usedTokensForBar),
+      renderText: (
+        { metrics, theme, gaugeWidth, gaugeColors, defaultTextColor },
+        availableWidth,
+      ) => {
+        const leftPercent = contextLeftPercent(
+          metrics.totalTokens,
+          metrics.usedTokensForBar,
+        );
+        if (availableWidth === undefined) {
+          return renderGauge(
+            leftPercent,
+            barStyle,
+            gaugeWidth,
+            "used",
+            gaugeColors,
+            theme,
+            defaultTextColor,
+          );
+        }
+        return renderGrowGauge(
+          leftPercent,
+          Math.floor(metrics.usedTokensForBar / 1000),
           barStyle,
-          gaugeWidth,
-          "used",
+          availableWidth,
           gaugeColors,
           theme,
           defaultTextColor,
-        ),
+        );
+      },
     },
     {
       ...baseWidgetDefaults("total-cost", iconFamily),
