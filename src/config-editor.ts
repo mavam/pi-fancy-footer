@@ -483,6 +483,7 @@ export async function openFooterConfigEditor({
           ),
           truncateToWidth(theme.fg("dim", configPath), width),
           "",
+          truncateToWidth(theme.bold("Widgets"), width),
         ];
 
         const gutterDigits = String(current.rows.length - 1).length;
