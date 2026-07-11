@@ -6,6 +6,7 @@ import {
   FOOTER_WIDGET_IDS,
   closeOpenTerminalHyperlinks,
   formatTerminalHyperlink,
+  formatTokens,
   buildGauge,
   getGaugeStyle,
   getDefaultWidgetIcon,
@@ -106,6 +107,21 @@ test("resolveFancyFooterWidgetIcon resolves icon strings and family maps", () =>
     { text: "→", color: "text" },
   );
   assert.equal(resolveFancyFooterWidgetIcon(false, "emoji"), undefined);
+});
+
+test("formatTokens compacts counts with SI-style units", () => {
+  assert.equal(formatTokens(0), "0");
+  assert.equal(formatTokens(999), "999");
+  assert.equal(formatTokens(1000), "1k");
+  assert.equal(formatTokens(1234), "1.2k");
+  assert.equal(formatTokens(9999), "10k");
+  assert.equal(formatTokens(10_000), "10k");
+  assert.equal(formatTokens(999_499), "999k");
+  assert.equal(formatTokens(999_999), "1M");
+  assert.equal(formatTokens(1_000_000), "1M");
+  assert.equal(formatTokens(1_200_000), "1.2M");
+  assert.equal(formatTokens(9_999_999), "10M");
+  assert.equal(formatTokens(10_000_000), "10M");
 });
 
 test("formatTerminalHyperlink wraps text in an OSC 8 hyperlink", () => {

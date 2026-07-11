@@ -17,6 +17,8 @@ const theme = {
 const usageMetrics: SessionUsageMetrics = {
   latest: undefined,
   totalCost: 0,
+  totalCacheRead: 0,
+  totalCacheWrite: 0,
 };
 
 const providerStatus: ProviderStatusSnapshot = {
@@ -184,6 +186,55 @@ test("renderFooterLines hides Anthropic provider status for OpenAI models", () =
   assert.doesNotMatch(lines.join("\n"), /5h:100%/);
 });
 
+const cacheUsageMetrics: SessionUsageMetrics = {
+  latest: { input: 1000, cacheRead: 8000, cacheWrite: 1000, cost: 0.1 },
+  totalCost: 0.1,
+  totalCacheRead: 20_000,
+  totalCacheWrite: 3000,
+};
+
+test("renderFooterLines shows cache widgets when cache tokens accrued", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    cacheUsageMetrics,
+    footerConfig,
+  );
+
+  const out = lines.join("\n");
+  assert.match(out, /R20k/);
+  assert.match(out, /W3k/);
+  assert.match(out, /H80\.0%/);
+});
+
+test("renderFooterLines hides cache widgets without cache activity", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    footerConfig,
+  );
+
+  const out = lines.join("\n");
+  assert.doesNotMatch(out, /R\d/);
+  assert.doesNotMatch(out, /W\d/);
+  assert.doesNotMatch(out, /H\d/);
+});
+
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };
 
 function contextBarFooterConfig(
@@ -241,7 +292,38 @@ test("renderFooterLines grows the context bar across the row when configured", (
   assert.match(row, /92k █+░+/);
   assert.ok((row.match(/[█░]/g) ?? []).length > 60);
   assert.doesNotMatch(row, /%/);
-  assert.match(row, /200k$/);
+});
+
+test("renderFooterLines hides context capacity unless enabled", () => {
+  const usage = { contextWindow: 1_000_000, tokens: 92_000, percent: 9 };
+  const ctx = contextWithModel(
+    { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+    usage,
+  ) as never;
+
+  const hidden = renderFooterLines(
+    120,
+    ctx,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    contextBarFooterConfig(undefined),
+  );
+  assert.doesNotMatch(hidden.join("\n"), /1M/);
+
+  const config = contextBarFooterConfig(undefined);
+  config.widgets["context-capacity"] = { enabled: true };
+  const shown = renderFooterLines(
+    120,
+    ctx,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    config,
+  );
+  assert.match(shown.join("\n"), /\[\]1M/);
 });
 
 test("renderFooterLines clamps a grown context bar at narrow widths", () => {

@@ -49,13 +49,16 @@ test("buildLayoutModel groups default widgets like the renderer", () => {
   const model = buildLayoutModel(config, builtInWidgets(config));
 
   assert.equal(model.rows.length, 2);
-  assert.equal(model.bench.length, 0);
+  // context-capacity is hidden by default and starts on the bench.
+  assert.deepEqual(ids(model.bench), ["context-capacity"]);
   assert.deepEqual(ids(model.rows[0]!.groups.left), [
     "context-bar",
     "provider-status",
   ]);
   assert.deepEqual(ids(model.rows[0]!.groups.right), [
-    "context-capacity",
+    "cache-read",
+    "cache-write",
+    "cache-hit-rate",
     "total-cost",
   ]);
   assert.deepEqual(ids(model.rows[1]!.groups.left), [
@@ -101,7 +104,7 @@ test("buildLayoutModel puts disabled widgets on the bench", () => {
   config.widgets["pull-request"] = { enabled: false };
   const model = buildLayoutModel(config, builtInWidgets(config));
 
-  assert.deepEqual(ids(model.bench), ["pull-request"]);
+  assert.deepEqual(ids(model.bench), ["context-capacity", "pull-request"]);
   assert.ok(!ids(model.rows[1]!.groups.left).includes("pull-request"));
 });
 
@@ -221,7 +224,7 @@ test("moveVertical benches a widget moved below the bottom row", () => {
 
   assert.deepEqual(config.widgets.branch, { enabled: false });
   const model = buildLayoutModel(config, widgets);
-  assert.deepEqual(ids(model.bench), ["branch"]);
+  assert.deepEqual(ids(model.bench), ["context-capacity", "branch"]);
 });
 
 test("moveVertical bench round-trip preserves placement", () => {
@@ -241,9 +244,29 @@ test("moveVertical unbenches onto the bottom-most row", () => {
   moveVertical(config, widgets, "context-bar", -1);
 
   const model = buildLayoutModel(config, widgets);
-  assert.equal(model.bench.length, 0);
+  assert.deepEqual(ids(model.bench), ["context-capacity"]);
   const left = ids(model.rows[1]!.groups.left);
   assert.equal(left[left.length - 1], "context-bar");
+});
+
+test("setBenched round-trips a default-hidden widget with a minimal override", () => {
+  const config = makeConfig();
+  const widgets = builtInWidgets(config);
+
+  setBenched(config, widgets, "context-capacity", false);
+  assert.deepEqual(config.widgets["context-capacity"], { enabled: true });
+  let model = buildLayoutModel(config, widgets);
+  assert.equal(model.bench.length, 0);
+  assert.deepEqual(ids(model.rows[0]!.groups.left), [
+    "context-bar",
+    "context-capacity",
+    "provider-status",
+  ]);
+
+  setBenched(config, widgets, "context-capacity", true);
+  assert.deepEqual(config.widgets, {});
+  model = buildLayoutModel(config, widgets);
+  assert.deepEqual(ids(model.bench), ["context-capacity"]);
 });
 
 test("moveVertical clamps at row 0 and MAX_WIDGET_ROW", () => {
