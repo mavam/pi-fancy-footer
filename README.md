@@ -45,12 +45,21 @@ pi install npm:pi-fancy-footer
 ## 🎮 Commands
 
 - `/fancy-footer` - open interactive footer config editor (small TUI)
-  - settings are grouped into General, Built-in widgets, and Extension widgets sections
-  - built-in and 3rd-party widgets are listed directly (with icon prefixes)
-  - select a widget and press Enter for detailed settings
-  - in widget settings, adjust row/position/align/fill/min-width, visibility,
-    icon hide, icon color, and text color
-  - use Enter/Space to cycle values
+  - widgets appear as a micro-view of the footer: same rows, alignment
+    groups, and ordering as the real footer, which updates live below
+  - use `←→↑↓` to select a widget (shown inverted), then:
+    - `l`/`r` - move it left/right; at a group edge it flows into the
+      adjacent alignment group (left ↔ middle ↔ right)
+    - `u`/`d` - move it up/down a row; `d` on the bottom row hides it into
+      the `hidden` strip, `u` from there brings it back
+    - `a` - cycle alignment (left → middle → right)
+    - `f` - toggle fill (`none` ↔ `grow`)
+    - `x` or Space - toggle visibility
+    - Enter - open widget-specific settings (visibility, icon, icon color,
+      text color, min width)
+  - arrow down past the widgets to reach the General settings (refresh,
+    icon family, gauge style/width/colors, default colors); Enter/Space
+    cycles values
 
 ## ⚙️ Configuration
 
@@ -174,7 +183,7 @@ Other pi extensions can contribute fancy-footer widgets.
 
 ### For users
 
-- Contributed widgets appear in a separate **Extension widgets** section in `/fancy-footer`.
+- Contributed widgets appear alongside built-in widgets in the `/fancy-footer` micro-view.
 - Their overrides are stored in `extensionWidgets` inside `~/.pi/agent/fancy-footer.json`.
 - They use the same layout controls as built-in widgets, so you can mix and match them on any footer row.
 

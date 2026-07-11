@@ -8,10 +8,23 @@ import {
   type Component,
 } from "@earendil-works/pi-tui";
 import {
-  createFooterConfigSections,
+  buildConfigurableWidgets,
+  genericFooterSettingsItems,
   plainSettingValue,
-  type FooterConfigSectionId,
+  widgetSettingsSubmenu,
+  type ConfigurableWidgetMeta,
 } from "./config.ts";
+import {
+  buildLayoutModel,
+  cycleAlign,
+  moveHorizontal,
+  moveVertical,
+  setBenched,
+  toggleFill,
+  type LayoutChip,
+  type LayoutModel,
+  type LayoutRow,
+} from "./layout.ts";
 import {
   isGaugeStyleId,
   MIN_GAUGE_WIDTH,
@@ -30,6 +43,22 @@ interface OpenFooterConfigEditorOptions {
   applyDraft: () => void;
 }
 
+type Selection =
+  | { area: "grid" | "bench"; widgetId: string }
+  | { area: "globals"; index: number };
+
+interface ChipSpan {
+  start: number;
+  end: number;
+}
+
+// Each chip row independently degrades until it fits: full widget names,
+// then short names, then icons only. The status line under the preview
+// always shows the selected widget's full name.
+type ChipMode = "full" | "short" | "icon";
+const CHIP_MODES: readonly ChipMode[] = ["full", "short", "icon"];
+const CHIP_GAP = 2;
+
 export async function openFooterConfigEditor({
   ctx,
   configPath,
@@ -38,47 +67,192 @@ export async function openFooterConfigEditor({
   applyDraft,
 }: OpenFooterConfigEditorOptions): Promise<void> {
   await ctx.ui.custom((tui, theme, keybindings, done) => {
-    let activeSection: FooterConfigSectionId = "generic";
-    const selection: Record<FooterConfigSectionId, number> = {
-      generic: 0,
-      widgets: 0,
-      "extension-widgets": 0,
-    };
     let submenu: Component | undefined;
+    // Screen columns of the last selected chip's center, used to pick the
+    // nearest chip when moving between rows.
+    let preferredColumn = 0;
+    let chipSpans = new Map<string, ChipSpan>();
 
-    const sections = () =>
-      createFooterConfigSections(
-        draft,
-        theme,
-        () => {
-          applyDraft();
-          tui.requestRender();
-        },
-        extensionWidgets,
+    const widgets = (): ConfigurableWidgetMeta[] =>
+      buildConfigurableWidgets(draft, extensionWidgets);
+
+    const model = (): LayoutModel => buildLayoutModel(draft, widgets());
+
+    const globalsItems = () => genericFooterSettingsItems(draft, theme);
+
+    const initialSelection = (): Selection => {
+      const current = model();
+      for (const row of current.rows) {
+        if (row.ordered.length > 0) {
+          return { area: "grid", widgetId: row.ordered[0]!.widget.id };
+        }
+      }
+      if (current.bench.length > 0) {
+        return { area: "bench", widgetId: current.bench[0]!.widget.id };
+      }
+      return { area: "globals", index: 0 };
+    };
+
+    let selection: Selection = initialSelection();
+
+    // ── selection helpers ────────────────────────────────────────────
+
+    // Non-empty chip rows in navigation order: grid rows, then the bench.
+    type NavRow =
+      | { kind: "grid"; row: LayoutRow }
+      | { kind: "bench"; chips: LayoutChip[] };
+
+    const navRows = (current: LayoutModel): NavRow[] => {
+      const rows: NavRow[] = current.rows
+        .filter((row) => row.ordered.length > 0)
+        .map((row) => ({ kind: "grid" as const, row }));
+      if (current.bench.length > 0) {
+        rows.push({ kind: "bench", chips: current.bench });
+      }
+      return rows;
+    };
+
+    const navRowChips = (row: NavRow): LayoutChip[] =>
+      row.kind === "grid" ? row.row.ordered : row.chips;
+
+    const findNavIndex = (rows: NavRow[], widgetId: string): number =>
+      rows.findIndex((row) =>
+        navRowChips(row).some((chip) => chip.widget.id === widgetId),
       );
 
-    const sectionIds = () => sections().map((section) => section.id);
+    const chipCenter = (widgetId: string): number => {
+      const span = chipSpans.get(widgetId);
+      if (!span) return preferredColumn;
+      return Math.floor((span.start + span.end) / 2);
+    };
 
-    const itemsForSection = (sectionId: FooterConfigSectionId) =>
-      sections().find((section) => section.id === sectionId)?.items ?? [];
+    const nearestChip = (row: NavRow, column: number): LayoutChip => {
+      const chips = navRowChips(row);
+      let best = chips[0]!;
+      let bestDistance = Infinity;
+      for (const chip of chips) {
+        const distance = Math.abs(chipCenter(chip.widget.id) - column);
+        if (distance < bestDistance) {
+          best = chip;
+          bestDistance = distance;
+        }
+      }
+      return best;
+    };
 
-    const clampSelection = (sectionId: FooterConfigSectionId) => {
-      const items = itemsForSection(sectionId);
-      if (items.length === 0) {
-        selection[sectionId] = 0;
+    const selectChip = (chip: LayoutChip) => {
+      selection = {
+        area: chip.placement.benched ? "bench" : "grid",
+        widgetId: chip.widget.id,
+      };
+      preferredColumn = chipCenter(chip.widget.id);
+    };
+
+    // After a mutation the selected widget may have changed rows or moved
+    // between the grid and the bench; recompute which area it lives in.
+    const syncSelection = () => {
+      if (selection.area === "globals") return;
+      const widgetId = selection.widgetId;
+      const current = model();
+      const benched = current.bench.some((chip) => chip.widget.id === widgetId);
+      selection = { area: benched ? "bench" : "grid", widgetId };
+    };
+
+    const moveSelectionHorizontal = (direction: -1 | 1) => {
+      if (selection.area === "globals") return;
+      const rows = navRows(model());
+      const index = findNavIndex(rows, selection.widgetId);
+      if (index < 0) return;
+      const chips = navRowChips(rows[index]!);
+      const chipIndex = chips.findIndex(
+        (chip) => chip.widget.id === (selection as { widgetId: string }).widgetId,
+      );
+      const next = chips[chipIndex + direction];
+      if (next) selectChip(next);
+    };
+
+    const moveSelectionVertical = (direction: -1 | 1) => {
+      const current = model();
+      const rows = navRows(current);
+      const globals = globalsItems();
+
+      if (selection.area === "globals") {
+        const next = selection.index + direction;
+        if (next >= 0 && next < globals.length) {
+          selection = { area: "globals", index: next };
+        } else if (next < 0 && rows.length > 0) {
+          selectChip(nearestChip(rows[rows.length - 1]!, preferredColumn));
+        }
         return;
       }
-      selection[sectionId] = Math.max(
-        0,
-        Math.min(selection[sectionId], items.length - 1),
-      );
+
+      const index = findNavIndex(rows, selection.widgetId);
+      if (index < 0) return;
+      const target = index + direction;
+      if (target >= 0 && target < rows.length) {
+        preferredColumn = chipCenter(selection.widgetId);
+        selectChip(nearestChip(rows[target]!, preferredColumn));
+      } else if (target >= rows.length && globals.length > 0) {
+        preferredColumn = chipCenter(selection.widgetId);
+        selection = { area: "globals", index: 0 };
+      }
     };
 
-    const selectedItem = () => {
-      clampSelection(activeSection);
-      const items = itemsForSection(activeSection);
-      return items[selection[activeSection]];
-    };
+    // ── widget actions ───────────────────────────────────────────────
+
+    const chipActions: {
+      keys: string[];
+      hint?: string;
+      run: (widgetId: string) => void;
+    }[] = [
+      {
+        keys: ["l"],
+        run: (id) => moveHorizontal(draft, widgets(), id, -1),
+      },
+      {
+        keys: ["r"],
+        hint: "l/r move",
+        run: (id) => moveHorizontal(draft, widgets(), id, 1),
+      },
+      {
+        keys: ["u"],
+        run: (id) => moveVertical(draft, widgets(), id, -1),
+      },
+      {
+        keys: ["d"],
+        hint: "u/d row",
+        run: (id) => moveVertical(draft, widgets(), id, 1),
+      },
+      {
+        keys: ["a"],
+        hint: "a align",
+        run: (id) => cycleAlign(draft, widgets(), id),
+      },
+      {
+        keys: ["f"],
+        hint: "f fill",
+        run: (id) => toggleFill(draft, widgets(), id),
+      },
+      {
+        keys: ["x", " "],
+        hint: "x hide",
+        run: (id) => {
+          const benched = model().bench.some((chip) => chip.widget.id === id);
+          setBenched(draft, widgets(), id, !benched);
+        },
+      },
+    ];
+
+    const chipHints = [
+      "←→↑↓ select",
+      ...chipActions.map((action) => action.hint).filter(Boolean),
+      "⏎ settings",
+      "esc close",
+    ].join(" · ");
+
+    const globalsHints = "↑↓ navigate · ⏎/space change · esc close";
+
+    // ── globals mutation (value cycling) ─────────────────────────────
 
     const setGenericField = (fieldId: string, newValue: string) => {
       switch (fieldId) {
@@ -134,116 +308,191 @@ export async function openFooterConfigEditor({
       }
     };
 
-    const moveSection = (direction: 1 | -1) => {
-      const ids = sectionIds();
-      const currentIndex = ids.indexOf(activeSection);
-      if (currentIndex < 0 || ids.length === 0) return;
-
-      activeSection =
-        ids[(currentIndex + direction + ids.length) % ids.length] ??
-        activeSection;
-      clampSelection(activeSection);
-    };
-
-    const moveSelection = (direction: 1 | -1) => {
-      const entries = sectionIds().flatMap((sectionId) =>
-        itemsForSection(sectionId).map((_, index) => ({ sectionId, index })),
-      );
-      if (entries.length === 0) return;
-
-      clampSelection(activeSection);
-      const current = entries.findIndex(
-        (entry) =>
-          entry.sectionId === activeSection &&
-          entry.index === selection[activeSection],
-      );
-      const next =
-        entries[
-          (Math.max(0, current) + direction + entries.length) % entries.length
-        ];
-      if (!next) return;
-
-      activeSection = next.sectionId;
-      selection[next.sectionId] = next.index;
-    };
-
-    const activateSelectedItem = () => {
-      const item = selectedItem();
-      if (!item) return;
-
-      if (item.submenu) {
-        submenu = item.submenu(item.currentValue, () => {
-          submenu = undefined;
-          tui.requestRender();
-        });
-        return;
-      }
-
-      if (!item.values || item.values.length === 0) return;
+    const cycleGlobalValue = () => {
+      if (selection.area !== "globals") return;
+      const item = globalsItems()[selection.index];
+      if (!item?.values || item.values.length === 0) return;
       const currentIndex = item.values.indexOf(item.currentValue);
       const nextValue =
-        item.values[
-          (currentIndex + 1 + item.values.length) % item.values.length
-        ];
+        item.values[(currentIndex + 1 + item.values.length) % item.values.length];
       if (nextValue === undefined) return;
-
       setGenericField(item.id, nextValue);
       applyDraft();
     };
 
-    const renderSection = (width: number, sectionId: FooterConfigSectionId) => {
-      const section = sections().find((entry) => entry.id === sectionId);
-      if (!section) return [];
-
-      const items = section.items;
-      clampSelection(sectionId);
-      const lines = [
-        truncateToWidth(
-          activeSection === sectionId
-            ? theme.fg("accent", theme.bold(section.title))
-            : theme.bold(section.title),
-          width,
-        ),
-      ];
-
-      if (items.length === 0) {
-        lines.push(
-          truncateToWidth(theme.fg("dim", "  No settings available"), width),
-        );
-        return lines;
+    const activateSelection = () => {
+      if (selection.area === "globals") {
+        cycleGlobalValue();
+        return;
       }
-
-      const labelWidth = Math.min(
-        Math.max(...items.map((item) => visibleWidth(item.label)), 0),
-        Math.max(8, width - 12),
+      const widget = widgets().find(
+        (entry) => entry.id === (selection as { widgetId: string }).widgetId,
       );
-      for (const [index, item] of items.entries()) {
-        const selected =
-          activeSection === sectionId && selection[sectionId] === index;
-        const prefix = selected ? theme.fg("accent", "→ ") : "  ";
-        const label = truncateToWidth(item.label, labelWidth, "");
-        const paddedLabel =
-          label + " ".repeat(Math.max(0, labelWidth - visibleWidth(label)));
-        const valueWidth = Math.max(
-          4,
-          width - visibleWidth(prefix) - labelWidth - 2,
-        );
-        const value = truncateToWidth(item.currentValue, valueWidth, "");
+      if (!widget) return;
+      submenu = widgetSettingsSubmenu(draft, theme, widget, () => {
+        applyDraft();
+        tui.requestRender();
+      })("", () => {
+        submenu = undefined;
+        tui.requestRender();
+      });
+    };
 
-        lines.push(
-          truncateToWidth(
-            `${prefix}${selected ? theme.fg("accent", paddedLabel) : paddedLabel}  ${selected ? theme.fg("accent", value) : theme.fg("dim", value)}`,
-            width,
-          ),
-        );
+    // ── preview rendering ────────────────────────────────────────────
+
+    const chipText = (chip: LayoutChip, mode: ChipMode): string => {
+      const icon = chip.widget.defaultIcon?.text ?? "◌";
+      if (mode === "icon") return icon;
+      const label =
+        mode === "full" ? chip.widget.label : chip.widget.shortLabel;
+      const grow = chip.placement.fill === "grow" ? " ↔" : "";
+      return `${icon} ${label}${grow}`;
+    };
+
+    const styledChip = (
+      chip: LayoutChip,
+      mode: ChipMode,
+      selected: boolean,
+    ): string => {
+      const plain = chipText(chip, mode);
+      if (selected) return theme.inverse(plain);
+      if (chip.placement.benched) return theme.fg("dim", plain);
+
+      const icon = chip.widget.defaultIcon?.text ?? "◌";
+      const iconColor = chip.widget.defaultIcon
+        ? draft.defaultIconColor
+        : "dim";
+      if (mode === "icon") return theme.fg(iconColor, icon);
+      const label =
+        mode === "full" ? chip.widget.label : chip.widget.shortLabel;
+      const grow =
+        chip.placement.fill === "grow" ? theme.fg("dim", " ↔") : "";
+      return `${theme.fg(iconColor, icon)} ${label}${grow}`;
+    };
+
+    interface PlacedChip {
+      chip: LayoutChip;
+      column: number;
+      width: number;
+    }
+
+    const groupWidth = (chips: LayoutChip[], mode: ChipMode) =>
+      chips.reduce(
+        (acc, chip, index) =>
+          acc + visibleWidth(chipText(chip, mode)) + (index > 0 ? CHIP_GAP : 0),
+        0,
+      );
+
+    const rowFits = (
+      contentWidth: number,
+      row: LayoutRow,
+      mode: ChipMode,
+    ): boolean => {
+      const blocks = [
+        groupWidth(row.groups.left, mode),
+        groupWidth(row.groups.middle, mode),
+        groupWidth(row.groups.right, mode),
+      ].filter((width) => width > 0);
+      return (
+        blocks.reduce((acc, width) => acc + width, 0) +
+          (blocks.length - 1) * CHIP_GAP <=
+        contentWidth
+      );
+    };
+
+    // The widest mode in which the row fits; icons-only as a last resort.
+    const rowChipMode = (contentWidth: number, row: LayoutRow): ChipMode =>
+      CHIP_MODES.find((mode) => rowFits(contentWidth, row, mode)) ?? "icon";
+
+    // Mirrors composeAlignedRow() in render.ts: left group flush left, right
+    // group flush right, middle group centered. Falls back to a flat join
+    // when the row overflows even icons-only.
+    const placeRowChips = (
+      contentWidth: number,
+      row: LayoutRow,
+      mode: ChipMode,
+    ): PlacedChip[] => {
+      const leftWidth = groupWidth(row.groups.left, mode);
+      const middleWidth = groupWidth(row.groups.middle, mode);
+      const rightWidth = groupWidth(row.groups.right, mode);
+
+      const placed: PlacedChip[] = [];
+      const placeGroup = (chips: LayoutChip[], start: number) => {
+        let column = start;
+        for (const chip of chips) {
+          const width = visibleWidth(chipText(chip, mode));
+          placed.push({ chip, column, width });
+          column += width + CHIP_GAP;
+        }
+      };
+
+      if (!rowFits(contentWidth, row, mode)) {
+        placeGroup(row.ordered, 0);
+        return placed;
       }
 
-      return lines;
+      placeGroup(row.groups.left, 0);
+      const rightStart = contentWidth - rightWidth;
+      let middleStart = Math.floor((contentWidth - middleWidth) / 2);
+      middleStart = Math.max(
+        leftWidth > 0 ? leftWidth + CHIP_GAP : 0,
+        Math.min(
+          middleStart,
+          rightWidth > 0
+            ? rightStart - CHIP_GAP - middleWidth
+            : contentWidth - middleWidth,
+        ),
+      );
+      placeGroup(row.groups.middle, middleStart);
+      placeGroup(row.groups.right, rightStart);
+      return placed;
+    };
+
+    const renderChipLine = (
+      width: number,
+      gutter: string,
+      placed: PlacedChip[],
+      mode: ChipMode,
+      selectedId: string | undefined,
+    ): string => {
+      const gutterWidth = visibleWidth(gutter);
+      let line = gutter;
+      let column = 0;
+      for (const entry of placed) {
+        if (entry.column > column) {
+          line += " ".repeat(entry.column - column);
+          column = entry.column;
+        }
+        line += styledChip(
+          entry.chip,
+          mode,
+          entry.chip.widget.id === selectedId,
+        );
+        chipSpans.set(entry.chip.widget.id, {
+          start: gutterWidth + entry.column,
+          end: gutterWidth + entry.column + entry.width,
+        });
+        column += entry.width;
+      }
+      return truncateToWidth(line, width);
+    };
+
+    const selectedDescription = (): string | undefined => {
+      if (selection.area === "globals") {
+        return globalsItems()[selection.index]?.description;
+      }
+      const widgetId = selection.widgetId;
+      return widgets().find((entry) => entry.id === widgetId)?.description;
     };
 
     return {
       render(width: number) {
         if (submenu) return submenu.render(width);
+
+        const current = model();
+        const selectedId =
+          selection.area === "globals" ? undefined : selection.widgetId;
+        chipSpans = new Map();
 
         const lines = [
           truncateToWidth(
@@ -251,19 +500,108 @@ export async function openFooterConfigEditor({
             width,
           ),
           truncateToWidth(theme.fg("dim", configPath), width),
+          "",
+          truncateToWidth(theme.bold("Widgets"), width),
         ];
 
-        for (const [index, sectionId] of sectionIds().entries()) {
-          lines.push("");
-          lines.push(...renderSection(width, sectionId));
-          if (index === sectionIds().length - 1) continue;
+        const gutterDigits = String(current.rows.length - 1).length;
+        for (const row of current.rows) {
+          const gutter = theme.fg(
+            "dim",
+            `${String(row.row).padStart(gutterDigits)}│ `,
+          );
+          if (row.ordered.length === 0) {
+            lines.push(
+              truncateToWidth(`${gutter}${theme.fg("dim", "(empty)")}`, width),
+            );
+            continue;
+          }
+          const contentWidth = Math.max(10, width - gutterDigits - 2);
+          const mode = rowChipMode(contentWidth, row);
+          const placed = placeRowChips(contentWidth, row, mode);
+          lines.push(renderChipLine(width, gutter, placed, mode, selectedId));
         }
 
-        const item = selectedItem();
-        if (item?.description) {
+        if (current.bench.length > 0) {
+          lines.push(truncateToWidth(theme.fg("dim", "hidden"), width));
+          const gutter = " ".repeat(gutterDigits + 2);
+          const contentWidth = Math.max(10, width - gutterDigits - 2);
+          const mode =
+            CHIP_MODES.find(
+              (candidate) =>
+                groupWidth(current.bench, candidate) <= contentWidth,
+            ) ?? "icon";
+          const placedBench: PlacedChip[] = [];
+          let column = 0;
+          for (const chip of current.bench) {
+            const chipWidth = visibleWidth(chipText(chip, mode));
+            placedBench.push({ chip, column, width: chipWidth });
+            column += chipWidth + CHIP_GAP;
+          }
+          lines.push(
+            renderChipLine(width, gutter, placedBench, mode, selectedId),
+          );
+        }
+
+        if (selection.area !== "globals") {
+          const widgetId = selection.widgetId;
+          const chip =
+            current.rows
+              .flatMap((row) => row.ordered)
+              .find((entry) => entry.widget.id === widgetId) ??
+            current.bench.find((entry) => entry.widget.id === widgetId);
+          if (chip) {
+            const placement = chip.placement;
+            const group = placement.benched
+              ? current.bench
+              : current.rows[placement.row]!.groups[placement.align];
+            const index = group.findIndex(
+              (entry) => entry.widget.id === widgetId,
+            );
+            const info = placement.benched
+              ? "hidden"
+              : `row ${placement.row} · ${placement.align} · pos ${index}${
+                  placement.fill === "grow" ? " · grow" : ""
+                }`;
+            lines.push("");
+            lines.push(
+              truncateToWidth(
+                `${theme.inverse(chip.widget.label)} ${theme.fg("dim", `— ${info}`)}`,
+                width,
+              ),
+            );
+          }
+        }
+
+        lines.push("");
+        lines.push(truncateToWidth(theme.bold("General"), width));
+        const globals = globalsItems();
+        const labelWidth = Math.min(
+          Math.max(...globals.map((item) => visibleWidth(item.label)), 0),
+          Math.max(8, width - 12),
+        );
+        for (const [index, item] of globals.entries()) {
+          const selected =
+            selection.area === "globals" && selection.index === index;
+          const prefix = selected ? theme.fg("accent", "→ ") : "  ";
+          const label = truncateToWidth(item.label, labelWidth, "");
+          const paddedLabel =
+            label + " ".repeat(Math.max(0, labelWidth - visibleWidth(label)));
+          const valueWidth = Math.max(4, width - 2 - labelWidth - 2);
+          const value = truncateToWidth(item.currentValue, valueWidth, "");
+          lines.push(
+            truncateToWidth(
+              `${prefix}${selected ? theme.fg("accent", paddedLabel) : paddedLabel}  ${selected ? theme.fg("accent", value) : theme.fg("dim", value)}`,
+              width,
+            ),
+          );
+        }
+
+        const description = selectedDescription();
+        if (description) {
           lines.push("");
           for (const line of wrapTextWithAnsi(
-            item.description,
+            description,
             Math.max(10, width - 2),
           )) {
             lines.push(truncateToWidth(theme.fg("dim", line), width));
@@ -275,7 +613,7 @@ export async function openFooterConfigEditor({
           truncateToWidth(
             theme.fg(
               "dim",
-              "↑↓ navigate • Tab/Shift+Tab switch section • Enter configure widget/change values • Esc close",
+              selection.area === "globals" ? globalsHints : chipHints,
             ),
             width,
           ),
@@ -293,22 +631,30 @@ export async function openFooterConfigEditor({
           return;
         }
 
-        if (keybindings.matches(data, "tui.select.up")) {
-          moveSelection(-1);
-        } else if (keybindings.matches(data, "tui.select.down")) {
-          moveSelection(1);
-        } else if (matchesKey(data, Key.tab)) {
-          moveSection(1);
-        } else if (matchesKey(data, Key.shift("tab"))) {
-          moveSection(-1);
-        } else if (
-          keybindings.matches(data, "tui.select.confirm") ||
-          data === " "
-        ) {
-          activateSelectedItem();
-        } else if (keybindings.matches(data, "tui.select.cancel")) {
+        if (keybindings.matches(data, "tui.select.cancel")) {
           done(undefined);
           return;
+        }
+
+        if (matchesKey(data, Key.left)) {
+          moveSelectionHorizontal(-1);
+        } else if (matchesKey(data, Key.right)) {
+          moveSelectionHorizontal(1);
+        } else if (keybindings.matches(data, "tui.select.up")) {
+          moveSelectionVertical(-1);
+        } else if (keybindings.matches(data, "tui.select.down")) {
+          moveSelectionVertical(1);
+        } else if (keybindings.matches(data, "tui.select.confirm")) {
+          activateSelection();
+        } else if (selection.area === "globals" && data === " ") {
+          cycleGlobalValue();
+        } else if (selection.area !== "globals") {
+          const action = chipActions.find((entry) => entry.keys.includes(data));
+          if (action) {
+            action.run(selection.widgetId);
+            applyDraft();
+            syncSelection();
+          }
         }
 
         tui.requestRender();
