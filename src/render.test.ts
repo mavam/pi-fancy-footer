@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterLines } from "./render.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
@@ -61,15 +62,14 @@ const footerConfig: FooterConfigSnapshot = {
   },
 };
 
-function contextWithModel(model: { id: string; name: string; provider?: string }) {
+function contextWithModel(
+  model: { id: string; name: string; provider?: string },
+  usage = { contextWindow: 200_000, tokens: 0, percent: 0 },
+) {
   return {
     cwd: "/repo",
     model,
-    getContextUsage: () => ({
-      contextWindow: 200_000,
-      tokens: 0,
-      percent: 0,
-    }),
+    getContextUsage: () => usage,
     sessionManager: {
       getBranch: () => [],
     },
@@ -182,4 +182,83 @@ test("renderFooterLines hides Anthropic provider status for OpenAI models", () =
   );
 
   assert.doesNotMatch(lines.join("\n"), /5h:100%/);
+});
+
+const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };
+
+function contextBarFooterConfig(
+  contextBarOverride: FooterConfigSnapshot["widgets"]["context-bar"],
+): FooterConfigSnapshot {
+  return {
+    ...DEFAULT_FOOTER_CONFIG,
+    iconFamily: "ascii",
+    gaugeStyle: "bars",
+    widgets: {
+      ...(contextBarOverride ? { "context-bar": contextBarOverride } : {}),
+      location: { enabled: false },
+    },
+  };
+}
+
+test("renderFooterLines keeps the compact context gauge by default", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel(
+      { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+      contextBarUsage,
+    ) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    contextBarFooterConfig(undefined),
+  );
+
+  const row = lines[0] ?? "";
+  assert.match(row, /█+░+ \d+%/);
+  assert.equal(
+    (row.match(/[█░]/g) ?? []).length,
+    DEFAULT_FOOTER_CONFIG.gaugeWidth,
+  );
+});
+
+test("renderFooterLines grows the context bar across the row when configured", () => {
+  const lines = renderFooterLines(
+    120,
+    contextWithModel(
+      { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+      contextBarUsage,
+    ) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    contextBarFooterConfig({ fill: "grow" }),
+  );
+
+  const row = lines[0] ?? "";
+  assert.equal(visibleWidth(row), 120);
+  assert.match(row, /92k █+░+/);
+  assert.ok((row.match(/[█░]/g) ?? []).length > 60);
+  assert.doesNotMatch(row, /%/);
+  assert.match(row, /200k$/);
+});
+
+test("renderFooterLines clamps a grown context bar at narrow widths", () => {
+  const lines = renderFooterLines(
+    38,
+    contextWithModel(
+      { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+      contextBarUsage,
+    ) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    contextBarFooterConfig({ fill: "grow" }),
+  );
+
+  const row = lines[0] ?? "";
+  assert.ok(visibleWidth(row) <= 38);
+  assert.match(row, /[█░]/);
 });

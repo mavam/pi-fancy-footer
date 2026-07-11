@@ -591,7 +591,8 @@ export const FOOTER_WIDGET_META: Record<
   },
   "context-bar": {
     defaults: { row: 0, position: 0, align: "left", fill: "none" },
-    description: "Shows a mini gauge of remaining context.",
+    description:
+      "Shows a mini gauge of remaining context. Set fill to grow for a full-width bar.",
     symbolKey: "contextBarMarker",
   },
   "total-cost": {

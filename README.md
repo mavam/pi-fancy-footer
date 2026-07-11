@@ -16,7 +16,8 @@ pi install npm:pi-fancy-footer
 
 - Active model + thinking level
 - Provider quota status for OpenAI Codex and Claude models
-- Context window capacity and a mini gauge of remaining context
+- Context window capacity and a mini gauge of remaining context, which can
+  optionally grow into a full-width bar
 - Total session cost
 - Repo / path, branch, commit, open PR number, unresolved PR review
   threads, and PR CI status
@@ -80,7 +81,8 @@ Create `~/.pi/agent/fancy-footer.json`:
     "context-bar": {
       "align": "left",
       "row": 0,
-      "position": 0
+      "position": 0,
+      "fill": "grow"
     },
     "total-cost": {
       "enabled": false
@@ -112,8 +114,9 @@ Top-level settings:
 - `gaugeStyle`
   (`blocks` | `lines` | `circles` | `parallelograms` | `diamonds` | `bars` |
   `stars` | `specks`)
-- `gaugeWidth` - cells spanned by the context and provider status gauges
-  (3-40, default 5)
+- `gaugeWidth` - cells spanned by the provider status gauges and the compact
+  context gauge (3-40, default 5); a context bar with `fill` set to `grow`
+  spans the row instead
 - `gaugeColors` - fill colors per gauge severity; each of `ok`, `warning`,
   and `error` accepts a widget color. Defaults to `accent` / `warning` /
   `error`, so healthy gauges blend into the theme and only stand out when
@@ -260,7 +263,10 @@ Notes:
   `gaugeStyle` (not `iconFamily`). Filled cells show the remaining share,
   colored via `gaugeColors` by how close the context is to exhaustion; empty
   cells stay dim. It sits on the left of the top row by default, with provider quota
-  gauges on the right.
+  gauges on the right. Set the widget's `fill` to `grow` (via `/fancy-footer`
+  or the config file) to expand it into a full-width bar with the used tokens
+  in front, e.g. `246k ██████████░░░`, flanked by the `context-capacity`
+  widget (`272k`) on the right.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);

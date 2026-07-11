@@ -913,7 +913,7 @@ function genericFooterSettingsItems(
       currentValue: String(draft.gaugeWidth),
       values: GAUGE_WIDTH_OPTIONS.map((value) => String(value)),
       description:
-        "Choose how many cells the context and provider status gauges span.",
+        "Choose how many cells the provider status gauges and the compact context gauge span. A context bar with fill set to grow spans the row instead.",
     },
     {
       id: "gaugeColorOk",
