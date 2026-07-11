@@ -420,6 +420,82 @@ test("collectProviderStatus keeps cached quota in effect after a failed refresh"
   assert.match(snapshot?.error ?? "", /429/);
 });
 
+test("collectProviderStatus retains a valid five-hour cache window after a partial refresh", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        seven_day: {
+          utilization: 7,
+          resets_at: "2030-01-01T01:00:00Z",
+        },
+      }),
+    );
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 3_600;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 5,
+        leftPercent: 95,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 12,
+        leftPercent: 88,
+        resetAt: futureResetAt,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const [snapshot] = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshot?.primary?.label, "5h");
+  assert.equal(snapshot?.secondary?.label, "7d");
+  assert.equal(snapshot?.secondary?.usedPercent, 7);
+  assert.equal(snapshot?.error, undefined);
+});
+
 test("collectProviderStatus hides cached quota once its windows reset", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
   t.after(async () => {

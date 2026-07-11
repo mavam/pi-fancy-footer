@@ -235,7 +235,13 @@ async function collectProviderStatusFromSource(
   }
 
   try {
-    const snapshot = await source.fetch(pi);
+    // A refresh can be partial: Anthropic sometimes reports only the weekly
+    // window. Cached windows stay valid until their reset, so merge them into
+    // the fresh snapshot instead of dropping them.
+    const { error: _staleError, ...snapshot } = mergeProviderStatus(
+      displayableCachedStatus(cached),
+      await source.fetch(pi),
+    );
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
   } catch (error) {
@@ -253,7 +259,7 @@ async function collectProviderStatusFromSource(
 // have not reset yet. Returns undefined when nothing is left to display.
 function displayableCachedStatus(
   cached: ProviderStatusSnapshot | undefined,
-  error: unknown,
+  error?: unknown,
   now = new Date(),
 ): ProviderStatusSnapshot | undefined {
   if (!cached) return undefined;
@@ -273,7 +279,9 @@ function displayableCachedStatus(
     state: computeProviderStatusState(primary, secondary),
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
-    error: providerStatusErrorMessage(error),
+    ...(error === undefined
+      ? {}
+      : { error: providerStatusErrorMessage(error) }),
   };
 }
 
