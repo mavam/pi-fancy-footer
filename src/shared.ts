@@ -680,8 +680,14 @@ export const FOOTER_WIDGET_META: Record<
   },
   commit: {
     shortLabel: "commit",
-    defaults: { row: 1, position: 2, align: "left", fill: "none" },
-    description: "Shows the short Git commit hash.",
+    defaults: {
+      row: 1,
+      position: 2,
+      align: "left",
+      fill: "none",
+      enabled: false,
+    },
+    description: "Shows the short Git commit SHA.",
     symbolKey: "commit",
   },
   "pull-request": {

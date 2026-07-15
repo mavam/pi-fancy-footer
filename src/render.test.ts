@@ -235,6 +235,41 @@ test("renderFooterLines hides cache widgets without cache activity", () => {
   assert.doesNotMatch(out, /H\d/);
 });
 
+test("renderFooterLines hides the commit SHA unless enabled", () => {
+  const ctx = contextWithModel({
+    provider: "anthropic",
+    id: "claude-sonnet-4",
+    name: "Claude Sonnet 4",
+  }) as never;
+  const git = { ...EMPTY_GIT_INFO, commit: "abc1234" };
+
+  const hidden = renderFooterLines(
+    120,
+    ctx,
+    git,
+    "off",
+    theme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.doesNotMatch(hidden.join("\n"), /abc1234/);
+
+  const enabledConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    widgets: { ...footerConfig.widgets, commit: { enabled: true } },
+  };
+  const shown = renderFooterLines(
+    120,
+    ctx,
+    git,
+    "off",
+    theme as never,
+    usageMetrics,
+    enabledConfig,
+  );
+  assert.match(shown.join("\n"), /#abc1234/);
+});
+
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };
 
 function contextBarFooterConfig(
