@@ -24,7 +24,7 @@ pi install npm:pi-fancy-footer
 
 - Active model + thinking level
 - Provider quota status for OpenAI Codex and Claude models
-- A mini gauge of remaining context, which can optionally grow into a
+- A mini gauge of used context, which can optionally grow into a
   full-width bar, plus an optional context-capacity widget (hidden by
   default)
 - Total session cost
@@ -277,14 +277,14 @@ leading widget icon.
 Notes:
 
 - Most widgets use a leading icon.
-- `context-bar` renders a battery-style mini gauge of remaining context,
-  e.g. `■■■□□ 55%`, spanning `gaugeWidth` cells with the glyphs from
-  `gaugeStyle` (not `iconFamily`). Filled cells show the remaining share,
-  colored via `gaugeColors` by how close the context is to exhaustion; empty
-  cells stay dim. It sits on the left of the top row by default, with provider quota
-  gauges on the right. Set the widget's `fill` to `grow` (via `/fancy-footer`
-  or the config file) to expand it into a full-width bar with the used tokens
-  in front, e.g. `246k ██████████░░░`.
+- `context-bar` renders a battery-style mini gauge of used context,
+  e.g. `■■□□□ 40%`, spanning `gaugeWidth` cells with the glyphs from
+  `gaugeStyle` (not `iconFamily`). Filled cells and the percentage show the
+  consumed share, colored via `gaugeColors` by how close the context is to
+  exhaustion; empty cells stay dim. It sits on the left of the top row by
+  default, with provider quota gauges beside it. Set the widget's `fill` to
+  `grow` (via `/fancy-footer` or the configuration file) to expand it into a
+  full-width bar with the used tokens in front, e.g. `246k ██████████░░░`.
 - `context-capacity` shows the total context window in compact SI form
   (`200k`, `1M`). It is hidden by default since the context bar already
   conveys usage; enable it via `/fancy-footer` (it starts in the `hidden`
@@ -308,8 +308,13 @@ Notes:
   where filled cells show the remaining quota and each window is colored by
   how close it is to exhaustion. The gauge spans `gaugeWidth` cells and
   reuses the configured `gaugeStyle` glyphs; set `providerStatus.display` to
-  `text` for the
-  compact `5h:95% 7d:97%` form. Codex uses existing pi OpenAI Codex credentials
+  `text` for the compact `5h:95% 7d:97%` form. The widget renders only the
+  windows that the provider reports. If Codex omits its 5-hour window and
+  promotes the weekly window to primary, the footer removes the stale 5-hour
+  value and shows only `7d`. In an output such as
+  `󰾆▱▱▱▱▱ 0% 󰓅7d ▰▰▰▰▱ 84%`, `0%` is the share of pi's context window in
+  use and `84%` is the remaining weekly Codex quota. Codex uses existing pi
+  OpenAI Codex credentials
   from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly

@@ -146,6 +146,47 @@ test("renderFooterLines shows Codex provider status for OpenAI models", () => {
   assert.match(lines.join("\n"), /5h:95%/);
 });
 
+test("renderFooterLines renders a weekly-only Codex quota gauge", () => {
+  const weeklyOnlyProviderStatus: ProviderStatusSnapshot = {
+    provider: "openai-codex",
+    source: "api",
+    fetchedAt: "2026-07-15T20:34:35Z",
+    state: "ok",
+    primary: {
+      label: "7d",
+      leftPercent: 84,
+      usedPercent: 16,
+    },
+  };
+  const gaugeConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    gaugeStyle: "parallelograms",
+    providerStatus: {
+      ...footerConfig.providerStatus,
+      display: "gauge",
+    },
+  };
+
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "openai",
+      id: "gpt-5-codex",
+      name: "GPT-5 Codex",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    gaugeConfig,
+    [],
+    [weeklyOnlyProviderStatus],
+  );
+
+  assert.match(lines.join("\n"), /%7d ▰▰▰▰▱ 84%/);
+  assert.doesNotMatch(lines.join("\n"), /5h/);
+});
+
 test("renderFooterLines shows Anthropic provider status for Claude models", () => {
   const lines = renderFooterLines(
     120,
