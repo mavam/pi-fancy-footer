@@ -1,0 +1,9 @@
+created: 2026-07-15
+title: Accurate Codex quota display
+intro: >-
+  This release accurately displays Codex weekly quota usage when no five-hour quota
+  window is available. It also keeps the footer focused on branch and pull request
+  context by hiding the commit SHA widget by default.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.4.0
