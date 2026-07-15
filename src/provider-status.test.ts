@@ -66,6 +66,30 @@ test("normalizeCodexUsageResponse extracts primary and secondary quota windows",
   assert.equal(snapshot?.state, "ok");
 });
 
+test("normalizeCodexUsageResponse accepts a promoted weekly-only primary window", () => {
+  const snapshot = normalizeCodexUsageResponse(
+    {
+      rate_limit: {
+        primary_window: {
+          used_percent: 16,
+          limit_window_seconds: 604_800,
+          reset_at: 1_784_668_371,
+        },
+        secondary_window: null,
+      },
+    },
+    now,
+  );
+
+  assert.deepEqual(snapshot?.primary, {
+    label: "7d",
+    usedPercent: 16,
+    leftPercent: 84,
+    resetAt: 1_784_668_371,
+  });
+  assert.equal(snapshot?.secondary, undefined);
+});
+
 test("normalizeClaudeUsageResponse extracts five-hour and weekly usage windows", () => {
   const fiveHourReset = "2026-06-16T15:20:00.365459+00:00";
   const weeklyReset = "2026-06-16T23:00:00.365483+00:00";
@@ -127,13 +151,17 @@ test("parseCodexRateLimitHeaders accepts case-insensitive x-codex headers", () =
   const snapshot = parseCodexRateLimitHeaders(
     {
       "X-Codex-Primary-Used-Percent": "76",
+      "x-codex-primary-window-minutes": 300,
       "x-codex-secondary-used-percent": 10,
+      "x-codex-secondary-window-minutes": 10_080,
       "x-codex-credits-balance": "42",
     },
     now,
   );
 
+  assert.equal(snapshot?.primary?.label, "5h");
   assert.equal(snapshot?.primary?.leftPercent, 24);
+  assert.equal(snapshot?.secondary?.label, "7d");
   assert.equal(snapshot?.secondary?.leftPercent, 90);
   assert.equal(snapshot?.credits, "42");
   assert.equal(snapshot?.state, "error");
@@ -281,6 +309,90 @@ test("providerStatusColor derives semantic color from status", () => {
     ),
     "error",
   );
+});
+
+test("collectProviderStatus drops a cached Codex session window after a weekly-only refresh", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 604_800;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: {
+            used_percent: 16,
+            limit_window_seconds: 604_800,
+            reset_at: futureResetAt,
+          },
+          secondary_window: null,
+        },
+      }),
+    );
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({
+      "openai-codex": {
+        access: "test-access-token",
+        accountId: "test-account",
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "openai-codex.json"),
+    JSON.stringify({
+      provider: "openai-codex",
+      source: "api",
+      fetchedAt: "2026-07-12T20:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 74,
+        leftPercent: 26,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 16,
+        leftPercent: 84,
+        resetAt: futureResetAt,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const [snapshot] = await collectProviderStatus({} as never, {
+    ...providerStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshot?.primary?.label, "7d");
+  assert.equal(snapshot?.primary?.leftPercent, 84);
+  assert.equal(snapshot?.secondary, undefined);
 });
 
 test("collectProviderStatus does not present expired cache as live status after refresh failure", async (t) => {
@@ -724,6 +836,63 @@ test("updateProviderStatusFromHeaders ignores Anthropic response headers", async
   );
 
   assert.deepEqual(updated, []);
+});
+
+test("updateProviderStatusFromHeaders clears a stale Codex session window for a weekly-only layout", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  t.after(() => {
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+  });
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 604_800;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "openai-codex.json"),
+    JSON.stringify({
+      provider: "openai-codex",
+      source: "api",
+      fetchedAt: new Date().toISOString(),
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 74,
+        leftPercent: 26,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 15,
+        leftPercent: 85,
+        resetAt: futureResetAt,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const [snapshot] = await updateProviderStatusFromHeaders(
+    {
+      "x-codex-primary-used-percent": "16",
+      "x-codex-primary-window-minutes": "10080",
+      "x-codex-primary-reset-at": String(futureResetAt),
+    },
+    providerStatusConfig,
+  );
+
+  assert.equal(snapshot?.primary?.label, "7d");
+  assert.equal(snapshot?.primary?.leftPercent, 84);
+  assert.equal(snapshot?.secondary, undefined);
 });
 
 test("updateProviderStatusFromHeaders does not merge expired cached windows", async (t) => {

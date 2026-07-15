@@ -36,6 +36,7 @@ export interface ProviderStatusSource {
   id: string;
   label: string;
   usageUrl: string;
+  preserveMissingWindows: boolean;
   fetch(pi: ExtensionAPI): Promise<ProviderStatusSnapshot>;
   parseHeaders(
     headers: HeaderLike,
@@ -47,6 +48,7 @@ const CODEX_SOURCE: ProviderStatusSource = {
   id: "openai-codex",
   label: "Codex",
   usageUrl: CODEX_USAGE_URL,
+  preserveMissingWindows: false,
   fetch: fetchCodexProviderStatus,
   parseHeaders: parseCodexRateLimitHeaders,
 };
@@ -55,6 +57,7 @@ const ANTHROPIC_SOURCE: ProviderStatusSource = {
   id: "anthropic",
   label: "Claude",
   usageUrl: CLAUDE_USAGE_URL,
+  preserveMissingWindows: true,
   fetch: fetchClaudeProviderStatus,
   parseHeaders: () => undefined,
 };
@@ -235,13 +238,15 @@ async function collectProviderStatusFromSource(
   }
 
   try {
-    // A refresh can be partial: Anthropic sometimes reports only the weekly
-    // window. Cached windows stay valid until their reset, so merge them into
-    // the fresh snapshot instead of dropping them.
-    const { error: _staleError, ...snapshot } = mergeProviderStatus(
-      displayableCachedStatus(cached),
-      await source.fetch(pi),
-    );
+    // Anthropic refreshes can be partial and report only the weekly window.
+    // Codex refreshes are authoritative: OpenAI can remove a window and promote
+    // the weekly window to primary, so retaining a missing window would show a
+    // stale or duplicated quota.
+    const fresh = await source.fetch(pi);
+    const merged = source.preserveMissingWindows
+      ? mergeProviderStatus(displayableCachedStatus(cached), fresh)
+      : fresh;
+    const { error: _staleError, ...snapshot } = merged;
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
   } catch (error) {
@@ -335,7 +340,13 @@ export async function updateProviderStatusFromHeaders(
       config && isProviderStatusFresh(cached, config.cacheTtlMs)
         ? cached
         : undefined;
-    const merged = mergeProviderStatus(freshCached, parsed);
+    const merged = mergeProviderStatus(freshCached, parsed, {
+      // A duration-bearing weekly primary with no secondary is an explicit
+      // weekly-only Codex layout, not a sparse update.
+      preserveMissingWindows:
+        source.preserveMissingWindows ||
+        !isWeeklyOnlyCodexStatus(parsed),
+    });
     await writeProviderStatusCache(merged).catch(() => undefined);
     updated.push(merged);
   }
@@ -774,20 +785,75 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
 function mergeProviderStatus(
   existing: ProviderStatusSnapshot | undefined,
   update: ProviderStatusSnapshot,
+  options: { preserveMissingWindows?: boolean } = {},
 ): ProviderStatusSnapshot {
   if (!existing) return update;
-  const primary = update.primary ?? existing.primary;
-  const secondary = update.secondary ?? existing.secondary;
+
+  const preserveMissingWindows = options.preserveMissingWindows ?? true;
+  const windows = new Map<string, ProviderStatusWindow>();
+  if (preserveMissingWindows) {
+    for (const window of providerStatusWindows(existing)) {
+      windows.set(window.label, window);
+    }
+  }
+  for (const window of providerStatusWindows(update)) {
+    windows.set(window.label, window);
+  }
+
+  const [primary, secondary] = Array.from(windows.values()).sort(
+    (a, b) => windowDurationMinutes(a.label) - windowDurationMinutes(b.label),
+  );
+  const {
+    primary: _existingPrimary,
+    secondary: _existingSecondary,
+    credits: existingCredits,
+    error: _existingError,
+    ...existingBase
+  } = existing;
+  const {
+    primary: _updatePrimary,
+    secondary: _updateSecondary,
+    credits: updateCredits,
+    ...updateBase
+  } = update;
+  const credits = updateCredits ?? existingCredits;
+
   return {
-    ...existing,
-    ...update,
+    ...existingBase,
+    ...updateBase,
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
-    ...((update.credits ?? existing.credits)
-      ? { credits: update.credits ?? existing.credits }
-      : {}),
+    ...(credits !== undefined ? { credits } : {}),
     state: computeProviderStatusState(primary, secondary),
   };
+}
+
+function providerStatusWindows(
+  snapshot: ProviderStatusSnapshot,
+): ProviderStatusWindow[] {
+  return [snapshot.primary, snapshot.secondary].filter(
+    (window): window is ProviderStatusWindow => window !== undefined,
+  );
+}
+
+function windowDurationMinutes(label: string): number {
+  const match = label.match(/^(\d+(?:\.\d+)?)(m|h|d)$/);
+  if (!match) return Number.POSITIVE_INFINITY;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+  if (match[2] === "d") return value * 24 * 60;
+  if (match[2] === "h") return value * 60;
+  return value;
+}
+
+function isWeeklyOnlyCodexStatus(
+  snapshot: ProviderStatusSnapshot,
+): boolean {
+  return (
+    snapshot.provider === CODEX_SOURCE.id &&
+    snapshot.primary?.label === CODEX_SECONDARY_WINDOW_LABEL &&
+    snapshot.secondary === undefined
+  );
 }
 
 function parseHeaderWindow(
@@ -802,8 +868,20 @@ function parseHeaderWindow(
   const resetAt = normalizeResetAt(
     numberString(headerValue(headers, `${prefix}-reset-at`)),
   );
+  const windowMinutes = numberString(
+    headerValue(headers, `${prefix}-window-minutes`),
+  );
   if (usedPercent === undefined && resetAt === undefined) return undefined;
-  return windowFromUsedPercent(label, usedPercent ?? 0, resetAt, now);
+  const durationLabel =
+    windowMinutes === undefined
+      ? undefined
+      : windowLabelFromSeconds(windowMinutes * 60);
+  return windowFromUsedPercent(
+    durationLabel ?? label,
+    usedPercent ?? 0,
+    resetAt,
+    now,
+  );
 }
 
 function normalizeApiWindow(
