@@ -30,8 +30,8 @@ pi install npm:pi-fancy-footer
 - Total session cost
 - Prompt-cache statistics: cumulative cache-read/write tokens and the latest
   turn's cache hit rate
-- Repo / path, branch, commit, open PR number, unresolved PR review
-  threads, and PR CI status
+- Repo / path, branch, optional commit SHA (hidden by default), open PR
+  number, unresolved PR review threads, and PR CI status
 - Git diff stats and ahead/behind status
 
 ## 📸 Configuration editor
@@ -99,6 +99,9 @@ Create `~/.pi/agent/fancy-footer.json`:
     },
     "total-cost": {
       "enabled": false
+    },
+    "commit": {
+      "enabled": true
     },
     "branch": {
       "icon": "hide",
@@ -290,6 +293,8 @@ Notes:
   conveys usage; enable it via `/fancy-footer` (it starts in the `hidden`
   strip) or with `"context-capacity": { "enabled": true }`. It then sits
   between the context bar and the provider quota gauges.
+- `commit` shows the short Git commit SHA. It is hidden by default; enable it
+  via `/fancy-footer` or with `"commit": { "enabled": true }`.
 - `cache-read` and `cache-write` show cumulative prompt-cache tokens for the
   session in compact form (e.g. `246k`, `1.2M`). `cache-hit-rate` shows the
   latest turn's cache hit rate, computed as

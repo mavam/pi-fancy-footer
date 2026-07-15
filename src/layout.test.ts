@@ -49,8 +49,8 @@ test("buildLayoutModel groups default widgets like the renderer", () => {
   const model = buildLayoutModel(config, builtInWidgets(config));
 
   assert.equal(model.rows.length, 2);
-  // context-capacity is hidden by default and starts on the bench.
-  assert.deepEqual(ids(model.bench), ["context-capacity"]);
+  // context-capacity and commit are hidden by default and start on the bench.
+  assert.deepEqual(ids(model.bench), ["context-capacity", "commit"]);
   assert.deepEqual(ids(model.rows[0]!.groups.left), [
     "context-bar",
     "provider-status",
@@ -64,7 +64,6 @@ test("buildLayoutModel groups default widgets like the renderer", () => {
   assert.deepEqual(ids(model.rows[1]!.groups.left), [
     "location",
     "branch",
-    "commit",
     "pull-request",
     "pull-request-review-threads",
     "pull-request-ci-status",
@@ -104,7 +103,11 @@ test("buildLayoutModel puts disabled widgets on the bench", () => {
   config.widgets["pull-request"] = { enabled: false };
   const model = buildLayoutModel(config, builtInWidgets(config));
 
-  assert.deepEqual(ids(model.bench), ["context-capacity", "pull-request"]);
+  assert.deepEqual(ids(model.bench), [
+    "context-capacity",
+    "commit",
+    "pull-request",
+  ]);
   assert.ok(!ids(model.rows[1]!.groups.left).includes("pull-request"));
 });
 
@@ -118,7 +121,7 @@ test("moveHorizontal swaps within a group", () => {
   const model = buildLayoutModel(config, widgets);
   assert.deepEqual(ids(model.rows[1]!.groups.left).slice(0, 3), [
     "location",
-    "commit",
+    "pull-request",
     "branch",
   ]);
 });
@@ -206,13 +209,13 @@ test("moveVertical round-trip restores a minimal config", () => {
   moveVertical(config, widgets, "branch", 1);
   // Coming back down appends at the end of the left group; walk it back to
   // its default slot right after "location".
-  for (let i = 0; i < 7; i++) moveHorizontal(config, widgets, "branch", -1);
+  for (let i = 0; i < 6; i++) moveHorizontal(config, widgets, "branch", -1);
 
   const model = buildLayoutModel(config, widgets);
   assert.deepEqual(ids(model.rows[1]!.groups.left).slice(0, 3), [
     "location",
     "branch",
-    "commit",
+    "pull-request",
   ]);
   assert.deepEqual(config.widgets, {});
 });
@@ -224,7 +227,11 @@ test("moveVertical benches a widget moved below the bottom row", () => {
 
   assert.deepEqual(config.widgets.branch, { enabled: false });
   const model = buildLayoutModel(config, widgets);
-  assert.deepEqual(ids(model.bench), ["context-capacity", "branch"]);
+  assert.deepEqual(ids(model.bench), [
+    "context-capacity",
+    "branch",
+    "commit",
+  ]);
 });
 
 test("moveVertical bench round-trip preserves placement", () => {
@@ -244,7 +251,7 @@ test("moveVertical unbenches onto the bottom-most row", () => {
   moveVertical(config, widgets, "context-bar", -1);
 
   const model = buildLayoutModel(config, widgets);
-  assert.deepEqual(ids(model.bench), ["context-capacity"]);
+  assert.deepEqual(ids(model.bench), ["context-capacity", "commit"]);
   const left = ids(model.rows[1]!.groups.left);
   assert.equal(left[left.length - 1], "context-bar");
 });
@@ -256,7 +263,7 @@ test("setBenched round-trips a default-hidden widget with a minimal override", (
   setBenched(config, widgets, "context-capacity", false);
   assert.deepEqual(config.widgets["context-capacity"], { enabled: true });
   let model = buildLayoutModel(config, widgets);
-  assert.equal(model.bench.length, 0);
+  assert.deepEqual(ids(model.bench), ["commit"]);
   assert.deepEqual(ids(model.rows[0]!.groups.left), [
     "context-bar",
     "context-capacity",
@@ -266,7 +273,7 @@ test("setBenched round-trips a default-hidden widget with a minimal override", (
   setBenched(config, widgets, "context-capacity", true);
   assert.deepEqual(config.widgets, {});
   model = buildLayoutModel(config, widgets);
-  assert.deepEqual(ids(model.bench), ["context-capacity"]);
+  assert.deepEqual(ids(model.bench), ["context-capacity", "commit"]);
 });
 
 test("moveVertical clamps at row 0 and MAX_WIDGET_ROW", () => {
