@@ -1,0 +1,9 @@
+created: 2026-07-23
+title: Structured extension widget protocol
+intro: >-
+  Pi Fancy Footer now accepts validated, styled widget snapshots over Pi's event bus,
+  allowing extensions to integrate without a package dependency. Saved layouts continue
+  to override producer defaults.
+source:
+  mode: sync-stable-queue
+  previous_stable: v1.5.0
