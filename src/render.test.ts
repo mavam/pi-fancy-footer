@@ -65,21 +65,36 @@ const footerConfig: FooterConfigSnapshot = {
   },
 };
 
-const agentRunsWidget: NormalizedFancyFooterDataWidget = {
-  id: "pi-agents.runs",
-  label: "Agent runs",
-  description: "Shows aggregate progress for active runs.",
-  content: { type: "text", text: "1 run · 1/3 agents · 1.2k tok" },
-  icon: { glyphs: { ascii: "A", unicode: "◆" }, color: "accent" },
-  preferredTextColor: "dim",
-  defaults: {
-    enabled: false,
-    row: 1,
-    position: 9,
-    align: "right",
-    fill: "none",
+const agentWidgets: NormalizedFancyFooterDataWidget[] = [
+  {
+    id: "pi-agents.workflows",
+    label: "Active workflows",
+    description: "Shows active workflow executions.",
+    content: { type: "text", text: "2" },
+    icon: { glyphs: "❖", color: "accent" },
+    defaults: {
+      enabled: false,
+      row: 1,
+      position: 9,
+      align: "right",
+      fill: "none",
+    },
   },
-};
+  {
+    id: "pi-agents.agents",
+    label: "Agent progress",
+    description: "Shows completed and total agents.",
+    content: { type: "text", text: "1/3" },
+    icon: { glyphs: "✦", color: "success" },
+    defaults: {
+      enabled: false,
+      row: 1,
+      position: 10,
+      align: "right",
+      fill: "none",
+    },
+  },
+];
 
 function contextWithModel(
   model: { id: string; name: string; provider?: string },
@@ -139,19 +154,20 @@ test("data widgets honor default visibility and user color overrides", () => {
     coloredTheme as never,
     usageMetrics,
     footerConfig,
-    [agentRunsWidget],
+    agentWidgets,
   );
-  assert.doesNotMatch(disabledLines.join("\n"), /1 run/);
+  assert.doesNotMatch(disabledLines.join("\n"), /❖2|✦1\/3/);
 
   colors.length = 0;
   const enabledConfig: FooterConfigSnapshot = {
     ...footerConfig,
     extensionWidgets: {
-      "pi-agents.runs": {
+      "pi-agents.workflows": {
         enabled: true,
         iconColor: "success",
         textColor: "warning",
       },
+      "pi-agents.agents": { enabled: true },
     },
   };
   const enabledLines = renderFooterLines(
@@ -162,11 +178,12 @@ test("data widgets honor default visibility and user color overrides", () => {
     coloredTheme as never,
     usageMetrics,
     enabledConfig,
-    [agentRunsWidget],
+    agentWidgets,
   );
-  assert.match(enabledLines.join("\n"), /A1 run · 1\/3 agents · 1.2k tok/);
-  assert.ok(colors.includes("success:A"));
-  assert.ok(colors.includes("warning:1 run · 1/3 agents · 1.2k tok"));
+  assert.match(enabledLines.join("\n"), /❖2.*✦1\/3/);
+  assert.ok(colors.includes("success:❖"));
+  assert.ok(colors.includes("warning:2"));
+  assert.ok(colors.includes("success:✦"));
 });
 
 test("renderFooterLines hides Codex provider status for non-OpenAI models", () => {
