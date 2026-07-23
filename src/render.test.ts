@@ -186,6 +186,33 @@ test("data widgets honor default visibility and user color overrides", () => {
   assert.ok(colors.includes("success:✦"));
 });
 
+test("enabled data widgets remain hidden while their content is empty", () => {
+  const enabledConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: {
+      "pi-agents.workflows": { enabled: true },
+      "pi-agents.agents": { enabled: true },
+    },
+  };
+  const emptyWidgets = agentWidgets.map((widget) => ({
+    ...widget,
+    content: { type: "text" as const, text: "" },
+  }));
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    enabledConfig,
+    emptyWidgets,
+  );
+
+  assert.doesNotMatch(lines.join("\n"), /❖|✦|·/);
+});
+
 test("renderFooterLines hides Codex provider status for non-OpenAI models", () => {
   const lines = renderFooterLines(
     120,

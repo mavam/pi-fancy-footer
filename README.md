@@ -269,10 +269,13 @@ The protocol uses these channels:
   should republish their current snapshot when they receive it.
 
 Each `upsert` replaces the complete snapshot for its `id`; the latest command
-wins if multiple producers use the same ID. An empty `content.text` hides the
-widget while keeping it configurable. A `remove` message drops the live widget
-definition. Widget text is limited to 512 Unicode code points and terminal
-control characters are stripped.
+wins if multiple producers use the same ID. IDs must be at most 128 ASCII
+characters and contain two or more dot-separated segments. Each segment starts
+with a letter or digit and may also contain letters, digits, underscores, and
+hyphens, for example `acme.build-status`. An empty `content.text` hides the
+widget while keeping it configurable, even when the widget is explicitly
+enabled. A `remove` message drops the live widget definition. Widget text is
+limited to 512 Unicode code points and terminal control characters are stripped.
 
 The structured snapshot can provide `label`, `description`, an icon glyph or
 per-family glyph map, icon and text colors, and layout defaults (`enabled`,

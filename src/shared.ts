@@ -459,6 +459,8 @@ export interface FooterWidget {
   textColor?: FooterWidgetColor;
   preferredTextColor?: FooterWidgetColor;
   styled?: boolean;
+  /** False when enabling the widget must preserve its conditional visibility. */
+  forceVisibleWhenEnabled?: boolean;
   visible?: (ctx: WidgetRenderContext) => boolean;
   renderText: (ctx: WidgetRenderContext, availableWidth?: number) => string;
 }

@@ -21,11 +21,20 @@ import {
 } from "./shared.ts";
 
 export const MAX_DATA_WIDGET_TEXT_CODE_POINTS = 512;
+export const MAX_DATA_WIDGET_ID_LENGTH = 128;
+
+const DATA_WIDGET_ID_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/u;
 
 const literalUnion = (values: readonly string[]) =>
   Type.Union(values.map((value) => Type.Literal(value)));
 
 const colorSchema = literalUnion(FOOTER_WIDGET_COLORS);
+const dataWidgetIdSchema = Type.String({
+  minLength: 3,
+  maxLength: MAX_DATA_WIDGET_ID_LENGTH,
+  pattern: DATA_WIDGET_ID_PATTERN.source,
+});
 const glyphsSchema = Type.Union([
   Type.String(),
   Type.Object(
@@ -40,7 +49,7 @@ const glyphsSchema = Type.Union([
 ]);
 const dataWidgetSchema = Type.Object(
   {
-    id: Type.String({ minLength: 1 }),
+    id: dataWidgetIdSchema,
     label: Type.Optional(Type.String({ minLength: 1 })),
     description: Type.Optional(Type.String({ minLength: 1 })),
     content: Type.Object(
@@ -102,7 +111,7 @@ const removeMessageSchema = Type.Object(
   {
     protocol: Type.Literal(FANCY_FOOTER_PROTOCOL_VERSION),
     type: Type.Literal("remove"),
-    id: Type.String({ minLength: 1 }),
+    id: dataWidgetIdSchema,
   },
   { additionalProperties: false },
 );
@@ -155,7 +164,7 @@ function normalizeIcon(
 function normalizeWidget(
   widget: FancyFooterDataWidget,
 ): NormalizedFancyFooterDataWidget | undefined {
-  const id = sanitizeInlineText(widget.id, 128);
+  const id = sanitizeInlineText(widget.id, MAX_DATA_WIDGET_ID_LENGTH);
   if (!id || isFooterWidgetId(id)) return undefined;
 
   const label = sanitizeInlineText(widget.label ?? id, 128) || id;

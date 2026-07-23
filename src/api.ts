@@ -34,6 +34,7 @@ export interface FancyFooterDataWidgetLayout {
 }
 
 export interface FancyFooterDataWidget {
+  /** Namespaced ID such as `acme.status`. */
   id: string;
   label?: string;
   description?: string;

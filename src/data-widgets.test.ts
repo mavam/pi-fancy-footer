@@ -84,7 +84,7 @@ test("data widgets sanitize terminal controls and clamp text", () => {
   const store = new FancyFooterDataWidgetStore();
   assert.equal(
     store.apply(
-      upsert(" acme.status ", "ok", {
+      upsert("acme.status", "ok", {
         label: " Status\nwidget ",
         icon: {
           glyphs: { unicode: "✓\n", ascii: "+" },
@@ -108,6 +108,17 @@ test("data widgets sanitize terminal controls and clamp text", () => {
 test("data widgets reject invalid, conflicting, and unsupported messages", () => {
   const store = new FancyFooterDataWidgetStore();
   assert.equal(store.apply(upsert("model", "collision")), false);
+  for (const id of [
+    "constructor",
+    "toString",
+    "__proto__",
+    "acme",
+    "acme..status",
+    " acme.status ",
+  ]) {
+    assert.equal(store.apply(upsert(id, "invalid ID")), false);
+    assert.equal(store.apply({ protocol: 1, type: "remove", id }), false);
+  }
   assert.equal(
     store.apply({ ...upsert("acme.status", "ok"), protocol: 2 }),
     false,

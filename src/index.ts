@@ -94,9 +94,12 @@ export default function (pi: ExtensionAPI) {
     pi.events.emit(FANCY_FOOTER_READY_CHANNEL, message);
   };
 
-  pi.events.on(FANCY_FOOTER_WIDGET_CHANNEL, (raw) => {
-    if (dataWidgets.apply(raw)) refreshDataWidgets();
-  });
+  const stopDataWidgetListener = pi.events.on(
+    FANCY_FOOTER_WIDGET_CHANNEL,
+    (raw) => {
+      if (dataWidgets.apply(raw)) refreshDataWidgets();
+    },
+  );
 
   const installFooter = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
@@ -405,6 +408,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
+    stopDataWidgetListener();
     invalidateActiveFooter();
     if (dataWidgets.clear()) extensionWidgets = [];
   });

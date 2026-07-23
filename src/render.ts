@@ -805,6 +805,8 @@ function buildExtensionWidgets(
     icon: resolveDataWidgetIcon(widget.icon, iconFamily),
     preferredIconColor: widget.icon ? widget.icon.color : undefined,
     preferredTextColor: widget.preferredTextColor,
+    forceVisibleWhenEnabled: false,
+    visible: () => widget.content.text !== "",
     renderText: () => widget.content.text,
   }));
 }
@@ -863,7 +865,10 @@ function applyWidgetConfigOverrides(
 
     if ((override.enabled ?? widget.defaultEnabled ?? true) === false) {
       visible = () => false;
-    } else if (override.enabled === true) {
+    } else if (
+      override.enabled === true &&
+      widget.forceVisibleWhenEnabled !== false
+    ) {
       visible = () => true;
       const originalRenderText = renderText;
       renderText = (renderCtx, availableWidth) => {

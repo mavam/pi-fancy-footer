@@ -30,3 +30,6 @@ pi.events.emit("pi-fancy-footer:widget", {
 ```
 
 Saved user settings continue to override the defaults carried by the event.
+Widget IDs use namespaced dot-separated segments such as `acme.status`, and an
+enabled widget with empty text remains hidden until its producer provides
+content.
