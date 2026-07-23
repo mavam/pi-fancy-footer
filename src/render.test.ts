@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterLines } from "./render.ts";
+import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
@@ -64,6 +65,22 @@ const footerConfig: FooterConfigSnapshot = {
   },
 };
 
+const agentRunsWidget: NormalizedFancyFooterDataWidget = {
+  id: "pi-agents.runs",
+  label: "Agent runs",
+  description: "Shows aggregate progress for active runs.",
+  content: { type: "text", text: "1 run · 1/3 agents · 1.2k tok" },
+  icon: { glyphs: { ascii: "A", unicode: "◆" }, color: "accent" },
+  preferredTextColor: "dim",
+  defaults: {
+    enabled: false,
+    row: 1,
+    position: 9,
+    align: "right",
+    fill: "none",
+  },
+};
+
 function contextWithModel(
   model: { id: string; name: string; provider?: string },
   usage = { contextWindow: 200_000, tokens: 0, percent: 0 },
@@ -104,6 +121,52 @@ test("renderFooterLines renders max thinking with the default text color", () =>
   assert.match(lines.join("\n"), /\?max/);
   assert.ok(colors.includes("dim:max"));
   assert.equal(colors.includes("thinkingMax:max"), false);
+});
+
+test("data widgets honor default visibility and user color overrides", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+  };
+  const disabledLines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+    [agentRunsWidget],
+  );
+  assert.doesNotMatch(disabledLines.join("\n"), /1 run/);
+
+  colors.length = 0;
+  const enabledConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: {
+      "pi-agents.runs": {
+        enabled: true,
+        iconColor: "success",
+        textColor: "warning",
+      },
+    },
+  };
+  const enabledLines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    enabledConfig,
+    [agentRunsWidget],
+  );
+  assert.match(enabledLines.join("\n"), /A1 run · 1\/3 agents · 1.2k tok/);
+  assert.ok(colors.includes("success:A"));
+  assert.ok(colors.includes("warning:1 run · 1/3 agents · 1.2k tok"));
 });
 
 test("renderFooterLines hides Codex provider status for non-OpenAI models", () => {

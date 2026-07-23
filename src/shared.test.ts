@@ -13,7 +13,6 @@ import {
   getThinkingLevelFromEntries,
   getWidgetSettingIcon,
   isFooterIconFamily,
-  resolveFancyFooterWidgetIcon,
   widgetSummary,
   type FooterConfigSnapshot,
 } from "./shared.ts";
@@ -95,18 +94,6 @@ test("buildGauge keeps at least one cell visible near the edges", () => {
   assert.equal(buildGauge(99, style, 5).emptyGlyphs, "▱");
   assert.equal(buildGauge(0, style, 5).filledGlyphs, "");
   assert.equal(buildGauge(100, style, 5).emptyGlyphs, "");
-});
-
-test("resolveFancyFooterWidgetIcon resolves icon strings and family maps", () => {
-  assert.deepEqual(resolveFancyFooterWidgetIcon("X", "ascii"), {
-    text: "X",
-    color: "text",
-  });
-  assert.deepEqual(
-    resolveFancyFooterWidgetIcon({ ascii: ">", unicode: "→" }, "unicode"),
-    { text: "→", color: "text" },
-  );
-  assert.equal(resolveFancyFooterWidgetIcon(false, "emoji"), undefined);
 });
 
 test("formatTokens compacts counts with SI-style units", () => {

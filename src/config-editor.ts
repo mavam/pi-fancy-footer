@@ -31,15 +31,15 @@ import {
   MAX_GAUGE_WIDTH,
   isFooterIconFamily,
   isFooterWidgetColor,
-  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
 } from "./shared.ts";
+import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
 
 interface OpenFooterConfigEditorOptions {
   ctx: ExtensionContext;
   configPath: string;
   draft: FooterConfigSnapshot;
-  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[];
+  extensionWidgets: readonly NormalizedFancyFooterDataWidget[];
   applyDraft: () => void;
 }
 

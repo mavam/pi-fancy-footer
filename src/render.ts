@@ -11,8 +11,6 @@ import {
   MAX_WIDGET_POSITION,
   MAX_WIDGET_ROW,
   type BuiltInFooterWidgetId,
-  type FancyFooterWidgetResult,
-  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type FooterWidgetConfigOverride,
   type FooterIconFamily,
@@ -43,10 +41,13 @@ import {
   getDefaultWidgetIcon,
   getStatuslineSymbols,
   normalizeModel,
-  resolveFancyFooterWidgetIcon,
   normalizePath,
   toNumber,
 } from "./shared.ts";
+import {
+  resolveDataWidgetIcon,
+  type NormalizedFancyFooterDataWidget,
+} from "./data-widgets.ts";
 import {
   buildProviderStatusGauge,
   formatProviderStatusReset,
@@ -324,12 +325,6 @@ function renderWidget(
   const combined = `${styledIcon}${styledText}`;
   if (maxTotalWidth === undefined) return combined;
   return truncateFooterText(combined, maxTotalWidth, "");
-}
-
-function widgetResultToText(result: FancyFooterWidgetResult): string {
-  if (result === undefined || result === null || result === false) return "";
-  if (typeof result === "object") return String(result.text ?? "");
-  return String(result);
 }
 
 function prepareWidgetGroup(
@@ -791,7 +786,7 @@ function buildFooterWidgets(
 }
 
 function buildExtensionWidgets(
-  widgets: readonly NormalizedFancyFooterWidgetContribution[],
+  widgets: readonly NormalizedFancyFooterDataWidget[],
   iconFamily: FooterIconFamily,
 ): FooterWidget[] {
   return widgets.map((widget) => ({
@@ -802,16 +797,15 @@ function buildExtensionWidgets(
     },
     align: widget.defaults.align,
     fill: widget.defaults.fill,
+    defaultEnabled: widget.defaults.enabled,
     minWidth:
       widget.defaults.minWidth !== undefined
         ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
         : undefined,
-    icon: resolveFancyFooterWidgetIcon(widget.icon, iconFamily),
-    textColor: widget.textColor ?? "dim",
-    styled: widget.styled,
-    visible: widget.visible,
-    renderText: (ctx, availableWidth) =>
-      widgetResultToText(widget.render(ctx, availableWidth)),
+    icon: resolveDataWidgetIcon(widget.icon, iconFamily),
+    preferredIconColor: widget.icon ? widget.icon.color : undefined,
+    preferredTextColor: widget.preferredTextColor,
+    renderText: () => widget.content.text,
   }));
 }
 
@@ -834,8 +828,10 @@ function applyWidgetConfigOverrides(
       ),
     };
 
-    const textColor = override.textColor ?? defaultTextColor;
-    const resolvedIconColor = override.iconColor ?? defaultIconColor;
+    const textColor =
+      override.textColor ?? widget.preferredTextColor ?? defaultTextColor;
+    const resolvedIconColor =
+      override.iconColor ?? widget.preferredIconColor ?? defaultIconColor;
 
     let icon = widget.icon;
     if (override.icon === "hide") {
@@ -977,7 +973,7 @@ export function renderFooterLines(
   theme: Theme,
   usageMetrics: SessionUsageMetrics,
   footerConfig: FooterConfigSnapshot,
-  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[] = [],
+  extensionWidgets: readonly NormalizedFancyFooterDataWidget[] = [],
   providerStatuses: readonly ProviderStatusSnapshot[] = [],
 ): string[] {
   if (width <= 0) return ["", ""];

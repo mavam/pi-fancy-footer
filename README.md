@@ -199,47 +199,89 @@ Other pi extensions can contribute fancy-footer widgets.
 
 ### For extension developers
 
-If your extension depends on `pi-fancy-footer`, import the helper API from `pi-fancy-footer/api`:
+Publish complete widget snapshots over pi's in-process event bus. Producers do
+not need to depend on `pi-fancy-footer`:
 
 ```ts
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { contributeFancyFooterWidgets } from "pi-fancy-footer/api";
+
+const protocol = 1;
+const widgetChannel = "pi-fancy-footer:widget";
+const readyChannel = "pi-fancy-footer:ready";
 
 export default function (pi: ExtensionAPI) {
-  contributeFancyFooterWidgets(pi, {
-    id: "acme.build-status",
-    label: "Build status",
-    icon: {
-      nerd: "󰙨",
-      emoji: "🧪",
-      unicode: "◈",
-      ascii: "B",
-    },
-    row: 1,
-    order: 8,
-    align: "right",
-    render: () => "passing",
+  let status = "passing";
+
+  const publish = () => {
+    pi.events.emit(widgetChannel, {
+      protocol,
+      type: "upsert",
+      widget: {
+        id: "acme.build-status",
+        label: "Build status",
+        description: "Current build result",
+        content: { type: "text", text: status },
+        icon: {
+          glyphs: {
+            nerd: "󰙨",
+            emoji: "🧪",
+            unicode: "◈",
+            ascii: "B",
+          },
+          color: "success",
+        },
+        style: { textColor: "success" },
+        layout: { row: 1, position: 8, align: "right" },
+      },
+    });
+  };
+
+  const stopReady = pi.events.on(readyChannel, (message) => {
+    if (
+      typeof message === "object" &&
+      message !== null &&
+      "protocol" in message &&
+      message.protocol === protocol
+    ) {
+      publish();
+    }
+  });
+
+  // Publish once for a footer that is already listening. Publish again when
+  // state changes; the footer does not poll producers.
+  publish();
+
+  pi.on("session_shutdown", () => {
+    stopReady();
+    pi.events.emit(widgetChannel, {
+      protocol,
+      type: "remove",
+      id: "acme.build-status",
+    });
   });
 }
 ```
 
-Available helpers:
+The protocol uses these channels:
 
-- `defineFancyFooterWidget(widget)` - identity helper for typing widget definitions.
-- `contributeFancyFooterWidgets(pi, widgetOrWidgets)` - register one or more widgets for discovery.
-- `requestFancyFooterWidgetDiscovery(pi)` - ask `pi-fancy-footer` to re-discover contributed widgets.
-- `requestFancyFooterRefresh(pi)` - ask the footer to re-render immediately.
+- `pi-fancy-footer:widget` accepts protocol-1 `upsert` and `remove` messages.
+- `pi-fancy-footer:ready` announces that the footer is listening. Producers
+  should republish their current snapshot when they receive it.
 
-Each contributed widget defines:
+Each `upsert` replaces the complete snapshot for its `id`; the latest command
+wins if multiple producers use the same ID. An empty `content.text` hides the
+widget while keeping it configurable. A `remove` message drops the live widget
+definition. Widget text is limited to 512 Unicode code points and terminal
+control characters are stripped.
 
-- `id` - stable config key, ideally namespaced like `vendor.widget-name`
-- `render(ctx, availableWidth?)` - widget renderer; return `undefined`, `null`, `false`, or an empty string to hide the widget
-- `label` - display name in `/fancy-footer` (defaults to `id`)
-- `description` - help text in the config UI (defaults to `label`/`id`)
-- `row`, `order`, `align`, `grow`, and `minWidth` - optional default layout controls
-- `icon` - a single icon, per-family icon map, function, or `false`/omitted
-  to render without a leading icon
-- optional `textColor` and `styled`
+The structured snapshot can provide `label`, `description`, an icon glyph or
+per-family glyph map, icon and text colors, and layout defaults (`enabled`,
+`row`, `position`, `align`, `fill`, and `minWidth`). Saved user settings override
+event-provided defaults. Use `layout.enabled: false` for an opt-in widget.
+
+Extensions that already depend on this package may use
+`createFancyFooterClient` from `pi-fancy-footer/api` for typed `upsert`,
+`remove`, and `onReady` helpers. It speaks the same event protocol.
 
 ## 🔣 Icon families
 

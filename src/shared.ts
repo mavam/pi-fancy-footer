@@ -455,7 +455,9 @@ export interface FooterWidget {
   defaultEnabled?: boolean;
   minWidth?: FooterWidgetSize;
   icon?: FooterWidgetIcon;
+  preferredIconColor?: FooterWidgetColor;
   textColor?: FooterWidgetColor;
+  preferredTextColor?: FooterWidgetColor;
   styled?: boolean;
   visible?: (ctx: WidgetRenderContext) => boolean;
   renderText: (ctx: WidgetRenderContext, availableWidth?: number) => string;
@@ -550,52 +552,6 @@ export interface FooterWidgetEditorDefaults {
   minWidth?: number;
   /** Set to false for widgets that start on the bench until enabled. */
   enabled?: boolean;
-}
-
-export type FancyFooterWidgetIcon =
-  | string
-  | Partial<Record<FooterIconFamily, string>>
-  | ((iconFamily: FooterIconFamily) => string | undefined);
-
-export type FancyFooterWidgetResult =
-  | string
-  | number
-  | undefined
-  | null
-  | false
-  | {
-      text: string | number;
-      icon?: FancyFooterWidgetIcon | false;
-      textColor?: FooterWidgetColor;
-      iconColor?: FooterWidgetColor;
-      raw?: boolean;
-    };
-
-export interface FancyFooterWidgetContribution {
-  id: string;
-  label?: string;
-  description?: string;
-  row?: number;
-  order?: number;
-  align?: FooterWidgetAlign;
-  grow?: boolean;
-  minWidth?: number;
-  icon?: FancyFooterWidgetIcon | false;
-  textColor?: FooterWidgetColor;
-  styled?: boolean;
-  visible?: (ctx: WidgetRenderContext) => boolean;
-  render: (
-    ctx: WidgetRenderContext,
-    availableWidth?: number,
-  ) => FancyFooterWidgetResult;
-}
-
-export interface NormalizedFancyFooterWidgetContribution extends Omit<
-  FancyFooterWidgetContribution,
-  "description"
-> {
-  description: string;
-  defaults: FooterWidgetEditorDefaults;
 }
 
 export interface FooterWidgetMeta {
@@ -951,25 +907,6 @@ export function getDefaultWidgetIcon(
   const meta = FOOTER_WIDGET_META[widgetId];
   if (meta.hasFooterIcon === false) return undefined;
   return { text: getWidgetSettingIcon(widgetId, iconFamily), color: "text" };
-}
-
-export function resolveFancyFooterWidgetIcon(
-  icon: FancyFooterWidgetContribution["icon"],
-  iconFamily: FooterIconFamily,
-): FooterWidgetIcon | undefined {
-  if (icon === false) return undefined;
-
-  let text = "";
-  if (typeof icon === "function") {
-    text = icon(iconFamily) ?? "";
-  } else if (typeof icon === "string") {
-    text = icon;
-  } else if (icon && typeof icon === "object") {
-    text = icon[iconFamily] ?? "";
-  }
-
-  if (!text) return undefined;
-  return { text, color: "text" };
 }
 
 export function widgetSummary(

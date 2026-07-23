@@ -1,25 +1,16 @@
+import { createRequire } from "node:module";
 import {
   type ExtensionAPI,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Compile } from "typebox/compile";
 import {
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
-  FOOTER_WIDGET_COLORS,
   MAX_FOOTER_REFRESH_MS,
   MAX_PROVIDER_STATUS_REFRESH_MS,
-  MAX_WIDGET_MIN_WIDTH,
-  MAX_WIDGET_POSITION,
-  MAX_WIDGET_ROW,
   MIN_FOOTER_REFRESH_MS,
   MIN_PROVIDER_STATUS_REFRESH_MS,
   clampInt,
-  isFooterWidgetColor,
-  isFooterWidgetId,
-  type FancyFooterWidgetContribution,
-  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type ProviderStatusSnapshot,
   type SessionUsageMetrics,
@@ -36,10 +27,16 @@ import {
   shouldRefreshPullRequest,
 } from "./git.ts";
 import {
-  FANCY_FOOTER_DISCOVER_WIDGETS_EVENT,
-  FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT,
-  FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT,
+  FANCY_FOOTER_PROTOCOL_VERSION,
+  FANCY_FOOTER_READY_CHANNEL,
+  FANCY_FOOTER_WIDGET_CHANNEL,
+  type FancyFooterReadyMessage,
 } from "./api.ts";
+import {
+  createMicrotaskCoalescer,
+  FancyFooterDataWidgetStore,
+  type NormalizedFancyFooterDataWidget,
+} from "./data-widgets.ts";
 import { openFooterConfigEditor } from "./config-editor.ts";
 import { collectSessionUsageMetrics, renderFooterLines } from "./render.ts";
 import {
@@ -54,46 +51,9 @@ interface ActiveFooterControls {
   updateProviderStatus: (status: ProviderStatusSnapshot) => void;
 }
 
-const extensionWidgetColorSchema = Type.Union(
-  FOOTER_WIDGET_COLORS.map((value) => Type.Literal(value)),
-);
-const extensionWidgetMetadataSchema = Type.Object(
-  {
-    id: Type.String({ minLength: 1 }),
-    label: Type.Optional(Type.String({ minLength: 1 })),
-    description: Type.Optional(Type.String({ minLength: 1 })),
-    defaults: Type.Optional(
-      Type.Object(
-        {
-          row: Type.Optional(
-            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_ROW }),
-          ),
-          position: Type.Optional(
-            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_POSITION }),
-          ),
-          align: Type.Optional(
-            Type.Union([
-              Type.Literal("left"),
-              Type.Literal("middle"),
-              Type.Literal("right"),
-            ]),
-          ),
-          fill: Type.Optional(
-            Type.Union([Type.Literal("none"), Type.Literal("grow")]),
-          ),
-          minWidth: Type.Optional(
-            Type.Integer({ minimum: 0, maximum: MAX_WIDGET_MIN_WIDTH }),
-          ),
-        },
-        { additionalProperties: false },
-      ),
-    ),
-    textColor: Type.Optional(extensionWidgetColorSchema),
-    styled: Type.Optional(Type.Boolean()),
-  },
-  { additionalProperties: false },
-);
-const validateExtensionWidgetMetadata = Compile(extensionWidgetMetadataSchema);
+const PACKAGE_VERSION = (
+  createRequire(import.meta.url)("../package.json") as { version: string }
+).version;
 
 export default function (pi: ExtensionAPI) {
   let footerConfig: FooterConfigSnapshot = {
@@ -108,7 +68,8 @@ export default function (pi: ExtensionAPI) {
     widgets: { ...DEFAULT_FOOTER_CONFIG.widgets },
     extensionWidgets: { ...DEFAULT_FOOTER_CONFIG.extensionWidgets },
   };
-  let extensionWidgets: NormalizedFancyFooterWidgetContribution[] = [];
+  const dataWidgets = new FancyFooterDataWidgetStore();
+  let extensionWidgets: NormalizedFancyFooterDataWidget[] = [];
 
   let activeFooterControls: ActiveFooterControls | undefined;
   let footerInstanceId = 0;
@@ -118,111 +79,24 @@ export default function (pi: ExtensionAPI) {
     activeFooterControls = undefined;
   };
 
-  const normalizeExtensionWidget = (
-    widget: FancyFooterWidgetContribution,
-  ): NormalizedFancyFooterWidgetContribution | undefined => {
-    if (!widget || typeof widget !== "object") return undefined;
-
-    const metadata = {
-      id: typeof widget.id === "string" ? widget.id.trim() : widget.id,
-      label:
-        typeof widget.label === "string" ? widget.label.trim() : widget.label,
-      description:
-        typeof widget.description === "string"
-          ? widget.description.trim()
-          : widget.description,
-      defaults: {
-        row: widget.row,
-        position: widget.order,
-        align: widget.align,
-        fill: widget.grow === true ? "grow" : undefined,
-        minWidth: widget.minWidth,
-      },
-      textColor: widget.textColor,
-      styled: widget.styled,
-    };
-    if (metadata.label === "") metadata.label = undefined;
-
-    if (!validateExtensionWidgetMetadata.Check(metadata)) {
-      const errors = Array.from(
-        validateExtensionWidgetMetadata.Errors(metadata),
-      )
-        .map(
-          (error) =>
-            `${(error as { instancePath?: string }).instancePath || "/"}: ${error.message}`,
-        )
-        .join(", ");
-      console.warn(
-        `Ignoring fancy-footer widget '${String(widget.id ?? "<unknown>")}' with invalid metadata: ${errors}`,
-      );
-      return undefined;
-    }
-
-    if (isFooterWidgetId(metadata.id)) {
-      console.warn(
-        `Ignoring fancy-footer widget '${metadata.id}' because it conflicts with a built-in widget id`,
-      );
-      return undefined;
-    }
-    if (typeof widget.render !== "function") {
-      console.warn(
-        `Ignoring fancy-footer widget '${metadata.id}' without a render function`,
-      );
-      return undefined;
-    }
-    if (widget.visible !== undefined && typeof widget.visible !== "function") {
-      console.warn(
-        `Ignoring fancy-footer widget '${metadata.id}' with an invalid visible handler`,
-      );
-      return undefined;
-    }
-    if (
-      widget.textColor !== undefined &&
-      !isFooterWidgetColor(widget.textColor)
-    ) {
-      console.warn(
-        `Ignoring fancy-footer widget '${metadata.id}' with an invalid textColor`,
-      );
-      return undefined;
-    }
-
-    return {
-      ...widget,
-      id: metadata.id,
-      label: metadata.label ?? metadata.id,
-      description: metadata.description ?? metadata.label ?? metadata.id,
-      defaults: {
-        row: metadata.defaults.row ?? 1,
-        position: metadata.defaults.position ?? 0,
-        align: metadata.defaults.align ?? "right",
-        fill: metadata.defaults.fill ?? "none",
-        minWidth: metadata.defaults.minWidth,
-      },
-      render: widget.render,
-      textColor: metadata.textColor,
-      styled: metadata.styled,
-    };
-  };
-
-  const discoverExtensionWidgets = () => {
-    const discovered = new Map<
-      string,
-      NormalizedFancyFooterWidgetContribution
-    >();
-
-    pi.events.emit(FANCY_FOOTER_DISCOVER_WIDGETS_EVENT, {
-      registerWidget: (widget: FancyFooterWidgetContribution) => {
-        const normalized = normalizeExtensionWidget(widget);
-        if (!normalized) return;
-        discovered.set(normalized.id, normalized);
-      },
-    });
-
-    extensionWidgets = Array.from(discovered.values()).sort((a, b) =>
-      a.label!.localeCompare(b.label!),
-    );
+  const requestDataWidgetRender = createMicrotaskCoalescer(() => {
     activeFooterControls?.requestRender();
+  });
+  const refreshDataWidgets = () => {
+    extensionWidgets = dataWidgets.values();
+    requestDataWidgetRender();
   };
+  const publishReady = () => {
+    const message: FancyFooterReadyMessage = {
+      protocol: FANCY_FOOTER_PROTOCOL_VERSION,
+      version: PACKAGE_VERSION,
+    };
+    pi.events.emit(FANCY_FOOTER_READY_CHANNEL, message);
+  };
+
+  pi.events.on(FANCY_FOOTER_WIDGET_CHANNEL, (raw) => {
+    if (dataWidgets.apply(raw)) refreshDataWidgets();
+  });
 
   const installFooter = (ctx: ExtensionContext) => {
     if (!ctx.hasUI) return;
@@ -518,14 +392,6 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.events.on(FANCY_FOOTER_REQUEST_WIDGET_DISCOVERY_EVENT, () => {
-    discoverExtensionWidgets();
-  });
-
-  pi.events.on(FANCY_FOOTER_REQUEST_WIDGET_REFRESH_EVENT, () => {
-    activeFooterControls?.requestRender();
-  });
-
   pi.on("after_provider_response", async (event) => {
     if (footerConfig.widgets["provider-status"]?.enabled === false) return;
 
@@ -540,10 +406,14 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     invalidateActiveFooter();
+    if (dataWidgets.clear()) extensionWidgets = [];
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    discoverExtensionWidgets();
+    if (dataWidgets.clear()) extensionWidgets = [];
     installFooter(ctx);
+    publishReady();
   });
+
+  publishReady();
 }
