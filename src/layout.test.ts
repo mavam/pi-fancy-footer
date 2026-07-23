@@ -4,8 +4,8 @@ import {
   DEFAULT_FOOTER_CONFIG,
   MAX_WIDGET_ROW,
   type FooterConfigSnapshot,
-  type NormalizedFancyFooterWidgetContribution,
 } from "./shared.ts";
+import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
 import { buildConfigurableWidgets } from "./config.ts";
 import {
   buildLayoutModel,
@@ -23,14 +23,14 @@ function makeConfig(): FooterConfigSnapshot {
 
 function makeExtensionWidget(
   id: string,
-  defaults: NormalizedFancyFooterWidgetContribution["defaults"],
-): NormalizedFancyFooterWidgetContribution {
+  defaults: NormalizedFancyFooterDataWidget["defaults"],
+): NormalizedFancyFooterDataWidget {
   return {
     id,
     label: id,
     description: `Extension widget ${id}`,
     defaults,
-    render: () => "",
+    content: { type: "text", text: "" },
   };
 }
 

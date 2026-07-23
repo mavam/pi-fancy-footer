@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterLines } from "./render.ts";
+import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
@@ -64,6 +65,37 @@ const footerConfig: FooterConfigSnapshot = {
   },
 };
 
+const agentWidgets: NormalizedFancyFooterDataWidget[] = [
+  {
+    id: "pi-agents.workflows",
+    label: "Active workflows",
+    description: "Shows active workflow executions.",
+    content: { type: "text", text: "2" },
+    icon: { glyphs: "❖", color: "accent" },
+    defaults: {
+      enabled: false,
+      row: 1,
+      position: 9,
+      align: "right",
+      fill: "none",
+    },
+  },
+  {
+    id: "pi-agents.agents",
+    label: "Agent progress",
+    description: "Shows completed and total agents.",
+    content: { type: "text", text: "1/3" },
+    icon: { glyphs: "✦", color: "success" },
+    defaults: {
+      enabled: false,
+      row: 1,
+      position: 10,
+      align: "right",
+      fill: "none",
+    },
+  },
+];
+
 function contextWithModel(
   model: { id: string; name: string; provider?: string },
   usage = { contextWindow: 200_000, tokens: 0, percent: 0 },
@@ -104,6 +136,81 @@ test("renderFooterLines renders max thinking with the default text color", () =>
   assert.match(lines.join("\n"), /\?max/);
   assert.ok(colors.includes("dim:max"));
   assert.equal(colors.includes("thinkingMax:max"), false);
+});
+
+test("data widgets honor default visibility and user color overrides", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+  };
+  const disabledLines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+    agentWidgets,
+  );
+  assert.doesNotMatch(disabledLines.join("\n"), /❖2|✦1\/3/);
+
+  colors.length = 0;
+  const enabledConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: {
+      "pi-agents.workflows": {
+        enabled: true,
+        iconColor: "success",
+        textColor: "warning",
+      },
+      "pi-agents.agents": { enabled: true },
+    },
+  };
+  const enabledLines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    enabledConfig,
+    agentWidgets,
+  );
+  assert.match(enabledLines.join("\n"), /❖2.*✦1\/3/);
+  assert.ok(colors.includes("success:❖"));
+  assert.ok(colors.includes("warning:2"));
+  assert.ok(colors.includes("success:✦"));
+});
+
+test("enabled data widgets remain hidden while their content is empty", () => {
+  const enabledConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: {
+      "pi-agents.workflows": { enabled: true },
+      "pi-agents.agents": { enabled: true },
+    },
+  };
+  const emptyWidgets = agentWidgets.map((widget) => ({
+    ...widget,
+    content: { type: "text" as const, text: "" },
+  }));
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    enabledConfig,
+    emptyWidgets,
+  );
+
+  assert.doesNotMatch(lines.join("\n"), /❖|✦|·/);
 });
 
 test("renderFooterLines hides Codex provider status for non-OpenAI models", () => {

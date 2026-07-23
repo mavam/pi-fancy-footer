@@ -42,7 +42,6 @@ import {
   PROVIDER_STATUS_DISPLAYS,
   PROVIDER_STATUS_PROVIDER_IDS,
   type BuiltInFooterWidgetId,
-  type NormalizedFancyFooterWidgetContribution,
   type FooterConfigSnapshot,
   type FooterWidgetAlign,
   type FooterWidgetColor,
@@ -51,9 +50,12 @@ import {
   clampInt,
   getDefaultWidgetIcon,
   isFooterWidgetColor,
-  resolveFancyFooterWidgetIcon,
   toBoundedNonNegativeInt,
 } from "./shared.ts";
+import {
+  resolveDataWidgetIcon,
+  type NormalizedFancyFooterDataWidget,
+} from "./data-widgets.ts";
 
 const literalUnion = (values: readonly string[]) =>
   Type.Union(values.map((value) => Type.Literal(value)));
@@ -178,6 +180,7 @@ export interface ConfigurableWidgetMeta {
     enabled?: boolean;
   };
   defaultIcon?: { text: string; color: FooterWidgetColor };
+  preferredIconColor?: FooterWidgetColor;
   bucket: WidgetConfigBucket;
   builtInId?: BuiltInFooterWidgetId;
 }
@@ -507,7 +510,7 @@ export function updateWidgetOverride(
 
 export function buildConfigurableWidgets(
   config: FooterConfigSnapshot,
-  extensionWidgets: readonly NormalizedFancyFooterWidgetContribution[],
+  extensionWidgets: readonly NormalizedFancyFooterDataWidget[],
 ): ConfigurableWidgetMeta[] {
   return [
     ...FOOTER_WIDGET_IDS.map((widgetId) => ({
@@ -526,7 +529,8 @@ export function buildConfigurableWidgets(
       shortLabel: widget.label ?? widget.id,
       description: widget.description,
       defaults: widget.defaults,
-      defaultIcon: resolveFancyFooterWidgetIcon(widget.icon, config.iconFamily),
+      defaultIcon: resolveDataWidgetIcon(widget.icon, config.iconFamily),
+      preferredIconColor: widget.icon ? widget.icon.color : undefined,
       bucket: "extensionWidgets" as const,
     })),
   ];
@@ -544,9 +548,7 @@ function widgetLabel(
   }
 
   const iconColor =
-    widget.defaultIcon && override?.iconColor !== undefined
-      ? override.iconColor
-      : config.defaultIconColor;
+    override?.iconColor ?? widget.preferredIconColor ?? config.defaultIconColor;
   return `${theme.fg(iconColor, icon)} ${widget.label}`;
 }
 
@@ -840,4 +842,3 @@ export function genericFooterSettingsItems(
     },
   ];
 }
-
