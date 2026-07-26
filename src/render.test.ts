@@ -418,6 +418,90 @@ test("renderFooterLines hides the commit SHA unless enabled", () => {
   assert.match(shown.join("\n"), /#abc1234/);
 });
 
+test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+  };
+  const ctx = contextWithModel({
+    provider: "openai",
+    id: "gpt-5-codex",
+    name: "GPT-5 Codex",
+  }) as never;
+  const pullRequest = {
+    number: 42,
+    url: "https://github.com/org/repo/pull/42",
+    state: "merged" as const,
+  };
+
+  renderFooterLines(
+    120,
+    ctx,
+    { ...EMPTY_GIT_INFO, pullRequest },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.ok(colors.includes("success:@"));
+
+  colors.length = 0;
+  renderFooterLines(
+    120,
+    ctx,
+    {
+      ...EMPTY_GIT_INFO,
+      pullRequest: {
+        ...pullRequest,
+        state: "open",
+        autoMergeEnabled: true,
+      },
+    },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.ok(colors.includes("accent:@"));
+
+  colors.length = 0;
+  renderFooterLines(
+    120,
+    ctx,
+    {
+      ...EMPTY_GIT_INFO,
+      pullRequest: { ...pullRequest, state: "open" },
+    },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.ok(colors.includes("text:@"));
+
+  colors.length = 0;
+  renderFooterLines(
+    120,
+    ctx,
+    { ...EMPTY_GIT_INFO, pullRequest },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      widgets: {
+        ...footerConfig.widgets,
+        "pull-request": { iconColor: "warning" },
+      },
+    },
+  );
+  assert.ok(colors.includes("warning:@"));
+  assert.equal(colors.includes("success:@"), false);
+});
+
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };
 
 function contextBarFooterConfig(

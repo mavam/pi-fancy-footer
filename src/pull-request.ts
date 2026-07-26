@@ -1,6 +1,7 @@
 import {
   type GitHubPullRequest,
   type GitHubRepositoryRef,
+  type PullRequestState,
   parseGitHubRemote,
   toNumber,
 } from "./shared.ts";
@@ -13,8 +14,23 @@ interface GitHubRemote {
 interface PullRequestCandidate {
   number: number;
   url: string;
+  state: PullRequestState;
+  autoMergeEnabled: boolean;
   headOwner: string;
   headRefOid?: string;
+}
+
+interface PullRequestCandidateNode {
+  number?: unknown;
+  url?: unknown;
+  state?: unknown;
+  autoMergeRequest?: unknown;
+  headRefOid?: unknown;
+  headRepositoryOwner?: { login?: unknown } | null;
+}
+
+interface PullRequestCandidateConnection {
+  nodes?: PullRequestCandidateNode[];
 }
 
 export interface GitHubPullRequestLocation {
@@ -154,6 +170,16 @@ function createPullRequestLookupPlan(
   };
 }
 
+function parsePullRequestState(value: unknown): PullRequestState | undefined {
+  if (typeof value !== "string") return undefined;
+  const state = value.toLowerCase();
+  return state === "open" || state === "merged" ? state : undefined;
+}
+
+function parseAutoMergeEnabled(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
+}
+
 function selectPullRequest(
   candidates: PullRequestCandidate[],
   headOwners: string[],
@@ -161,13 +187,23 @@ function selectPullRequest(
   if (candidates.length === 0 || headOwners.length === 0) return undefined;
 
   let bestCandidate: PullRequestCandidate | undefined;
-  let bestRank = Number.POSITIVE_INFINITY;
+  let bestStateRank = Number.POSITIVE_INFINITY;
+  let bestOwnerRank = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
-    const rank = headOwners.indexOf(candidate.headOwner);
-    if (rank >= 0 && rank < bestRank) {
+    const ownerRank = headOwners.indexOf(candidate.headOwner);
+    if (ownerRank < 0) continue;
+
+    // Within the most likely head owner, prefer an active PR when a branch name
+    // has also been used by a merged PR.
+    const stateRank = candidate.state === "open" ? 0 : 1;
+    if (
+      ownerRank < bestOwnerRank ||
+      (ownerRank === bestOwnerRank && stateRank < bestStateRank)
+    ) {
       bestCandidate = candidate;
-      bestRank = rank;
+      bestStateRank = stateRank;
+      bestOwnerRank = ownerRank;
     }
   }
 
@@ -178,6 +214,8 @@ function selectPullRequest(
   return {
     number: bestCandidate.number,
     url: bestCandidate.url,
+    state: bestCandidate.state,
+    ...(bestCandidate.autoMergeEnabled ? { autoMergeEnabled: true } : {}),
     ...(location ? { host: location.host } : {}),
     ...(bestCandidate.headRefOid
       ? { headRefOid: bestCandidate.headRefOid }
@@ -190,33 +228,45 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
     const parsed = JSON.parse(output) as {
       data?: {
         repository?: {
-          pullRequests?: {
-            nodes?: Array<{
-              number?: unknown;
-              url?: unknown;
-              headRefOid?: unknown;
-              headRepositoryOwner?: { login?: unknown } | null;
-            }>;
-          };
+          open?: PullRequestCandidateConnection;
+          merged?: PullRequestCandidateConnection;
+          pullRequests?: PullRequestCandidateConnection;
         } | null;
       };
     };
 
-    const nodes = parsed?.data?.repository?.pullRequests?.nodes;
-    if (!Array.isArray(nodes)) return [];
+    const repository = parsed?.data?.repository;
+    const nodes = [
+      ...(Array.isArray(repository?.open?.nodes) ? repository.open.nodes : []),
+      ...(Array.isArray(repository?.merged?.nodes)
+        ? repository.merged.nodes
+        : []),
+      ...(Array.isArray(repository?.pullRequests?.nodes)
+        ? repository.pullRequests.nodes
+        : []),
+    ];
 
     const candidates: PullRequestCandidate[] = [];
     for (const node of nodes) {
       const number = Math.max(0, Math.floor(toNumber(node?.number)));
       const url = typeof node?.url === "string" ? node.url : "";
+      const state = parsePullRequestState(node?.state);
+      const autoMergeEnabled = parseAutoMergeEnabled(node?.autoMergeRequest);
       const headOwner =
         typeof node?.headRepositoryOwner?.login === "string"
           ? node.headRepositoryOwner.login
           : "";
       const headRefOid =
         typeof node?.headRefOid === "string" ? node.headRefOid : undefined;
-      if (number <= 0 || !url) continue;
-      candidates.push({ number, url, headOwner, headRefOid });
+      if (number <= 0 || !url || !state) continue;
+      candidates.push({
+        number,
+        url,
+        state,
+        autoMergeEnabled,
+        headOwner,
+        headRefOid,
+      });
     }
 
     return candidates;
@@ -249,17 +299,23 @@ export function parsePullRequest(
     const parsed = JSON.parse(output) as {
       number?: unknown;
       url?: unknown;
+      state?: unknown;
+      autoMergeRequest?: unknown;
       headRefOid?: unknown;
     };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
+    const state = parsePullRequestState(parsed?.state);
+    const autoMergeEnabled = parseAutoMergeEnabled(parsed?.autoMergeRequest);
     const headRefOid =
       typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
-    if (number <= 0 || !url) return undefined;
+    if (number <= 0 || !url || !state) return undefined;
     const location = parseGitHubPullRequestUrl(url);
     return {
       number,
       url,
+      state,
+      ...(autoMergeEnabled ? { autoMergeEnabled: true } : {}),
       ...(location ? { host: location.host } : {}),
       ...(headRefOid ? { headRefOid } : {}),
     };
