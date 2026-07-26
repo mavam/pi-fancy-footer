@@ -166,30 +166,25 @@ export function gaugeSeverity(leftPercent: number): GaugeSeverity {
   return "success";
 }
 
-export type GaugeFillMode = "remaining" | "used";
-
-// Mini gauge over a resource with `leftPercent` remaining. In "remaining"
-// mode (battery style) filled cells and the percent label show what is
-// left; in "used" mode they show consumption growing from the left.
-// Either way the color reflects how close the resource is to exhaustion,
-// and the gauge never reads completely full or empty unless it truly is.
+// Mini gauge over a resource with `usedPercent` consumed. Filled cells and
+// the percent label always grow from the left with consumption, while the
+// color reflects how close the resource is to exhaustion. The gauge never
+// reads completely full or empty unless it truly is.
 export function buildGauge(
-  leftPercent: number,
+  usedPercent: number,
   style: GaugeStyleDef,
   cells: number,
-  mode: GaugeFillMode = "remaining",
 ): GaugeSegment {
-  const left = Math.max(0, Math.min(100, leftPercent));
-  const shown = mode === "remaining" ? left : 100 - left;
+  const used = Math.max(0, Math.min(100, usedPercent));
   const n = Math.max(1, Math.floor(cells));
-  let filledCells = Math.round((shown / 100) * n);
-  if (shown > 0 && filledCells === 0) filledCells = 1;
-  if (shown < 100 && filledCells === n) filledCells = n - 1;
+  let filledCells = Math.round((used / 100) * n);
+  if (used > 0 && filledCells === 0) filledCells = 1;
+  if (used < 100 && filledCells === n) filledCells = n - 1;
   return {
     filledGlyphs: style.filled.repeat(filledCells),
     emptyGlyphs: style.empty.repeat(n - filledCells),
-    percentText: formatGaugePercent(shown),
-    color: gaugeSeverity(left),
+    percentText: formatGaugePercent(used),
+    color: gaugeSeverity(100 - used),
   };
 }
 
@@ -597,7 +592,7 @@ export const FOOTER_WIDGET_META: Record<
     shortLabel: "ctx-bar",
     defaults: { row: 0, position: 0, align: "left", fill: "none" },
     description:
-      "Shows a mini gauge of remaining context. Set fill to grow for a full-width bar.",
+      "Shows a mini gauge of used context. Set fill to grow for a full-width bar.",
     symbolKey: "contextBarMarker",
   },
   "total-cost": {

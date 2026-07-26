@@ -230,7 +230,7 @@ test("renderFooterLines hides Codex provider status for non-OpenAI models", () =
     [providerStatus],
   );
 
-  assert.doesNotMatch(lines.join("\n"), /5h:95%/);
+  assert.doesNotMatch(lines.join("\n"), /5h:5%/);
 });
 
 test("renderFooterLines shows Codex provider status for OpenAI models", () => {
@@ -250,7 +250,7 @@ test("renderFooterLines shows Codex provider status for OpenAI models", () => {
     [providerStatus],
   );
 
-  assert.match(lines.join("\n"), /5h:95%/);
+  assert.match(lines.join("\n"), /5h:5%/);
 });
 
 test("renderFooterLines renders a weekly-only Codex quota gauge", () => {
@@ -290,7 +290,7 @@ test("renderFooterLines renders a weekly-only Codex quota gauge", () => {
     [weeklyOnlyProviderStatus],
   );
 
-  assert.match(lines.join("\n"), /%7d ▰▰▰▰▱ 84%/);
+  assert.match(lines.join("\n"), /%7d ▰▱▱▱▱ 16%/);
   assert.doesNotMatch(lines.join("\n"), /5h/);
 });
 
@@ -311,7 +311,7 @@ test("renderFooterLines shows Anthropic provider status for Claude models", () =
     [claudeProviderStatus],
   );
 
-  assert.match(lines.join("\n"), /5h:100% 7d:92%/);
+  assert.match(lines.join("\n"), /5h:0% 7d:8%/);
 });
 
 test("renderFooterLines hides Anthropic provider status for OpenAI models", () => {
@@ -331,7 +331,7 @@ test("renderFooterLines hides Anthropic provider status for OpenAI models", () =
     [claudeProviderStatus],
   );
 
-  assert.doesNotMatch(lines.join("\n"), /5h:100%/);
+  assert.doesNotMatch(lines.join("\n"), /5h:0%/);
 });
 
 const cacheUsageMetrics: SessionUsageMetrics = {

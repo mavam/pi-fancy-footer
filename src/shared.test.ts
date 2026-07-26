@@ -70,21 +70,22 @@ test("DEFAULT_FOOTER_CONFIG uses nerd as the default icon family", () => {
   assert.deepEqual(DEFAULT_FOOTER_CONFIG.extensionWidgets, {});
 });
 
-test("buildGauge fills cells with the remaining share", () => {
+test("buildGauge fills cells with the used share", () => {
   const style = getGaugeStyle("parallelograms");
 
   assert.deepEqual(buildGauge(80, style, 5), {
     filledGlyphs: "▰▰▰▰",
     emptyGlyphs: "▱",
     percentText: "80%",
-    color: "success",
+    color: "error",
   });
   assert.deepEqual(buildGauge(10, style, 5), {
     filledGlyphs: "▰",
     emptyGlyphs: "▱▱▱▱",
     percentText: "10%",
-    color: "error",
+    color: "success",
   });
+  assert.equal(buildGauge(50, style, 5).color, "warning");
 });
 
 test("buildGauge keeps at least one cell visible near the edges", () => {
@@ -327,20 +328,11 @@ test("widgetSummary shows minWidth override", () => {
   );
 });
 
-test("buildGauge used mode fills with consumption", () => {
+test("buildGauge colors by how much is left, not by how full it looks", () => {
   const style = getGaugeStyle("parallelograms");
 
-  assert.deepEqual(buildGauge(80, style, 5, "used"), {
-    filledGlyphs: "▰",
-    emptyGlyphs: "▱▱▱▱",
-    percentText: "20%",
-    color: "success",
-  });
-  assert.deepEqual(buildGauge(10, style, 5, "used"), {
-    filledGlyphs: "▰▰▰▰",
-    emptyGlyphs: "▱",
-    percentText: "90%",
-    color: "error",
-  });
-  assert.equal(buildGauge(100, style, 5, "used").filledGlyphs, "");
+  assert.equal(buildGauge(0, style, 5).color, "success");
+  assert.equal(buildGauge(41, style, 5).color, "warning");
+  assert.equal(buildGauge(76, style, 5).color, "error");
+  assert.equal(buildGauge(100, style, 5).emptyGlyphs, "");
 });

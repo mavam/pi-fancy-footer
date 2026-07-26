@@ -27,7 +27,6 @@ import {
   type ThinkingLevel,
   type WidgetRenderContext,
   type GaugeColorsSnapshot,
-  type GaugeFillMode,
   type GaugeStyleDef,
   buildGauge,
   gaugeColorFor,
@@ -141,22 +140,21 @@ export function collectSessionUsageMetrics(
   return getUsageData(ctx.sessionManager.getBranch());
 }
 
-function contextLeftPercent(totalTokens: number, usedTokens: number): number {
+function contextUsedPercent(totalTokens: number, usedTokens: number): number {
   const total = Math.max(1, Math.floor(totalTokens));
   const used = Math.max(0, Math.min(total, Math.floor(usedTokens)));
-  return ((total - used) / total) * 100;
+  return (used / total) * 100;
 }
 
 function renderGauge(
-  leftPercent: number,
+  usedPercent: number,
   style: GaugeStyleDef,
   cells: number,
-  mode: GaugeFillMode,
   colors: GaugeColorsSnapshot,
   theme: Theme,
   textColor: WidgetRenderContext["defaultTextColor"],
 ): string {
-  const gauge = buildGauge(leftPercent, style, cells, mode);
+  const gauge = buildGauge(usedPercent, style, cells);
   return (
     theme.fg(gaugeColorFor(gauge.color, colors), gauge.filledGlyphs) +
     theme.fg("dim", gauge.emptyGlyphs) +
@@ -167,7 +165,7 @@ function renderGauge(
 // Renders the context bar when it grows across the row: a used-tokens label
 // followed by a bar that fills the allocated width.
 function renderGrowGauge(
-  leftPercent: number,
+  usedPercent: number,
   usedTokens: number,
   style: GaugeStyleDef,
   availableWidth: number,
@@ -177,7 +175,7 @@ function renderGrowGauge(
 ): string {
   const label = `${formatTokens(usedTokens)} `;
   const cells = Math.max(1, Math.floor(availableWidth) - visibleWidth(label));
-  const gauge = buildGauge(leftPercent, style, cells, "used");
+  const gauge = buildGauge(usedPercent, style, cells);
   return (
     theme.fg(textColor, label) +
     theme.fg(gaugeColorFor(gauge.color, colors), gauge.filledGlyphs) +
@@ -625,23 +623,22 @@ function buildFooterWidgets(
         { metrics, theme, gaugeWidth, gaugeColors, defaultTextColor },
         availableWidth,
       ) => {
-        const leftPercent = contextLeftPercent(
+        const usedPercent = contextUsedPercent(
           metrics.totalTokens,
           metrics.usedTokensForBar,
         );
         if (availableWidth === undefined) {
           return renderGauge(
-            leftPercent,
+            usedPercent,
             barStyle,
             gaugeWidth,
-            "used",
             gaugeColors,
             theme,
             defaultTextColor,
           );
         }
         return renderGrowGauge(
-          leftPercent,
+          usedPercent,
           metrics.usedTokensForBar,
           barStyle,
           availableWidth,

@@ -166,12 +166,12 @@ export function formatProviderStatusText(
   const parts: string[] = [];
   if (snapshot.primary) {
     parts.push(
-      `${snapshot.primary.label}:${formatGaugePercent(snapshot.primary.leftPercent)}`,
+      `${snapshot.primary.label}:${formatGaugePercent(snapshot.primary.usedPercent)}`,
     );
   }
   if (snapshot.secondary) {
     parts.push(
-      `${snapshot.secondary.label}:${formatGaugePercent(snapshot.secondary.leftPercent)}`,
+      `${snapshot.secondary.label}:${formatGaugePercent(snapshot.secondary.usedPercent)}`,
     );
   }
   if (config.showReset && snapshot.primary?.resetAt) {
@@ -209,7 +209,7 @@ export function buildProviderStatusGauge(
     if (!window) continue;
     segments.push({
       label: window.label,
-      ...buildGauge(window.leftPercent, style, cells),
+      ...buildGauge(window.usedPercent, style, cells),
     });
   }
   return segments;
