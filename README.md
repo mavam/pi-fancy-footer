@@ -349,10 +349,10 @@ Notes:
   the session has no cache activity or the terminal is narrower than 60
   columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
-- `pull-request` keeps merged PRs visible and colors the PR icon with the
-  theme's accent color when auto-merge is enabled or the PR has merged. Open
-  PRs without auto-merge keep the configured icon color. A non-default icon
-  color override still takes precedence.
+- `pull-request` keeps merged PRs visible. The PR icon uses the theme's accent
+  color when auto-merge is enabled and the success color after the PR has
+  merged. Open PRs without auto-merge keep the configured icon color. A
+  non-default icon color override still takes precedence.
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.

@@ -700,12 +700,12 @@ function buildFooterWidgets(
     },
     {
       ...baseWidgetDefaults("pull-request", iconFamily),
-      resolveIconColor: ({ metrics }, configuredColor) =>
-        configuredColor === "text" &&
-        (metrics.pullRequestAutoMergeEnabled ||
-          metrics.pullRequestState === "merged")
-          ? "accent"
-          : configuredColor,
+      resolveIconColor: ({ metrics }, configuredColor) => {
+        if (configuredColor !== "text") return configuredColor;
+        if (metrics.pullRequestState === "merged") return "success";
+        if (metrics.pullRequestAutoMergeEnabled) return "accent";
+        return configuredColor;
+      },
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
       renderText: ({ metrics }) =>
         formatTerminalHyperlink(

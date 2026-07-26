@@ -418,7 +418,7 @@ test("renderFooterLines hides the commit SHA unless enabled", () => {
   assert.match(shown.join("\n"), /#abc1234/);
 });
 
-test("renderFooterLines accents auto-merge and merged PR icons", () => {
+test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
   const colors: string[] = [];
   const coloredTheme = {
     fg: (color: string, text: string) => {
@@ -446,7 +446,7 @@ test("renderFooterLines accents auto-merge and merged PR icons", () => {
     usageMetrics,
     footerConfig,
   );
-  assert.ok(colors.includes("accent:@"));
+  assert.ok(colors.includes("success:@"));
 
   colors.length = 0;
   renderFooterLines(
@@ -499,7 +499,7 @@ test("renderFooterLines accents auto-merge and merged PR icons", () => {
     },
   );
   assert.ok(colors.includes("warning:@"));
-  assert.equal(colors.includes("accent:@"), false);
+  assert.equal(colors.includes("success:@"), false);
 });
 
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };
