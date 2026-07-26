@@ -173,7 +173,8 @@ test("collectPullRequestInfo queries merged and auto-merge status", async () => 
         stdout: JSON.stringify({
           data: {
             repository: {
-              pullRequests: {
+              open: { nodes: [] },
+              merged: {
                 nodes: [
                   {
                     number: 12,
@@ -206,8 +207,9 @@ test("collectPullRequestInfo queries merged and auto-merge status", async () => 
   const query = calls
     .find((call) => call.command === "gh")
     ?.args.find((arg) => arg.startsWith("query="));
-  assert.match(query ?? "", /states: \[OPEN, MERGED\]/);
-  assert.match(query ?? "", /autoMergeRequest \{ enabledAt \}/);
+  assert.match(query ?? "", /open: pullRequests\(states: OPEN/);
+  assert.match(query ?? "", /merged: pullRequests\(states: MERGED/);
+  assert.equal(query?.match(/autoMergeRequest \{ enabledAt \}/g)?.length, 2);
 });
 
 test("collectPullRequestInfo includes unresolved review thread count", async () => {

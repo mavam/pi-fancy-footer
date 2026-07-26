@@ -20,6 +20,19 @@ interface PullRequestCandidate {
   headRefOid?: string;
 }
 
+interface PullRequestCandidateNode {
+  number?: unknown;
+  url?: unknown;
+  state?: unknown;
+  autoMergeRequest?: unknown;
+  headRefOid?: unknown;
+  headRepositoryOwner?: { login?: unknown } | null;
+}
+
+interface PullRequestCandidateConnection {
+  nodes?: PullRequestCandidateNode[];
+}
+
 export interface GitHubPullRequestLocation {
   host: string;
   owner: string;
@@ -215,22 +228,23 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
     const parsed = JSON.parse(output) as {
       data?: {
         repository?: {
-          pullRequests?: {
-            nodes?: Array<{
-              number?: unknown;
-              url?: unknown;
-              state?: unknown;
-              autoMergeRequest?: unknown;
-              headRefOid?: unknown;
-              headRepositoryOwner?: { login?: unknown } | null;
-            }>;
-          };
+          open?: PullRequestCandidateConnection;
+          merged?: PullRequestCandidateConnection;
+          pullRequests?: PullRequestCandidateConnection;
         } | null;
       };
     };
 
-    const nodes = parsed?.data?.repository?.pullRequests?.nodes;
-    if (!Array.isArray(nodes)) return [];
+    const repository = parsed?.data?.repository;
+    const nodes = [
+      ...(Array.isArray(repository?.open?.nodes) ? repository.open.nodes : []),
+      ...(Array.isArray(repository?.merged?.nodes)
+        ? repository.merged.nodes
+        : []),
+      ...(Array.isArray(repository?.pullRequests?.nodes)
+        ? repository.pullRequests.nodes
+        : []),
+    ];
 
     const candidates: PullRequestCandidate[] = [];
     for (const node of nodes) {

@@ -206,7 +206,7 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
   const output = JSON.stringify({
     data: {
       repository: {
-        pullRequests: {
+        open: {
           nodes: [
             {
               number: 42,
@@ -215,16 +215,20 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
               headRepositoryOwner: { login: "someone-else" },
             },
             {
-              number: 8,
-              url: "https://github.com/org/repo/pull/8",
-              state: "MERGED",
-              headRepositoryOwner: { login: "me" },
-            },
-            {
               number: 7,
               url: "https://github.com/org/repo/pull/7",
               state: "OPEN",
               autoMergeRequest: { enabledAt: "2026-07-26T08:00:00Z" },
+              headRepositoryOwner: { login: "me" },
+            },
+          ],
+        },
+        merged: {
+          nodes: [
+            {
+              number: 8,
+              url: "https://github.com/org/repo/pull/8",
+              state: "MERGED",
               headRepositoryOwner: { login: "me" },
             },
           ],
