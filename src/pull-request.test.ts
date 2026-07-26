@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createGitHubRepositoryContext,
   parseGitHubPullRequestUrl,
+  parsePullRequest,
   parsePullRequestReviewThreadsPage,
   selectPullRequestFromGraphQL,
 } from "./pull-request.ts";
@@ -128,6 +129,34 @@ test("parseGitHubPullRequestUrl extracts owner, repository, and PR number", () =
   );
 });
 
+test("parsePullRequest reads open and merged states", () => {
+  assert.deepEqual(
+    parsePullRequest(
+      JSON.stringify({
+        number: 42,
+        url: "https://github.com/org/repo/pull/42",
+        state: "MERGED",
+      }),
+    ),
+    {
+      number: 42,
+      url: "https://github.com/org/repo/pull/42",
+      state: "merged",
+      host: "github.com",
+    },
+  );
+  assert.equal(
+    parsePullRequest(
+      JSON.stringify({
+        number: 42,
+        url: "https://github.com/org/repo/pull/42",
+        state: "CLOSED",
+      }),
+    ),
+    undefined,
+  );
+});
+
 test("parsePullRequestReviewThreadsPage counts unresolved review threads", () => {
   const output = JSON.stringify({
     data: {
@@ -165,11 +194,19 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
             {
               number: 42,
               url: "https://github.com/org/repo/pull/42",
+              state: "OPEN",
               headRepositoryOwner: { login: "someone-else" },
+            },
+            {
+              number: 8,
+              url: "https://github.com/org/repo/pull/8",
+              state: "MERGED",
+              headRepositoryOwner: { login: "me" },
             },
             {
               number: 7,
               url: "https://github.com/org/repo/pull/7",
+              state: "OPEN",
               headRepositoryOwner: { login: "me" },
             },
           ],
@@ -181,6 +218,7 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
   assert.deepEqual(selectPullRequestFromGraphQL(output, ["me", "org"]), {
     number: 7,
     url: "https://github.com/org/repo/pull/7",
+    state: "open",
     host: "github.com",
   });
   assert.equal(selectPullRequestFromGraphQL(output, ["unknown"]), undefined);

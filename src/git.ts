@@ -33,10 +33,11 @@ const GIT_NO_OPTIONAL_LOCKS_ARG = "--no-optional-locks";
 const PULL_REQUEST_QUERY = [
   "query($owner: String!, $name: String!, $branch: String!) {",
   "  repository(owner: $owner, name: $name) {",
-  "    pullRequests(states: OPEN, headRefName: $branch, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) {",
+  "    pullRequests(states: [OPEN, MERGED], headRefName: $branch, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) {",
   "      nodes {",
   "        number",
   "        url",
+  "        state",
   "        headRefOid",
   "        headRepositoryOwner { login }",
   "      }",
@@ -157,7 +158,7 @@ async function collectCurrentBranchPullRequest(
   const result = await execResult(
     pi,
     "gh",
-    ["pr", "view", "--json", "number,url,headRefOid"],
+    ["pr", "view", "--json", "number,url,headRefOid,state"],
     cwd,
     GITHUB_COMMAND_TIMEOUT_MS,
   );

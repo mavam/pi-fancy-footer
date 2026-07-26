@@ -1,6 +1,7 @@
 import {
   type GitHubPullRequest,
   type GitHubRepositoryRef,
+  type PullRequestState,
   parseGitHubRemote,
   toNumber,
 } from "./shared.ts";
@@ -13,6 +14,7 @@ interface GitHubRemote {
 interface PullRequestCandidate {
   number: number;
   url: string;
+  state: PullRequestState;
   headOwner: string;
   headRefOid?: string;
 }
@@ -154,6 +156,12 @@ function createPullRequestLookupPlan(
   };
 }
 
+function parsePullRequestState(value: unknown): PullRequestState | undefined {
+  if (typeof value !== "string") return undefined;
+  const state = value.toLowerCase();
+  return state === "open" || state === "merged" ? state : undefined;
+}
+
 function selectPullRequest(
   candidates: PullRequestCandidate[],
   headOwners: string[],
@@ -161,13 +169,22 @@ function selectPullRequest(
   if (candidates.length === 0 || headOwners.length === 0) return undefined;
 
   let bestCandidate: PullRequestCandidate | undefined;
-  let bestRank = Number.POSITIVE_INFINITY;
+  let bestStateRank = Number.POSITIVE_INFINITY;
+  let bestOwnerRank = Number.POSITIVE_INFINITY;
 
   for (const candidate of candidates) {
-    const rank = headOwners.indexOf(candidate.headOwner);
-    if (rank >= 0 && rank < bestRank) {
+    const ownerRank = headOwners.indexOf(candidate.headOwner);
+    if (ownerRank < 0) continue;
+
+    // Prefer an active PR if a branch name has also been used by a merged PR.
+    const stateRank = candidate.state === "open" ? 0 : 1;
+    if (
+      stateRank < bestStateRank ||
+      (stateRank === bestStateRank && ownerRank < bestOwnerRank)
+    ) {
       bestCandidate = candidate;
-      bestRank = rank;
+      bestStateRank = stateRank;
+      bestOwnerRank = ownerRank;
     }
   }
 
@@ -178,6 +195,7 @@ function selectPullRequest(
   return {
     number: bestCandidate.number,
     url: bestCandidate.url,
+    state: bestCandidate.state,
     ...(location ? { host: location.host } : {}),
     ...(bestCandidate.headRefOid
       ? { headRefOid: bestCandidate.headRefOid }
@@ -194,6 +212,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
             nodes?: Array<{
               number?: unknown;
               url?: unknown;
+              state?: unknown;
               headRefOid?: unknown;
               headRepositoryOwner?: { login?: unknown } | null;
             }>;
@@ -209,14 +228,15 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
     for (const node of nodes) {
       const number = Math.max(0, Math.floor(toNumber(node?.number)));
       const url = typeof node?.url === "string" ? node.url : "";
+      const state = parsePullRequestState(node?.state);
       const headOwner =
         typeof node?.headRepositoryOwner?.login === "string"
           ? node.headRepositoryOwner.login
           : "";
       const headRefOid =
         typeof node?.headRefOid === "string" ? node.headRefOid : undefined;
-      if (number <= 0 || !url) continue;
-      candidates.push({ number, url, headOwner, headRefOid });
+      if (number <= 0 || !url || !state) continue;
+      candidates.push({ number, url, state, headOwner, headRefOid });
     }
 
     return candidates;
@@ -249,17 +269,20 @@ export function parsePullRequest(
     const parsed = JSON.parse(output) as {
       number?: unknown;
       url?: unknown;
+      state?: unknown;
       headRefOid?: unknown;
     };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
+    const state = parsePullRequestState(parsed?.state);
     const headRefOid =
       typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
-    if (number <= 0 || !url) return undefined;
+    if (number <= 0 || !url || !state) return undefined;
     const location = parseGitHubPullRequestUrl(url);
     return {
       number,
       url,
+      state,
       ...(location ? { host: location.host } : {}),
       ...(headRefOid ? { headRefOid } : {}),
     };

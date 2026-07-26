@@ -84,6 +84,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
                     {
                       number: 42,
                       url: "https://github.com/org/repo/pull/42",
+                      state: "OPEN",
                       headRepositoryOwner: { login: "someone-else" },
                     },
                   ],
@@ -116,6 +117,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
         stdout: JSON.stringify({
           number: 7,
           url: "https://github.com/org/repo/pull/7",
+          state: "OPEN",
         }),
         stderr: "",
       };
@@ -129,6 +131,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   assert.deepEqual(result.pullRequest, {
     number: 7,
     url: "https://github.com/org/repo/pull/7",
+    state: "open",
     host: "github.com",
   });
   assert.equal(result.pullRequestLookupEnabled, true);
@@ -148,6 +151,62 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
       .every((call) => call.args[0] === "--no-optional-locks"),
     true,
   );
+});
+
+test("collectPullRequestInfo keeps merged PRs and queries open PRs first", async () => {
+  const { pi, calls } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "rev-parse") {
+      return { code: 0, stdout: "origin/feature\n", stderr: "" };
+    }
+
+    if (command === "git" && gitSubcommand(args) === "config") {
+      return {
+        code: 0,
+        stdout: "remote.origin.url https://github.com/me/repo.git",
+        stderr: "",
+      };
+    }
+
+    if (command === "gh" && args[0] === "api") {
+      return {
+        code: 0,
+        stdout: JSON.stringify({
+          data: {
+            repository: {
+              pullRequests: {
+                nodes: [
+                  {
+                    number: 12,
+                    url: "https://github.com/me/repo/pull/12",
+                    state: "MERGED",
+                    headRepositoryOwner: { login: "me" },
+                  },
+                ],
+              },
+            },
+          },
+        }),
+        stderr: "",
+      };
+    }
+
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+
+  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
+    includeReviewThreads: false,
+  });
+
+  assert.deepEqual(result.pullRequest, {
+    number: 12,
+    url: "https://github.com/me/repo/pull/12",
+    state: "merged",
+    host: "github.com",
+  });
+  const query = calls
+    .find((call) => call.command === "gh")
+    ?.args.find((arg) => arg.startsWith("query="));
+  assert.match(query ?? "", /states: \[OPEN, MERGED\]/);
 });
 
 test("collectPullRequestInfo includes unresolved review thread count", async () => {
@@ -179,6 +238,7 @@ test("collectPullRequestInfo includes unresolved review thread count", async () 
                   {
                     number: 12,
                     url: "https://github.com/me/repo/pull/12",
+                    state: "OPEN",
                     headRepositoryOwner: { login: "me" },
                   },
                 ],
@@ -224,6 +284,7 @@ test("collectPullRequestInfo includes unresolved review thread count", async () 
   assert.deepEqual(result.pullRequest, {
     number: 12,
     url: "https://github.com/me/repo/pull/12",
+    state: "open",
     host: "github.com",
     unresolvedReviewThreadCount: 2,
   });
@@ -258,6 +319,7 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
                   {
                     number: 12,
                     url: "https://github.com/me/repo/pull/12",
+                    state: "OPEN",
                     headRefOid: "abc123",
                     headRepositoryOwner: { login: "me" },
                   },
@@ -310,6 +372,7 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
   assert.deepEqual(result.pullRequest, {
     number: 12,
     url: "https://github.com/me/repo/pull/12",
+    state: "open",
     host: "github.com",
     headRefOid: "abc123",
     ciStatus: {
@@ -351,6 +414,7 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
                   {
                     number: 12,
                     url: "https://github.example.com/me/repo/pull/12",
+                    state: "OPEN",
                     headRefOid: "abc123",
                     headRepositoryOwner: { login: "me" },
                   },
@@ -425,6 +489,7 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
   assert.deepEqual(result.pullRequest, {
     number: 12,
     url: "https://github.example.com/me/repo/pull/12",
+    state: "open",
     host: "github.example.com",
     headRefOid: "abc123",
     unresolvedReviewThreadCount: 1,

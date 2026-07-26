@@ -267,6 +267,7 @@ export interface GitCounts {
   behind: number;
 }
 
+export type PullRequestState = "open" | "merged";
 export type PullRequestCiState = "running" | "failed" | "okay";
 
 export interface ProviderStatusWindow {
@@ -293,6 +294,7 @@ export interface ProviderStatusSnapshot {
 export interface GitHubPullRequest {
   number: number;
   url: string;
+  state: PullRequestState;
   host?: string;
   headRefOid?: string;
   unresolvedReviewThreadCount?: number;
@@ -419,6 +421,7 @@ export interface FooterMetrics {
   commit: string;
   pullRequestNumber: number;
   pullRequestUrl: string;
+  pullRequestState: PullRequestState | "";
   pullRequestUnresolvedReviewThreadCount: number;
   pullRequestCiState: PullRequestCiState | "";
   pullRequestCiUrl: string;
@@ -456,6 +459,10 @@ export interface FooterWidget {
   minWidth?: FooterWidgetSize;
   icon?: FooterWidgetIcon;
   preferredIconColor?: FooterWidgetColor;
+  resolveIconColor?: (
+    ctx: WidgetRenderContext,
+    configuredColor: FooterWidgetColor,
+  ) => FooterWidgetColor;
   textColor?: FooterWidgetColor;
   preferredTextColor?: FooterWidgetColor;
   styled?: boolean;
@@ -652,7 +659,7 @@ export const FOOTER_WIDGET_META: Record<
     shortLabel: "pr",
     defaults: { row: 1, position: 3, align: "left", fill: "none" },
     description:
-      "Shows the open GitHub pull request number for the current branch.",
+      "Shows the open or merged GitHub pull request number for the current branch.",
     symbolKey: "pullRequest",
   },
   "pull-request-review-threads": {

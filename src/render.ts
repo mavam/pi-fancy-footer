@@ -319,7 +319,11 @@ function renderWidget(
 
   const styledIcon =
     hasIcon && widget.icon
-      ? renderCtx.theme.fg(widget.icon.color, iconText)
+      ? renderCtx.theme.fg(
+          widget.resolveIconColor?.(renderCtx, widget.icon.color) ??
+            widget.icon.color,
+          iconText,
+        )
       : "";
 
   const combined = `${styledIcon}${styledText}`;
@@ -566,6 +570,7 @@ function computeFooterMetrics(
     commit: git.commit,
     pullRequestNumber: git.pullRequest?.number ?? 0,
     pullRequestUrl: git.pullRequest?.url ?? "",
+    pullRequestState: git.pullRequest?.state ?? "",
     pullRequestUnresolvedReviewThreadCount:
       git.pullRequest?.unresolvedReviewThreadCount ?? 0,
     pullRequestCiState: git.pullRequest?.ciStatus?.state ?? "",
@@ -693,6 +698,10 @@ function buildFooterWidgets(
     },
     {
       ...baseWidgetDefaults("pull-request", iconFamily),
+      resolveIconColor: ({ metrics }, configuredColor) =>
+        metrics.pullRequestState === "merged" && configuredColor === "text"
+          ? "accent"
+          : configuredColor,
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,
       renderText: ({ metrics }) =>
         formatTerminalHyperlink(
