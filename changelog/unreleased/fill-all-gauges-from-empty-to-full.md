@@ -3,6 +3,9 @@ title: Fill all gauges from empty to full
 type: change
 authors:
   - mavam
+  - claude
+prs:
+  - 22
 created: 2026-07-26T20:13:33.867573Z
 ---
 
