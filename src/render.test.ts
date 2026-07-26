@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
-import { renderFooterLines } from "./render.ts";
+import { githubMergedForegroundPrefix, renderFooterLines } from "./render.ts";
 import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
@@ -13,7 +13,11 @@ import {
 
 const theme = {
   fg: (_color: string, text: string) => text,
+  getColorMode: () => "truecolor" as const,
 };
+
+const MERGED_TRUECOLOR = `${githubMergedForegroundPrefix("truecolor")}@\x1b[39m`;
+const MERGED_256COLOR = `${githubMergedForegroundPrefix("256color")}@\x1b[39m`;
 
 const usageMetrics: SessionUsageMetrics = {
   latest: undefined,
@@ -117,6 +121,7 @@ test("renderFooterLines renders max thinking with the default text color", () =>
       colors.push(`${color}:${text}`);
       return text;
     },
+    getColorMode: () => "truecolor" as const,
   };
 
   const lines = renderFooterLines(
@@ -145,6 +150,7 @@ test("data widgets honor default visibility and user color overrides", () => {
       colors.push(`${color}:${text}`);
       return text;
     },
+    getColorMode: () => "truecolor" as const,
   };
   const disabledLines = renderFooterLines(
     160,
@@ -425,6 +431,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
       colors.push(`${color}:${text}`);
       return text;
     },
+    getColorMode: () => "truecolor" as const,
   };
   const ctx = contextWithModel({
     provider: "openai",
@@ -437,7 +444,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
     state: "merged" as const,
   };
 
-  renderFooterLines(
+  const mergedLines = renderFooterLines(
     120,
     ctx,
     { ...EMPTY_GIT_INFO, pullRequest },
@@ -446,7 +453,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
     usageMetrics,
     footerConfig,
   );
-  assert.ok(colors.includes("success:@"));
+  assert.ok(mergedLines.join("\n").includes(MERGED_TRUECOLOR));
 
   colors.length = 0;
   renderFooterLines(
@@ -483,7 +490,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
   assert.ok(colors.includes("text:@"));
 
   colors.length = 0;
-  renderFooterLines(
+  const overriddenLines = renderFooterLines(
     120,
     ctx,
     { ...EMPTY_GIT_INFO, pullRequest },
@@ -499,7 +506,22 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
     },
   );
   assert.ok(colors.includes("warning:@"));
-  assert.equal(colors.includes("success:@"), false);
+  assert.equal(overriddenLines.join("\n").includes(MERGED_TRUECOLOR), false);
+
+  const limitedColorTheme = {
+    ...coloredTheme,
+    getColorMode: () => "256color" as const,
+  };
+  const limitedColorLines = renderFooterLines(
+    120,
+    ctx,
+    { ...EMPTY_GIT_INFO, pullRequest },
+    "off",
+    limitedColorTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.ok(limitedColorLines.join("\n").includes(MERGED_256COLOR));
 });
 
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };

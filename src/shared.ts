@@ -352,6 +352,9 @@ export const FOOTER_WIDGET_COLORS = [
 ] as const;
 
 export type FooterWidgetColor = (typeof FOOTER_WIDGET_COLORS)[number];
+export type FooterWidgetResolvedIconColor =
+  | FooterWidgetColor
+  | "github-merged";
 
 export const FOOTER_WIDGET_IDS = [
   "model",
@@ -460,7 +463,7 @@ export interface FooterWidget {
   resolveIconColor?: (
     ctx: WidgetRenderContext,
     configuredColor: FooterWidgetColor,
-  ) => FooterWidgetColor;
+  ) => FooterWidgetResolvedIconColor;
   textColor?: FooterWidgetColor;
   preferredTextColor?: FooterWidgetColor;
   styled?: boolean;
