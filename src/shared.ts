@@ -275,6 +275,17 @@ export interface ProviderStatusWindow {
 
 export type ProviderStatusState = "ok" | "warning" | "error" | "unavailable";
 
+/**
+ * A quota window that only applies while a specific model is in use, such as
+ * Anthropic's weekly Fable cap. Scoped windows are collected for every model
+ * the provider reports and replace the same-labeled account-wide window once
+ * the footer knows which model is active.
+ */
+export interface ProviderStatusScopedWindow extends ProviderStatusWindow {
+  /** Model name the limit is scoped to, as reported by the provider. */
+  model: string;
+}
+
 export interface ProviderStatusSnapshot {
   provider: string;
   source: "api" | "headers" | "cache";
@@ -282,6 +293,7 @@ export interface ProviderStatusSnapshot {
   state: ProviderStatusState;
   primary?: ProviderStatusWindow;
   secondary?: ProviderStatusWindow;
+  scoped?: ProviderStatusScopedWindow[];
   credits?: string;
   url?: string;
   error?: string;

@@ -53,6 +53,7 @@ import {
   formatProviderStatusReset,
   formatProviderStatusText,
   isProviderStatusRelevantToModel,
+  projectProviderStatusForModel,
   providerStatusColor,
 } from "./provider-status.ts";
 
@@ -1029,9 +1030,14 @@ export function renderFooterLines(
     usageMetrics,
     footerConfig.iconFamily,
   );
-  const activeProviderStatuses = providerStatuses.filter((snapshot) =>
-    isProviderStatusRelevantToModel(snapshot.provider, ctx.model),
-  );
+  // Model-scoped quota windows resolve here rather than at fetch time: the
+  // cached snapshot stays model-agnostic, so switching models updates the
+  // footer without another usage request.
+  const activeProviderStatuses = providerStatuses
+    .filter((snapshot) =>
+      isProviderStatusRelevantToModel(snapshot.provider, ctx.model),
+    )
+    .map((snapshot) => projectProviderStatusForModel(snapshot, ctx.model));
   const renderCtx: WidgetRenderContext = {
     width,
     theme,

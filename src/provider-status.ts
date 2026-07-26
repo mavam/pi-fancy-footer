@@ -5,6 +5,7 @@ import {
   type GaugeSegment,
   type GaugeStyleDef,
   type ProviderStatusConfigSnapshot,
+  type ProviderStatusScopedWindow,
   type ProviderStatusSnapshot,
   type ProviderStatusState,
   type ProviderStatusWindow,
@@ -99,7 +100,7 @@ function looksLikeAnthropicModel(value: string): boolean {
   return (
     normalized.includes("anthropic") ||
     normalized.includes("claude") ||
-    /(^|-)(sonnet|opus|haiku)(?:-|$)/.test(normalized)
+    /(^|-)(sonnet|opus|haiku|fable)(?:-|$)/.test(normalized)
   );
 }
 
@@ -130,6 +131,90 @@ export function isProviderStatusRelevantToModel(
     modelValue(model.name),
     modelValue(model.displayName),
   ].some((value) => looksLikeProviderModel(providerId, value));
+}
+
+// Splits an identifier into lowercase alphanumeric tokens, so
+// "eu.anthropic.claude-fable-5" becomes ["eu", "anthropic", "claude", "fable", "5"].
+function modelTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0);
+}
+
+// A scoped window applies when every token of the provider's scope name occurs
+// in the active model's identifier: scope "Fable" matches "claude-fable-5", and
+// scope "Opus 4.5" matches "claude-opus-4-5-20251101" but not "claude-opus-4-1".
+function scopeMatchesModel(
+  scopeModel: string,
+  model: ModelLike | string | undefined,
+): boolean {
+  const scopeTokens = modelTokens(scopeModel);
+  if (scopeTokens.length === 0) return false;
+
+  const candidates =
+    typeof model === "string"
+      ? [model]
+      : model
+        ? [model.id, model.name, model.displayName]
+        : [];
+
+  return candidates.some((candidate) => {
+    if (typeof candidate !== "string") return false;
+    const tokens = new Set(modelTokens(candidate));
+    return scopeTokens.every((token) => tokens.has(token));
+  });
+}
+
+/**
+ * Resolves model-scoped quota windows against the active model. Scoped windows
+ * replace the account-wide window that carries the same label, so a Fable
+ * session shows the weekly Fable cap in the existing weekly slot instead of the
+ * looser all-models number. When both caps are known the one with less headroom
+ * wins: whichever runs out first is the limit that stops the session, so the
+ * footer never reports more headroom than actually remains.
+ */
+export function projectProviderStatusForModel(
+  snapshot: ProviderStatusSnapshot,
+  model: ModelLike | string | undefined,
+): ProviderStatusSnapshot {
+  if (!snapshot.scoped || snapshot.scoped.length === 0) return snapshot;
+
+  const applicable = snapshot.scoped.filter((window) =>
+    scopeMatchesModel(window.model, model),
+  );
+  if (applicable.length === 0) return snapshot;
+
+  const primary = applyScopedWindow(snapshot.primary, applicable);
+  const secondary = applyScopedWindow(snapshot.secondary, applicable);
+  if (primary === snapshot.primary && secondary === snapshot.secondary) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    state: computeProviderStatusState(primary, secondary),
+  };
+}
+
+function applyScopedWindow(
+  window: ProviderStatusWindow | undefined,
+  scoped: readonly ProviderStatusScopedWindow[],
+): ProviderStatusWindow | undefined {
+  const matches = scoped.filter(
+    (candidate) => candidate.label === window?.label,
+  );
+  if (matches.length === 0) return window;
+
+  let strictest = window;
+  for (const match of matches) {
+    if (strictest && match.usedPercent <= strictest.usedPercent) continue;
+    const { model: _model, ...replacement } = match;
+    strictest = replacement;
+  }
+  return strictest;
 }
 
 function enabledProviderStatusSources(
@@ -273,9 +358,13 @@ function displayableCachedStatus(
   const secondary = windowInEffect(cached.secondary, now);
   if (!primary && !secondary) return undefined;
 
+  const scoped = cached.scoped?.filter(
+    (window) => windowInEffect(window, now) !== undefined,
+  );
   const {
     primary: _expiredPrimary,
     secondary: _expiredSecondary,
+    scoped: _expiredScoped,
     ...rest
   } = cached;
   return {
@@ -284,6 +373,7 @@ function displayableCachedStatus(
     state: computeProviderStatusState(primary, secondary),
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(scoped && scoped.length > 0 ? { scoped } : {}),
     ...(error === undefined
       ? {}
       : { error: providerStatusErrorMessage(error) }),
@@ -437,17 +527,100 @@ export function normalizeClaudeUsageResponse(
     CLAUDE_SECONDARY_WINDOW_LABEL,
     now,
   );
-  if (!primary && !secondary) return undefined;
+  // The flat five_hour/seven_day fields are the legacy shape, and the sibling
+  // seven_day_* keys are already null stubs. Fall back to the account-wide
+  // entries in `limits` so a response that drops the flat fields still reports
+  // quota instead of hiding the widget.
+  const limits = normalizeClaudeLimits(obj.limits, now);
+  const resolvedPrimary =
+    primary ?? limits?.account.get(CLAUDE_PRIMARY_WINDOW_LABEL);
+  const resolvedSecondary =
+    secondary ?? limits?.account.get(CLAUDE_SECONDARY_WINDOW_LABEL);
+  if (!resolvedPrimary && !resolvedSecondary) return undefined;
 
   return {
     provider: "anthropic",
     source: "api",
     fetchedAt: now.toISOString(),
-    state: computeProviderStatusState(primary, secondary),
-    ...(primary ? { primary } : {}),
-    ...(secondary ? { secondary } : {}),
+    state: computeProviderStatusState(resolvedPrimary, resolvedSecondary),
+    ...(resolvedPrimary ? { primary: resolvedPrimary } : {}),
+    ...(resolvedSecondary ? { secondary: resolvedSecondary } : {}),
+    // An empty array records that the provider reported no scoped caps, which
+    // retires cached ones. Omitting the key means the response carried no
+    // `limits` at all, so cached scoped windows survive.
+    ...(limits ? { scoped: limits.scoped } : {}),
     url: CLAUDE_USAGE_URL,
   };
+}
+
+interface ClaudeLimitWindows {
+  /** Account-wide windows, keyed by window label. */
+  account: Map<string, ProviderStatusWindow>;
+  scoped: ProviderStatusScopedWindow[];
+}
+
+// Anthropic reports per-model caps in the `limits` array rather than the flat
+// `seven_day_*` keys, which stay null even when a model-scoped cap is in force:
+// a weekly Fable limit arrives as kind "weekly_scoped" with
+// scope.model.display_name "Fable". Entries scoped to something other than a
+// model, such as a surface, are ignored because the footer cannot match them.
+// Returns undefined when the response carries no `limits` array at all, which
+// callers distinguish from an array that reports no scoped caps.
+function normalizeClaudeLimits(
+  value: unknown,
+  now: Date,
+): ClaudeLimitWindows | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const account = new Map<string, ProviderStatusWindow>();
+  const scoped = new Map<string, ProviderStatusScopedWindow>();
+  const scopedIsActive = new Set<string>();
+
+  for (const entry of value) {
+    const limit = objectValue(entry);
+    if (!limit) continue;
+
+    const label = claudeLimitWindowLabel(stringValue(limit.group));
+    if (!label) continue;
+
+    const usedPercent = numberValue(limit.percent);
+    if (usedPercent === undefined) continue;
+
+    const window = windowFromUsedPercent(
+      label,
+      usedPercent,
+      resetAtFromTimestamp(stringValue(limit.resets_at)),
+      now,
+    );
+
+    const scope = objectValue(limit.scope);
+    if (!scope) {
+      if (!account.has(label)) account.set(label, window);
+      continue;
+    }
+
+    const model = stringValue(objectValue(scope.model)?.display_name);
+    if (!model) continue;
+
+    // Anthropic can report more than one cap for the same model and window.
+    // `is_active` marks which of them is currently in force, so it breaks ties
+    // between duplicates. It is deliberately not used to filter: it is false
+    // even for the account-wide windows that always apply, so treating it as a
+    // gate would drop scoped caps that simply are not binding yet.
+    const key = `${label}\u0000${model.toLowerCase()}`;
+    const isActive = limit.is_active === true;
+    if (scoped.has(key) && !(isActive && !scopedIsActive.has(key))) continue;
+    scoped.set(key, { ...window, model });
+    if (isActive) scopedIsActive.add(key);
+  }
+
+  return { account, scoped: Array.from(scoped.values()) };
+}
+
+function claudeLimitWindowLabel(group: string | undefined): string | undefined {
+  if (group === "session") return CLAUDE_PRIMARY_WINDOW_LABEL;
+  if (group === "weekly") return CLAUDE_SECONDARY_WINDOW_LABEL;
+  return undefined;
 }
 
 export function isProviderStatusFresh(
@@ -806,6 +979,7 @@ function mergeProviderStatus(
   const {
     primary: _existingPrimary,
     secondary: _existingSecondary,
+    scoped: _existingScoped,
     credits: existingCredits,
     error: _existingError,
     ...existingBase
@@ -813,16 +987,24 @@ function mergeProviderStatus(
   const {
     primary: _updatePrimary,
     secondary: _updateSecondary,
+    scoped: _updateScoped,
     credits: updateCredits,
     ...updateBase
   } = update;
   const credits = updateCredits ?? existingCredits;
+  // Unlike the quota windows, scoped caps are never merged: a response that
+  // reports its scoped limits reports all of them, so keeping cached entries
+  // that the provider dropped would leave a retired cap on screen until its old
+  // reset time. Cached scoped caps survive only when the update carries none,
+  // i.e. when the response had no `limits` array to speak for them.
+  const scoped = update.scoped ?? existing.scoped;
 
   return {
     ...existingBase,
     ...updateBase,
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(scoped && scoped.length > 0 ? { scoped } : {}),
     ...(credits !== undefined ? { credits } : {}),
     state: computeProviderStatusState(primary, secondary),
   };
