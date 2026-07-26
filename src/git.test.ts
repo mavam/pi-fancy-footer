@@ -153,7 +153,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   );
 });
 
-test("collectPullRequestInfo keeps merged PRs and queries open and merged states", async () => {
+test("collectPullRequestInfo queries merged and auto-merge status", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
     if (command === "git" && gitSubcommand(args) === "rev-parse") {
       return { code: 0, stdout: "origin/feature\n", stderr: "" };
@@ -207,6 +207,7 @@ test("collectPullRequestInfo keeps merged PRs and queries open and merged states
     .find((call) => call.command === "gh")
     ?.args.find((arg) => arg.startsWith("query="));
   assert.match(query ?? "", /states: \[OPEN, MERGED\]/);
+  assert.match(query ?? "", /autoMergeRequest \{ enabledAt \}/);
 });
 
 test("collectPullRequestInfo includes unresolved review thread count", async () => {

@@ -129,7 +129,7 @@ test("parseGitHubPullRequestUrl extracts owner, repository, and PR number", () =
   );
 });
 
-test("parsePullRequest reads open and merged states", () => {
+test("parsePullRequest reads PR state and auto-merge status", () => {
   assert.deepEqual(
     parsePullRequest(
       JSON.stringify({
@@ -142,6 +142,23 @@ test("parsePullRequest reads open and merged states", () => {
       number: 42,
       url: "https://github.com/org/repo/pull/42",
       state: "merged",
+      host: "github.com",
+    },
+  );
+  assert.deepEqual(
+    parsePullRequest(
+      JSON.stringify({
+        number: 43,
+        url: "https://github.com/org/repo/pull/43",
+        state: "OPEN",
+        autoMergeRequest: { enabledAt: "2026-07-26T08:00:00Z" },
+      }),
+    ),
+    {
+      number: 43,
+      url: "https://github.com/org/repo/pull/43",
+      state: "open",
+      autoMergeEnabled: true,
       host: "github.com",
     },
   );
@@ -207,6 +224,7 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
               number: 7,
               url: "https://github.com/org/repo/pull/7",
               state: "OPEN",
+              autoMergeRequest: { enabledAt: "2026-07-26T08:00:00Z" },
               headRepositoryOwner: { login: "me" },
             },
           ],
@@ -219,6 +237,7 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
     number: 7,
     url: "https://github.com/org/repo/pull/7",
     state: "open",
+    autoMergeEnabled: true,
     host: "github.com",
   });
   assert.equal(selectPullRequestFromGraphQL(output, ["unknown"]), undefined);

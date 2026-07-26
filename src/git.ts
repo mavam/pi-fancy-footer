@@ -38,6 +38,7 @@ const PULL_REQUEST_QUERY = [
   "        number",
   "        url",
   "        state",
+  "        autoMergeRequest { enabledAt }",
   "        headRefOid",
   "        headRepositoryOwner { login }",
   "      }",
@@ -158,7 +159,12 @@ async function collectCurrentBranchPullRequest(
   const result = await execResult(
     pi,
     "gh",
-    ["pr", "view", "--json", "number,url,headRefOid,state"],
+    [
+      "pr",
+      "view",
+      "--json",
+      "number,url,headRefOid,state,autoMergeRequest",
+    ],
     cwd,
     GITHUB_COMMAND_TIMEOUT_MS,
   );

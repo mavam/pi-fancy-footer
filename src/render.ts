@@ -571,6 +571,8 @@ function computeFooterMetrics(
     pullRequestNumber: git.pullRequest?.number ?? 0,
     pullRequestUrl: git.pullRequest?.url ?? "",
     pullRequestState: git.pullRequest?.state ?? "",
+    pullRequestAutoMergeEnabled:
+      git.pullRequest?.autoMergeEnabled === true,
     pullRequestUnresolvedReviewThreadCount:
       git.pullRequest?.unresolvedReviewThreadCount ?? 0,
     pullRequestCiState: git.pullRequest?.ciStatus?.state ?? "",
@@ -699,7 +701,9 @@ function buildFooterWidgets(
     {
       ...baseWidgetDefaults("pull-request", iconFamily),
       resolveIconColor: ({ metrics }, configuredColor) =>
-        metrics.pullRequestState === "merged" && configuredColor === "text"
+        configuredColor === "text" &&
+        (metrics.pullRequestAutoMergeEnabled ||
+          metrics.pullRequestState === "merged")
           ? "accent"
           : configuredColor,
       visible: ({ metrics }) => metrics.pullRequestNumber > 0,

@@ -418,7 +418,7 @@ test("renderFooterLines hides the commit SHA unless enabled", () => {
   assert.match(shown.join("\n"), /#abc1234/);
 });
 
-test("renderFooterLines colors the PR icon with the accent after merge", () => {
+test("renderFooterLines accents auto-merge and merged PR icons", () => {
   const colors: string[] = [];
   const coloredTheme = {
     fg: (color: string, text: string) => {
@@ -441,6 +441,25 @@ test("renderFooterLines colors the PR icon with the accent after merge", () => {
     120,
     ctx,
     { ...EMPTY_GIT_INFO, pullRequest },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.ok(colors.includes("accent:@"));
+
+  colors.length = 0;
+  renderFooterLines(
+    120,
+    ctx,
+    {
+      ...EMPTY_GIT_INFO,
+      pullRequest: {
+        ...pullRequest,
+        state: "open",
+        autoMergeEnabled: true,
+      },
+    },
     "off",
     coloredTheme as never,
     usageMetrics,

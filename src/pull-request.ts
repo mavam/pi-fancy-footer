@@ -15,6 +15,7 @@ interface PullRequestCandidate {
   number: number;
   url: string;
   state: PullRequestState;
+  autoMergeEnabled: boolean;
   headOwner: string;
   headRefOid?: string;
 }
@@ -162,6 +163,10 @@ function parsePullRequestState(value: unknown): PullRequestState | undefined {
   return state === "open" || state === "merged" ? state : undefined;
 }
 
+function parseAutoMergeEnabled(value: unknown): boolean {
+  return typeof value === "object" && value !== null;
+}
+
 function selectPullRequest(
   candidates: PullRequestCandidate[],
   headOwners: string[],
@@ -197,6 +202,7 @@ function selectPullRequest(
     number: bestCandidate.number,
     url: bestCandidate.url,
     state: bestCandidate.state,
+    ...(bestCandidate.autoMergeEnabled ? { autoMergeEnabled: true } : {}),
     ...(location ? { host: location.host } : {}),
     ...(bestCandidate.headRefOid
       ? { headRefOid: bestCandidate.headRefOid }
@@ -214,6 +220,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
               number?: unknown;
               url?: unknown;
               state?: unknown;
+              autoMergeRequest?: unknown;
               headRefOid?: unknown;
               headRepositoryOwner?: { login?: unknown } | null;
             }>;
@@ -230,6 +237,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
       const number = Math.max(0, Math.floor(toNumber(node?.number)));
       const url = typeof node?.url === "string" ? node.url : "";
       const state = parsePullRequestState(node?.state);
+      const autoMergeEnabled = parseAutoMergeEnabled(node?.autoMergeRequest);
       const headOwner =
         typeof node?.headRepositoryOwner?.login === "string"
           ? node.headRepositoryOwner.login
@@ -237,7 +245,14 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
       const headRefOid =
         typeof node?.headRefOid === "string" ? node.headRefOid : undefined;
       if (number <= 0 || !url || !state) continue;
-      candidates.push({ number, url, state, headOwner, headRefOid });
+      candidates.push({
+        number,
+        url,
+        state,
+        autoMergeEnabled,
+        headOwner,
+        headRefOid,
+      });
     }
 
     return candidates;
@@ -271,11 +286,13 @@ export function parsePullRequest(
       number?: unknown;
       url?: unknown;
       state?: unknown;
+      autoMergeRequest?: unknown;
       headRefOid?: unknown;
     };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
     const state = parsePullRequestState(parsed?.state);
+    const autoMergeEnabled = parseAutoMergeEnabled(parsed?.autoMergeRequest);
     const headRefOid =
       typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
     if (number <= 0 || !url || !state) return undefined;
@@ -284,6 +301,7 @@ export function parsePullRequest(
       number,
       url,
       state,
+      ...(autoMergeEnabled ? { autoMergeEnabled: true } : {}),
       ...(location ? { host: location.host } : {}),
       ...(headRefOid ? { headRefOid } : {}),
     };

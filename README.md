@@ -31,7 +31,7 @@ pi install npm:pi-fancy-footer
 - Prompt-cache statistics: cumulative cache-read/write tokens and the latest
   turn's cache hit rate
 - Repo / path, branch, optional commit SHA (hidden by default), open or merged
-  PR number, unresolved PR review threads, and PR CI status
+  PR number, auto-merge status, unresolved PR review threads, and PR CI status
 - Git diff stats and ahead/behind status
 
 ## 📸 Configuration editor
@@ -350,8 +350,9 @@ Notes:
   columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
 - `pull-request` keeps merged PRs visible and colors the PR icon with the
-  theme's accent color. A non-default icon color override still takes
-  precedence.
+  theme's accent color when auto-merge is enabled or the PR has merged. Open
+  PRs without auto-merge keep the configured icon color. A non-default icon
+  color override still takes precedence.
 - `pull-request-ci-status` is icon-only and uses symbols for running / failed /
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
@@ -386,8 +387,9 @@ Notes:
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
 - The PR widgets appear only for open or merged pull requests on GitHub and
-  GitHub Enterprise hosts such as `github.example.com`; they rely on the GitHub
-  CLI (`gh`) being available and authenticated for the remote host.
+  GitHub Enterprise hosts such as `github.example.com`. The footer also detects
+  auto-merge on open PRs. These widgets rely on the GitHub CLI (`gh`) being
+  available and authenticated for the remote host.
 - `pull-request-review-threads` counts unresolved GitHub review threads
   on the current PR.
 - `pull-request-ci-status` shows GitHub Actions workflow runs for the current
