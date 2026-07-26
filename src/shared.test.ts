@@ -5,6 +5,7 @@ import {
   FOOTER_ICON_FAMILIES,
   FOOTER_WIDGET_IDS,
   closeOpenTerminalHyperlinks,
+  formatGaugePercent,
   formatTerminalHyperlink,
   formatTokens,
   buildGauge,
@@ -95,6 +96,11 @@ test("buildGauge keeps at least one cell visible near the edges", () => {
   assert.equal(buildGauge(99, style, 5).emptyGlyphs, "▱");
   assert.equal(buildGauge(0, style, 5).filledGlyphs, "");
   assert.equal(buildGauge(100, style, 5).emptyGlyphs, "");
+});
+
+test("formatGaugePercent hides floating-point noise", () => {
+  assert.equal(formatGaugePercent(55.00000000000001), "55%");
+  assert.equal(formatGaugePercent(12.5), "12.5%");
 });
 
 test("formatTokens compacts counts with SI-style units", () => {

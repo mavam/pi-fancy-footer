@@ -189,7 +189,8 @@ export function buildGauge(
 }
 
 export function formatGaugePercent(value: number): string {
-  return Number.isInteger(value) ? `${value}%` : `${value.toFixed(1)}%`;
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
 // Compact token counts with SI-style units: 246, 1.2k, 246k, 1M, 1.2M, 12M.
