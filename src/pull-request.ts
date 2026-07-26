@@ -176,11 +176,12 @@ function selectPullRequest(
     const ownerRank = headOwners.indexOf(candidate.headOwner);
     if (ownerRank < 0) continue;
 
-    // Prefer an active PR if a branch name has also been used by a merged PR.
+    // Within the most likely head owner, prefer an active PR when a branch name
+    // has also been used by a merged PR.
     const stateRank = candidate.state === "open" ? 0 : 1;
     if (
-      stateRank < bestStateRank ||
-      (stateRank === bestStateRank && ownerRank < bestOwnerRank)
+      ownerRank < bestOwnerRank ||
+      (ownerRank === bestOwnerRank && stateRank < bestStateRank)
     ) {
       bestCandidate = candidate;
       bestStateRank = stateRank;

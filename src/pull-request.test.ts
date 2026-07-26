@@ -223,3 +223,35 @@ test("selectPullRequestFromGraphQL accepts only candidates from known head owner
   });
   assert.equal(selectPullRequestFromGraphQL(output, ["unknown"]), undefined);
 });
+
+test("selectPullRequestFromGraphQL prefers the tracked owner before PR state", () => {
+  const output = JSON.stringify({
+    data: {
+      repository: {
+        pullRequests: {
+          nodes: [
+            {
+              number: 9,
+              url: "https://github.com/org/repo/pull/9",
+              state: "OPEN",
+              headRepositoryOwner: { login: "org" },
+            },
+            {
+              number: 8,
+              url: "https://github.com/org/repo/pull/8",
+              state: "MERGED",
+              headRepositoryOwner: { login: "me" },
+            },
+          ],
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(selectPullRequestFromGraphQL(output, ["me", "org"]), {
+    number: 8,
+    url: "https://github.com/org/repo/pull/8",
+    state: "merged",
+    host: "github.com",
+  });
+});

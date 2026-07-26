@@ -153,7 +153,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   );
 });
 
-test("collectPullRequestInfo keeps merged PRs and queries open PRs first", async () => {
+test("collectPullRequestInfo keeps merged PRs and queries open and merged states", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
     if (command === "git" && gitSubcommand(args) === "rev-parse") {
       return { code: 0, stdout: "origin/feature\n", stderr: "" };
