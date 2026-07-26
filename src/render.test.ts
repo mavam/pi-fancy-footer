@@ -320,6 +320,44 @@ test("renderFooterLines shows Anthropic provider status for Claude models", () =
   assert.match(lines.join("\n"), /5h:0% 7d:8%/);
 });
 
+test("renderFooterLines shows the model-scoped weekly window for the active model", () => {
+  const scopedProviderStatus: ProviderStatusSnapshot = {
+    ...claudeProviderStatus,
+    scoped: [
+      { label: "7d", model: "Fable", leftPercent: 4, usedPercent: 96 },
+    ],
+  };
+  const render = (model: { id: string; name: string; provider?: string }) =>
+    renderFooterLines(
+      120,
+      contextWithModel(model) as never,
+      EMPTY_GIT_INFO,
+      "off",
+      theme as never,
+      usageMetrics,
+      footerConfig,
+      [],
+      [scopedProviderStatus],
+    ).join("\n");
+
+  assert.match(
+    render({
+      provider: "anthropic",
+      id: "claude-fable-5",
+      name: "Claude Fable 5",
+    }),
+    /5h:0% 7d:96%/,
+  );
+  assert.match(
+    render({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }),
+    /5h:0% 7d:8%/,
+  );
+});
+
 test("renderFooterLines hides Anthropic provider status for OpenAI models", () => {
   const lines = renderFooterLines(
     120,

@@ -11,6 +11,7 @@ import {
   normalizeClaudeUsageResponse,
   normalizeCodexUsageResponse,
   parseCodexRateLimitHeaders,
+  projectProviderStatusForModel,
   providerStatusColor,
   updateProviderStatusFromHeaders,
 } from "./provider-status.ts";
@@ -128,6 +129,146 @@ test("normalizeClaudeUsageResponse extracts five-hour and weekly usage windows",
   });
   assert.equal(snapshot?.provider, "anthropic");
   assert.equal(snapshot?.state, "ok");
+});
+
+test("normalizeClaudeUsageResponse collects model-scoped windows from limits", () => {
+  const weeklyReset = "2026-06-16T23:00:00.365483+00:00";
+  const snapshot = normalizeClaudeUsageResponse(
+    {
+      five_hour: { utilization: 6, resets_at: "2026-06-16T15:20:00Z" },
+      seven_day: { utilization: 57, resets_at: weeklyReset },
+      // The flat per-model keys stay null even while a scoped cap is in force.
+      seven_day_opus: null,
+      limits: [
+        { kind: "session", group: "session", percent: 6, scope: null },
+        { kind: "weekly_all", group: "weekly", percent: 57, scope: null },
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 96,
+          resets_at: weeklyReset,
+          scope: { model: { id: null, display_name: "Fable" }, surface: null },
+        },
+        // Surface-scoped limits carry no model and cannot be matched.
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 12,
+          scope: { model: null, surface: { display_name: "Cowork" } },
+        },
+      ],
+    },
+    now,
+  );
+
+  assert.deepEqual(snapshot?.scoped, [
+    {
+      label: "7d",
+      model: "Fable",
+      usedPercent: 96,
+      leftPercent: 4,
+      resetAt: Math.round(Date.parse(weeklyReset) / 1000),
+    },
+  ]);
+  // The account-wide windows stay untouched until a model is known.
+  assert.equal(snapshot?.secondary?.usedPercent, 57);
+  assert.equal(snapshot?.state, "warning");
+});
+
+test("projectProviderStatusForModel swaps in the scoped window for the active model", () => {
+  const snapshot = {
+    provider: "anthropic",
+    source: "api" as const,
+    fetchedAt: now.toISOString(),
+    state: "ok" as const,
+    primary: { label: "5h", usedPercent: 6, leftPercent: 94 },
+    secondary: { label: "7d", usedPercent: 57, leftPercent: 43 },
+    scoped: [{ label: "7d", model: "Fable", usedPercent: 96, leftPercent: 4 }],
+  };
+
+  const fable = projectProviderStatusForModel(snapshot, {
+    id: "claude-fable-5",
+    provider: "anthropic",
+  });
+  assert.deepEqual(fable.secondary, {
+    label: "7d",
+    usedPercent: 96,
+    leftPercent: 4,
+  });
+  // Gauge count is unchanged: the scoped window takes over the weekly slot.
+  assert.deepEqual(fable.primary, snapshot.primary);
+  assert.equal(fable.state, "error");
+
+  const sonnet = projectProviderStatusForModel(snapshot, {
+    id: "claude-sonnet-4-5-20250929",
+    provider: "anthropic",
+  });
+  assert.deepEqual(sonnet.secondary, snapshot.secondary);
+  assert.equal(sonnet.state, snapshot.state);
+});
+
+test("projectProviderStatusForModel matches multi-token and prefixed model names", () => {
+  const snapshot = {
+    provider: "anthropic",
+    source: "api" as const,
+    fetchedAt: now.toISOString(),
+    state: "ok" as const,
+    secondary: { label: "7d", usedPercent: 10, leftPercent: 90 },
+    scoped: [
+      { label: "7d", model: "Opus 4.5", usedPercent: 80, leftPercent: 20 },
+      { label: "7d", model: "Fable", usedPercent: 96, leftPercent: 4 },
+    ],
+  };
+
+  assert.equal(
+    projectProviderStatusForModel(snapshot, "eu.anthropic.claude-fable-5")
+      .secondary?.usedPercent,
+    96,
+  );
+  assert.equal(
+    projectProviderStatusForModel(snapshot, {
+      id: "claude-opus-4-5-20251101",
+    }).secondary?.usedPercent,
+    80,
+  );
+  // Opus 4.1 must not inherit the Opus 4.5 cap.
+  assert.equal(
+    projectProviderStatusForModel(snapshot, { id: "claude-opus-4-1-20250805" })
+      .secondary?.usedPercent,
+    10,
+  );
+});
+
+test("projectProviderStatusForModel keeps the window with less headroom", () => {
+  const snapshot = {
+    provider: "anthropic",
+    source: "api" as const,
+    fetchedAt: now.toISOString(),
+    state: "error" as const,
+    secondary: { label: "7d", usedPercent: 92, leftPercent: 8 },
+    scoped: [{ label: "7d", model: "Fable", usedPercent: 20, leftPercent: 80 }],
+  };
+
+  // The account-wide weekly cap binds first, so it stays on screen.
+  assert.deepEqual(
+    projectProviderStatusForModel(snapshot, { id: "claude-fable-5" }).secondary,
+    snapshot.secondary,
+  );
+});
+
+test("projectProviderStatusForModel leaves snapshots without scoped windows alone", () => {
+  const snapshot = {
+    provider: "anthropic",
+    source: "api" as const,
+    fetchedAt: now.toISOString(),
+    state: "ok" as const,
+    secondary: { label: "7d", usedPercent: 57, leftPercent: 43 },
+  };
+
+  assert.equal(
+    projectProviderStatusForModel(snapshot, { id: "claude-fable-5" }),
+    snapshot,
+  );
 });
 
 test("normalizeClaudeUsageResponse ignores responses without supported windows", () => {

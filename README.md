@@ -375,7 +375,13 @@ Notes:
   from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly
-  windows. Status is cached under `~/.cache/pi-fancy-footer/provider-status/`;
+  windows. When Claude reports a limit that applies only to the active model,
+  such as the weekly Fable cap, that window replaces the account-wide window
+  with the same label instead of adding a gauge, so `7d` shows the quota that
+  actually limits the current model. The stricter of the two always wins,
+  because whichever runs out first ends the session, and the value follows
+  `/model` switches without another usage request.
+  Status is cached under `~/.cache/pi-fancy-footer/provider-status/`;
   when a refresh fails, cached quota windows keep showing until their reset times
   pass instead of hiding the widget. The widget is hidden when the active model
   selection is not backed by the status provider.

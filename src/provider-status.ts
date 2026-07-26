@@ -5,6 +5,7 @@ import {
   type GaugeSegment,
   type GaugeStyleDef,
   type ProviderStatusConfigSnapshot,
+  type ProviderStatusScopedWindow,
   type ProviderStatusSnapshot,
   type ProviderStatusState,
   type ProviderStatusWindow,
@@ -99,7 +100,7 @@ function looksLikeAnthropicModel(value: string): boolean {
   return (
     normalized.includes("anthropic") ||
     normalized.includes("claude") ||
-    /(^|-)(sonnet|opus|haiku)(?:-|$)/.test(normalized)
+    /(^|-)(sonnet|opus|haiku|fable)(?:-|$)/.test(normalized)
   );
 }
 
@@ -130,6 +131,90 @@ export function isProviderStatusRelevantToModel(
     modelValue(model.name),
     modelValue(model.displayName),
   ].some((value) => looksLikeProviderModel(providerId, value));
+}
+
+// Splits an identifier into lowercase alphanumeric tokens, so
+// "eu.anthropic.claude-fable-5" becomes ["eu", "anthropic", "claude", "fable", "5"].
+function modelTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0);
+}
+
+// A scoped window applies when every token of the provider's scope name occurs
+// in the active model's identifier: scope "Fable" matches "claude-fable-5", and
+// scope "Opus 4.5" matches "claude-opus-4-5-20251101" but not "claude-opus-4-1".
+function scopeMatchesModel(
+  scopeModel: string,
+  model: ModelLike | string | undefined,
+): boolean {
+  const scopeTokens = modelTokens(scopeModel);
+  if (scopeTokens.length === 0) return false;
+
+  const candidates =
+    typeof model === "string"
+      ? [model]
+      : model
+        ? [model.id, model.name, model.displayName]
+        : [];
+
+  return candidates.some((candidate) => {
+    if (typeof candidate !== "string") return false;
+    const tokens = new Set(modelTokens(candidate));
+    return scopeTokens.every((token) => tokens.has(token));
+  });
+}
+
+/**
+ * Resolves model-scoped quota windows against the active model. Scoped windows
+ * replace the account-wide window that carries the same label, so a Fable
+ * session shows the weekly Fable cap in the existing weekly slot instead of the
+ * looser all-models number. When both caps are known the one with less headroom
+ * wins: whichever runs out first is the limit that stops the session, so the
+ * footer never reports more headroom than actually remains.
+ */
+export function projectProviderStatusForModel(
+  snapshot: ProviderStatusSnapshot,
+  model: ModelLike | string | undefined,
+): ProviderStatusSnapshot {
+  if (!snapshot.scoped || snapshot.scoped.length === 0) return snapshot;
+
+  const applicable = snapshot.scoped.filter((window) =>
+    scopeMatchesModel(window.model, model),
+  );
+  if (applicable.length === 0) return snapshot;
+
+  const primary = applyScopedWindow(snapshot.primary, applicable);
+  const secondary = applyScopedWindow(snapshot.secondary, applicable);
+  if (primary === snapshot.primary && secondary === snapshot.secondary) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshot,
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    state: computeProviderStatusState(primary, secondary),
+  };
+}
+
+function applyScopedWindow(
+  window: ProviderStatusWindow | undefined,
+  scoped: readonly ProviderStatusScopedWindow[],
+): ProviderStatusWindow | undefined {
+  const matches = scoped.filter(
+    (candidate) => candidate.label === window?.label,
+  );
+  if (matches.length === 0) return window;
+
+  let strictest = window;
+  for (const match of matches) {
+    if (strictest && match.usedPercent <= strictest.usedPercent) continue;
+    const { model: _model, ...replacement } = match;
+    strictest = replacement;
+  }
+  return strictest;
 }
 
 function enabledProviderStatusSources(
@@ -273,9 +358,13 @@ function displayableCachedStatus(
   const secondary = windowInEffect(cached.secondary, now);
   if (!primary && !secondary) return undefined;
 
+  const scoped = (cached.scoped ?? []).filter(
+    (window) => windowInEffect(window, now) !== undefined,
+  );
   const {
     primary: _expiredPrimary,
     secondary: _expiredSecondary,
+    scoped: _expiredScoped,
     ...rest
   } = cached;
   return {
@@ -284,6 +373,7 @@ function displayableCachedStatus(
     state: computeProviderStatusState(primary, secondary),
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(scoped.length > 0 ? { scoped } : {}),
     ...(error === undefined
       ? {}
       : { error: providerStatusErrorMessage(error) }),
@@ -437,6 +527,7 @@ export function normalizeClaudeUsageResponse(
     CLAUDE_SECONDARY_WINDOW_LABEL,
     now,
   );
+  const scoped = normalizeClaudeScopedWindows(obj.limits, now);
   if (!primary && !secondary) return undefined;
 
   return {
@@ -446,8 +537,55 @@ export function normalizeClaudeUsageResponse(
     state: computeProviderStatusState(primary, secondary),
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(scoped.length > 0 ? { scoped } : {}),
     url: CLAUDE_USAGE_URL,
   };
+}
+
+// Anthropic reports per-model caps in the `limits` array rather than the flat
+// `seven_day_*` keys, which stay null even when a model-scoped cap is in force:
+// a weekly Fable limit arrives as kind "weekly_scoped" with
+// scope.model.display_name "Fable". Entries scoped to something other than a
+// model, such as a surface, are ignored because the footer cannot match them.
+function normalizeClaudeScopedWindows(
+  value: unknown,
+  now: Date,
+): ProviderStatusScopedWindow[] {
+  if (!Array.isArray(value)) return [];
+
+  const windows: ProviderStatusScopedWindow[] = [];
+  for (const entry of value) {
+    const limit = objectValue(entry);
+    if (!limit) continue;
+
+    const model = stringValue(
+      objectValue(objectValue(limit.scope)?.model)?.display_name,
+    );
+    if (!model) continue;
+
+    const label = claudeLimitWindowLabel(stringValue(limit.group));
+    if (!label) continue;
+
+    const usedPercent = numberValue(limit.percent);
+    if (usedPercent === undefined) continue;
+
+    windows.push({
+      ...windowFromUsedPercent(
+        label,
+        usedPercent,
+        resetAtFromTimestamp(stringValue(limit.resets_at)),
+        now,
+      ),
+      model,
+    });
+  }
+  return windows;
+}
+
+function claudeLimitWindowLabel(group: string | undefined): string | undefined {
+  if (group === "session") return CLAUDE_PRIMARY_WINDOW_LABEL;
+  if (group === "weekly") return CLAUDE_SECONDARY_WINDOW_LABEL;
+  return undefined;
 }
 
 export function isProviderStatusFresh(
@@ -806,6 +944,7 @@ function mergeProviderStatus(
   const {
     primary: _existingPrimary,
     secondary: _existingSecondary,
+    scoped: _existingScoped,
     credits: existingCredits,
     error: _existingError,
     ...existingBase
@@ -813,19 +952,39 @@ function mergeProviderStatus(
   const {
     primary: _updatePrimary,
     secondary: _updateSecondary,
+    scoped: _updateScoped,
     credits: updateCredits,
     ...updateBase
   } = update;
   const credits = updateCredits ?? existingCredits;
+  const scoped = mergeScopedWindows(
+    preserveMissingWindows ? existing.scoped : undefined,
+    update.scoped,
+  );
 
   return {
     ...existingBase,
     ...updateBase,
     ...(primary ? { primary } : {}),
     ...(secondary ? { secondary } : {}),
+    ...(scoped.length > 0 ? { scoped } : {}),
     ...(credits !== undefined ? { credits } : {}),
     state: computeProviderStatusState(primary, secondary),
   };
+}
+
+// Scoped windows are keyed by label and model rather than label alone, so a
+// weekly Fable cap does not overwrite the weekly Sonnet cap or the account-wide
+// weekly window.
+function mergeScopedWindows(
+  existing: readonly ProviderStatusScopedWindow[] | undefined,
+  update: readonly ProviderStatusScopedWindow[] | undefined,
+): ProviderStatusScopedWindow[] {
+  const windows = new Map<string, ProviderStatusScopedWindow>();
+  for (const window of [...(existing ?? []), ...(update ?? [])]) {
+    windows.set(`${window.label}\u0000${window.model.toLowerCase()}`, window);
+  }
+  return Array.from(windows.values());
 }
 
 function providerStatusWindows(
