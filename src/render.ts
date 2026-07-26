@@ -57,9 +57,23 @@ import {
   providerStatusColor,
 } from "./provider-status.ts";
 
-// GitHub Primer's default merged/done foreground color (#8250df).
-const GITHUB_MERGED_PURPLE = { red: 130, green: 80, blue: 223 } as const;
-const GITHUB_MERGED_PURPLE_256 = 98;
+// GitHub Primer's default merged/done foreground color (#8250df). This hue is
+// fixed rather than theme-derived: pi themes have no "merged" role, and the
+// runtime exposes no light/dark background signal to pick between Primer's
+// light (#8250df) and dark (#a371f7) tokens. Users who want a different hue
+// override the pull-request widget's icon color, which takes precedence.
+export const GITHUB_MERGED_PURPLE = { red: 130, green: 80, blue: 223 } as const;
+// Closest xterm-256 cube entry to #8250df (index 98, #875fd7).
+export const GITHUB_MERGED_PURPLE_256 = 98;
+
+/** Foreground escape prefix for the fixed merged-PR purple. */
+export function githubMergedForegroundPrefix(
+  colorMode: ReturnType<Theme["getColorMode"]>,
+): string {
+  return colorMode === "256color"
+    ? `\x1b[38;5;${GITHUB_MERGED_PURPLE_256}m`
+    : `\x1b[38;2;${GITHUB_MERGED_PURPLE.red};${GITHUB_MERGED_PURPLE.green};${GITHUB_MERGED_PURPLE.blue}m`;
+}
 
 function styleFooterIcon(
   theme: Theme,
@@ -67,12 +81,7 @@ function styleFooterIcon(
   text: string,
 ): string {
   if (color !== "github-merged") return theme.fg(color, text);
-
-  const prefix =
-    theme.getColorMode() === "256color"
-      ? `\x1b[38;5;${GITHUB_MERGED_PURPLE_256}m`
-      : `\x1b[38;2;${GITHUB_MERGED_PURPLE.red};${GITHUB_MERGED_PURPLE.green};${GITHUB_MERGED_PURPLE.blue}m`;
-  return `${prefix}${text}\x1b[39m`;
+  return `${githubMergedForegroundPrefix(theme.getColorMode())}${text}\x1b[39m`;
 }
 
 function buildProviderStatusPart(
