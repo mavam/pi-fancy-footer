@@ -419,12 +419,6 @@ Each style defines symbols for filled and empty cells:
 
 <!-- markdownlint-enable MD013 MD060 -->
 
-## 🧹 Uninstall
-
-```sh
-pi remove npm:pi-fancy-footer
-```
-
 ## 📄 License
 
 [MIT](LICENSE)
