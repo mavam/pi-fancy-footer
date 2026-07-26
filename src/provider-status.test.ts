@@ -175,6 +175,113 @@ test("normalizeClaudeUsageResponse collects model-scoped windows from limits", (
   assert.equal(snapshot?.state, "warning");
 });
 
+test("normalizeClaudeUsageResponse prefers the active cap among duplicates for a model", () => {
+  const snapshot = normalizeClaudeUsageResponse(
+    {
+      five_hour: { utilization: 1, resets_at: "2026-06-16T15:20:00Z" },
+      seven_day: { utilization: 2, resets_at: "2026-06-16T23:00:00Z" },
+      limits: [
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 90,
+          is_active: false,
+          scope: { model: { display_name: "Haiku" } },
+        },
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 20,
+          is_active: true,
+          scope: { model: { display_name: "Haiku" } },
+        },
+      ],
+    },
+    now,
+  );
+
+  assert.equal(snapshot?.scoped?.length, 1);
+  assert.equal(snapshot?.scoped?.[0]?.usedPercent, 20);
+});
+
+test("normalizeClaudeUsageResponse falls back to account-wide limits entries", () => {
+  const sessionReset = "2026-06-16T15:20:00Z";
+  const weeklyReset = "2026-06-16T23:00:00Z";
+  const snapshot = normalizeClaudeUsageResponse(
+    {
+      // No flat five_hour/seven_day fields at all.
+      limits: [
+        {
+          kind: "session",
+          group: "session",
+          percent: 4,
+          resets_at: sessionReset,
+          scope: null,
+        },
+        {
+          kind: "weekly_all",
+          group: "weekly",
+          percent: 31,
+          resets_at: weeklyReset,
+          scope: null,
+        },
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 77,
+          resets_at: weeklyReset,
+          scope: { model: { display_name: "Fable" } },
+        },
+        // Surface-scoped entries are neither account-wide nor model-scoped.
+        {
+          kind: "weekly_scoped",
+          group: "weekly",
+          percent: 99,
+          scope: { model: null, surface: { display_name: "Cowork" } },
+        },
+      ],
+    },
+    now,
+  );
+
+  assert.deepEqual(snapshot?.primary, {
+    label: "5h",
+    usedPercent: 4,
+    leftPercent: 96,
+    resetAt: Math.round(Date.parse(sessionReset) / 1000),
+  });
+  assert.deepEqual(snapshot?.secondary, {
+    label: "7d",
+    usedPercent: 31,
+    leftPercent: 69,
+    resetAt: Math.round(Date.parse(weeklyReset) / 1000),
+  });
+  assert.equal(snapshot?.scoped?.length, 1);
+  assert.equal(
+    projectProviderStatusForModel(snapshot!, { id: "claude-fable-5" }).secondary
+      ?.usedPercent,
+    77,
+  );
+});
+
+test("normalizeClaudeUsageResponse reports an empty scoped set when limits carry none", () => {
+  const withLimits = normalizeClaudeUsageResponse(
+    {
+      seven_day: { utilization: 2, resets_at: "2026-06-16T23:00:00Z" },
+      limits: [{ kind: "weekly_all", group: "weekly", percent: 2, scope: null }],
+    },
+    now,
+  );
+  // An empty array retires cached scoped caps; a missing key preserves them.
+  assert.deepEqual(withLimits?.scoped, []);
+
+  const withoutLimits = normalizeClaudeUsageResponse(
+    { seven_day: { utilization: 2, resets_at: "2026-06-16T23:00:00Z" } },
+    now,
+  );
+  assert.equal(withoutLimits?.scoped, undefined);
+});
+
 test("projectProviderStatusForModel swaps in the scoped window for the active model", () => {
   const snapshot = {
     provider: "anthropic",
@@ -747,6 +854,99 @@ test("collectProviderStatus retains a valid five-hour cache window after a parti
   assert.equal(snapshot?.secondary?.label, "7d");
   assert.equal(snapshot?.secondary?.usedPercent, 7);
   assert.equal(snapshot?.error, undefined);
+});
+
+test("collectProviderStatus retires a cached scoped cap that a refresh no longer reports", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  // A successful refresh that reports the account-wide windows only: the weekly
+  // Fable cap is gone.
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        five_hour: { utilization: 3, resets_at: "2030-01-01T01:00:00Z" },
+        seven_day: { utilization: 9, resets_at: "2030-01-02T01:00:00Z" },
+        limits: [
+          { kind: "session", group: "session", percent: 3, scope: null },
+          { kind: "weekly_all", group: "weekly", percent: 9, scope: null },
+        ],
+      }),
+    );
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 3_600;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "error",
+      primary: {
+        label: "5h",
+        usedPercent: 5,
+        leftPercent: 95,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 12,
+        leftPercent: 88,
+        resetAt: futureResetAt,
+      },
+      scoped: [
+        {
+          label: "7d",
+          model: "Fable",
+          usedPercent: 96,
+          leftPercent: 4,
+          resetAt: futureResetAt,
+        },
+      ],
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.scoped, undefined);
+  assert.equal(
+    projectProviderStatusForModel(snapshot!, { id: "claude-fable-5" }).secondary
+      ?.usedPercent,
+    9,
+  );
 });
 
 test("collectProviderStatus hides cached quota once its windows reset", async (t) => {
