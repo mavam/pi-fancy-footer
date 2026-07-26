@@ -1,0 +1,9 @@
+created: 2026-07-26
+title: Pull request lifecycle status
+intro: >-
+  Pull requests now stay visible in the footer through their whole lifecycle, from
+  open to merged. All gauges also share one direction now: they fill up as a resource
+  gets consumed.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.0.0
