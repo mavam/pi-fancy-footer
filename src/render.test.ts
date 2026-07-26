@@ -425,6 +425,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
       colors.push(`${color}:${text}`);
       return text;
     },
+    getColorMode: () => "truecolor" as const,
   };
   const ctx = contextWithModel({
     provider: "openai",
@@ -437,7 +438,7 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
     state: "merged" as const,
   };
 
-  renderFooterLines(
+  const mergedLines = renderFooterLines(
     120,
     ctx,
     { ...EMPTY_GIT_INFO, pullRequest },
@@ -446,7 +447,11 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
     usageMetrics,
     footerConfig,
   );
-  assert.ok(colors.includes("success:@"));
+  assert.match(
+    mergedLines.join("\n"),
+    /\x1b\[38;2;130;80;223m@\x1b\[39m/,
+  );
+  assert.equal(colors.includes("success:@"), false);
 
   colors.length = 0;
   renderFooterLines(
@@ -500,6 +505,21 @@ test("renderFooterLines distinguishes auto-merge and merged PR icons", () => {
   );
   assert.ok(colors.includes("warning:@"));
   assert.equal(colors.includes("success:@"), false);
+
+  const limitedColorTheme = {
+    ...coloredTheme,
+    getColorMode: () => "256color" as const,
+  };
+  const limitedColorLines = renderFooterLines(
+    120,
+    ctx,
+    { ...EMPTY_GIT_INFO, pullRequest },
+    "off",
+    limitedColorTheme as never,
+    usageMetrics,
+    footerConfig,
+  );
+  assert.match(limitedColorLines.join("\n"), /\x1b\[38;5;98m@\x1b\[39m/);
 });
 
 const contextBarUsage = { contextWindow: 200_000, tokens: 92_000, percent: 46 };

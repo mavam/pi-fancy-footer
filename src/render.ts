@@ -16,6 +16,7 @@ import {
   type FooterIconFamily,
   type FooterMetrics,
   type FooterWidget,
+  type FooterWidgetResolvedIconColor,
   type FooterWidgetSize,
   type GitCounts,
   type GitInfo,
@@ -55,6 +56,24 @@ import {
   isProviderStatusRelevantToModel,
   providerStatusColor,
 } from "./provider-status.ts";
+
+// GitHub Primer's default merged/done foreground color (#8250df).
+const GITHUB_MERGED_PURPLE = { red: 130, green: 80, blue: 223 } as const;
+const GITHUB_MERGED_PURPLE_256 = 98;
+
+function styleFooterIcon(
+  theme: Theme,
+  color: FooterWidgetResolvedIconColor,
+  text: string,
+): string {
+  if (color !== "github-merged") return theme.fg(color, text);
+
+  const prefix =
+    theme.getColorMode() === "256color"
+      ? `\x1b[38;5;${GITHUB_MERGED_PURPLE_256}m`
+      : `\x1b[38;2;${GITHUB_MERGED_PURPLE.red};${GITHUB_MERGED_PURPLE.green};${GITHUB_MERGED_PURPLE.blue}m`;
+  return `${prefix}${text}\x1b[39m`;
+}
 
 function buildProviderStatusPart(
   snapshot: ProviderStatusSnapshot,
@@ -319,7 +338,8 @@ function renderWidget(
 
   const styledIcon =
     hasIcon && widget.icon
-      ? renderCtx.theme.fg(
+      ? styleFooterIcon(
+          renderCtx.theme,
           widget.resolveIconColor?.(renderCtx, widget.icon.color) ??
             widget.icon.color,
           iconText,
@@ -702,7 +722,7 @@ function buildFooterWidgets(
       ...baseWidgetDefaults("pull-request", iconFamily),
       resolveIconColor: ({ metrics }, configuredColor) => {
         if (configuredColor !== "text") return configuredColor;
-        if (metrics.pullRequestState === "merged") return "success";
+        if (metrics.pullRequestState === "merged") return "github-merged";
         if (metrics.pullRequestAutoMergeEnabled) return "accent";
         return configuredColor;
       },
