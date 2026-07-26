@@ -325,12 +325,12 @@ leading widget icon.
 Notes:
 
 - Most widgets use a leading icon.
-- `context-bar` renders a battery-style mini gauge of used context,
+- `context-bar` renders a mini gauge of used context,
   e.g. `■■□□□ 40%`, spanning `gaugeWidth` cells with the glyphs from
   `gaugeStyle` (not `iconFamily`). Filled cells and the percentage show the
-  consumed share, colored via `gaugeColors` by how close the context is to
-  exhaustion; empty cells stay dim. It sits on the left of the top row by
-  default, with provider quota gauges beside it. Set the widget's `fill` to
+  consumed share and fill up from the left, colored via `gaugeColors` by how
+  close the context is to exhaustion; empty cells stay dim. It sits on the
+  left of the top row by default, with provider quota gauges beside it. Set the widget's `fill` to
   `grow` (via `/fancy-footer` or the configuration file) to expand it into a
   full-width bar with the used tokens in front, e.g. `246k ██████████░░░`.
 - `context-capacity` shows the total context window in compact SI form
@@ -357,17 +357,18 @@ Notes:
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
 - `provider-status` shows provider quota windows for OpenAI Codex and Claude
-  models as battery-style mini gauges per window, e.g.
+  models as mini gauges per window, e.g.
   `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
-  where filled cells show the remaining quota and each window is colored by
-  how close it is to exhaustion. The gauge spans `gaugeWidth` cells and
-  reuses the configured `gaugeStyle` glyphs; set `providerStatus.display` to
-  `text` for the compact `5h:95% 7d:97%` form. The widget renders only the
+  where filled cells show the used quota, growing from the left just like the
+  context bar, and each window is colored by how close it is to exhaustion.
+  The gauge spans `gaugeWidth` cells and reuses the configured `gaugeStyle`
+  glyphs; set `providerStatus.display` to `text` for the compact
+  `5h:5% 7d:3%` form. The widget renders only the
   windows that the provider reports. If Codex omits its 5-hour window and
   promotes the weekly window to primary, the footer removes the stale 5-hour
   value and shows only `7d`. In an output such as
   `󰾆▱▱▱▱▱ 0% 󰓅7d ▰▰▰▰▱ 84%`, `0%` is the share of pi's context window in
-  use and `84%` is the remaining weekly Codex quota. Codex uses existing pi
+  use and `84%` is the used weekly Codex quota. Codex uses existing pi
   OpenAI Codex credentials
   from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
@@ -399,8 +400,9 @@ Notes:
 ## 🧱 Gauge styles
 
 The `gaugeStyle` setting controls the characters used by the `context-bar`
-and `provider-status` gauges. Each style defines symbols for filled and empty
-cells:
+and `provider-status` gauges. All gauges fill from the left with what is
+already consumed, so a nearly full gauge means a nearly exhausted resource.
+Each style defines symbols for filled and empty cells:
 
 <!-- markdownlint-disable MD013 MD060 -->
 

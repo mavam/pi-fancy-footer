@@ -184,7 +184,7 @@ test("formatProviderStatusText keeps default output provider-neutral", () => {
       showCredits: false,
       showReset: false,
     }),
-    "5h:95% 7d:97%",
+    "5h:5% 7d:3%",
   );
 });
 
@@ -944,7 +944,7 @@ test("updateProviderStatusFromHeaders does not merge expired cached windows", as
   assert.equal(snapshot?.state, "unavailable");
 });
 
-test("buildProviderStatusGauge renders battery-style cells per window", () => {
+test("buildProviderStatusGauge fills cells with used quota per window", () => {
   const snapshot = normalizeCodexUsageResponse(
     {
       rate_limit: {
@@ -964,16 +964,16 @@ test("buildProviderStatusGauge renders battery-style cells per window", () => {
   assert.deepEqual(segments, [
     {
       label: "5h",
-      filledGlyphs: "▰▰▰▰",
-      emptyGlyphs: "▱",
-      percentText: "80%",
+      filledGlyphs: "▰",
+      emptyGlyphs: "▱▱▱▱",
+      percentText: "20%",
       color: "success",
     },
     {
       label: "7d",
-      filledGlyphs: "▰",
-      emptyGlyphs: "▱▱▱▱",
-      percentText: "10%",
+      filledGlyphs: "▰▰▰▰",
+      emptyGlyphs: "▱",
+      percentText: "90%",
       color: "error",
     },
   ]);
@@ -983,7 +983,7 @@ test("buildProviderStatusGauge keeps at least one cell visible near the edges", 
   const style = getGaugeStyle("parallelograms");
   const nearlyEmpty = buildProviderStatusGauge(
     normalizeCodexUsageResponse(
-      { rate_limit: { primary_window: { used_percent: 99 } } },
+      { rate_limit: { primary_window: { used_percent: 1 } } },
       now,
     ),
     style,
@@ -993,7 +993,7 @@ test("buildProviderStatusGauge keeps at least one cell visible near the edges", 
 
   const nearlyFull = buildProviderStatusGauge(
     normalizeCodexUsageResponse(
-      { rate_limit: { primary_window: { used_percent: 1 } } },
+      { rate_limit: { primary_window: { used_percent: 99 } } },
       now,
     ),
     style,

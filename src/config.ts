@@ -809,7 +809,7 @@ export function genericFooterSettingsItems(
       values: FOOTER_WIDGET_COLORS.map((color) =>
         colorSettingValue(theme, color),
       ),
-      description: "Choose the fill color for gauges below 60% remaining.",
+      description: "Choose the fill color for gauges above 40% used.",
     },
     {
       id: "gaugeColorError",
@@ -818,7 +818,7 @@ export function genericFooterSettingsItems(
       values: FOOTER_WIDGET_COLORS.map((color) =>
         colorSettingValue(theme, color),
       ),
-      description: "Choose the fill color for gauges below 25% remaining.",
+      description: "Choose the fill color for gauges above 75% used.",
     },
     {
       id: "defaultTextColor",
