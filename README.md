@@ -123,7 +123,7 @@ Top-level settings:
 > [!NOTE]
 > `fancy-footer.json` is validated strictly. Use only the documented keys and values.
 > Invalid configuration falls back to defaults and logs a warning.
->
+
 > [!WARNING]
 > `providerStatus.showReset` no longer accepts booleans. Before upgrading,
 > replace `true` with `"primary"` and `false` with `"off"`. An invalid value
@@ -370,14 +370,15 @@ Notes:
   models as mini gauges per window, for example
   `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38%`.
   Filled cells show the used quota, growing from the left like the context bar,
-  and each window is colored by how close it is to exhaustion. A dim reset
-  countdown belongs to the window immediately before it. The default
-  `showReset: "primary"` annotates only the primary window; use `"all"` to
-  annotate every reported window or `"off"` to hide countdowns.
+  and each window is colored by how close it is to exhaustion. In gauge mode,
+  a dim reset countdown belongs to the window immediately before it. The
+  default `showReset: "primary"` annotates only the primary window; use
+  `"all"` to annotate every reported window or `"off"` to hide countdowns.
   The gauge spans `gaugeWidth` cells and reuses the configured `gaugeStyle`
   glyphs. Set `providerStatus.display` to `text` for the compact
-  `5h:5% ~4h32m 7d:3%` form. Countdown behavior is the same in both display
-  modes and applies to Claude and Codex.
+  `5h:5% ~4h32m 7d:3%` form. Text mode keeps the existing provider severity
+  color for the whole widget. Countdown placement and modes apply to Claude
+  and Codex in both display styles.
   The widget renders only the windows that the provider reports. If Codex omits
   its 5-hour window and promotes the weekly window to primary, the footer
   removes the stale 5-hour value and shows only `7d`. Because that weekly

@@ -32,16 +32,14 @@ test("footerConfigValidationErrors accepts reset countdown modes", () => {
   }
 });
 
-test("footerConfigValidationErrors rejects old and unknown reset modes", () => {
+test("footerConfigValidationErrors explains reset mode migration", () => {
+  const expected = [
+    '  - /providerStatus/showReset: use "off", "primary", or "all" (replace true with "primary" and false with "off")',
+  ];
   for (const showReset of [true, false, "unknown"]) {
-    const errors = footerConfigValidationErrors({
-      providerStatus: { showReset },
-    });
-    assert.ok(errors.length > 0);
-    assert.ok(
-      errors.every((error) =>
-        error.startsWith("  - /providerStatus/showReset: "),
-      ),
+    assert.deepEqual(
+      footerConfigValidationErrors({ providerStatus: { showReset } }),
+      expected,
     );
   }
 });
@@ -62,11 +60,14 @@ test("writeFooterConfigSnapshot preserves a non-default reset mode", async (t) =
     else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
   });
 
+  const configPath = getFooterConfigPath();
+  assert.equal(configPath, join(dir, "fancy-footer.json"));
+
   const config = structuredClone(DEFAULT_FOOTER_CONFIG);
   config.providerStatus.showReset = "off";
   writeFooterConfigSnapshot(config);
 
-  const saved = JSON.parse(await readFile(getFooterConfigPath(), "utf8"));
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
   assert.equal(saved.providerStatus.showReset, "off");
 });
 

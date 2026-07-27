@@ -260,6 +260,11 @@ function describeConfigError(error: {
 }): string[] {
   const path = error.instancePath || "";
   const display = path || "/";
+  if (path === "/providerStatus/showReset") {
+    return [
+      `  - ${display}: use "off", "primary", or "all" (replace true with "primary" and false with "off")`,
+    ];
+  }
   const params = error.params as
     | { additionalProperties?: unknown }
     | undefined;
