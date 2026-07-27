@@ -1,10 +1,12 @@
 ---
 title: Show time left until provider quota resets
-type: breaking
+type: change
 authors:
   - mavam
   - codex
-created: 2026-07-27T15:41:25.313521Z
+prs:
+  - 25
+created: 2026-07-27T15:43:18.450382Z
 ---
 
 Provider quota windows now show how long remains until they reset, directly

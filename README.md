@@ -125,10 +125,9 @@ Top-level settings:
 > Invalid configuration falls back to defaults and logs a warning.
 >
 > [!WARNING]
-> The next major release changes `providerStatus.showReset` and no longer
-> accepts booleans. Before upgrading, replace `true` with `"primary"` and
-> `false` with `"off"`. An invalid value causes the entire file to fall back
-> to defaults.
+> `providerStatus.showReset` no longer accepts booleans. Before upgrading,
+> replace `true` with `"primary"` and `false` with `"off"`. An invalid value
+> causes the entire file to fall back to defaults.
 
 - `refreshMs` (number)
 - `iconFamily`
