@@ -1,0 +1,9 @@
+created: 2026-07-27
+title: Provider quota reset countdowns
+intro: >-
+  Pi Fancy Footer now shows the time remaining until each reported Claude and Codex
+  provider quota window resets. The countdown is enabled by default, and you can choose
+  whether to show it for the primary window or every window.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.2.0
