@@ -446,6 +446,7 @@ export interface FooterMetrics {
 
 export interface WidgetRenderContext {
   width: number;
+  nowMs: number;
   theme: Theme;
   ctx: ExtensionContext;
   gaugeWidth: number;
@@ -535,13 +536,18 @@ export const PROVIDER_STATUS_DISPLAYS = ["gauge", "text"] as const;
 
 export type ProviderStatusDisplay = (typeof PROVIDER_STATUS_DISPLAYS)[number];
 
+export const PROVIDER_STATUS_RESET_MODES = ["off", "primary", "all"] as const;
+
+export type ProviderStatusResetMode =
+  (typeof PROVIDER_STATUS_RESET_MODES)[number];
+
 export interface ProviderStatusConfigSnapshot {
   refreshMs: number;
   cacheTtlMs: number;
   providers: readonly string[];
   display: ProviderStatusDisplay;
   showCredits: boolean;
-  showReset: boolean;
+  showReset: ProviderStatusResetMode;
 }
 
 export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
@@ -550,7 +556,7 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   providers: ["openai-codex", "anthropic"],
   display: "gauge",
   showCredits: false,
-  showReset: false,
+  showReset: "all",
 };
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {

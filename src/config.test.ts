@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   footerConfigValidationErrors,
+  getFooterConfigPath,
   plainSettingValue,
+  writeFooterConfigSnapshot,
 } from "./config.ts";
+import { DEFAULT_FOOTER_CONFIG } from "./shared.ts";
 
 test("footerConfigValidationErrors accepts a valid config", () => {
   assert.deepEqual(
@@ -15,6 +21,54 @@ test("footerConfigValidationErrors accepts a valid config", () => {
     }),
     [],
   );
+});
+
+test("footerConfigValidationErrors accepts reset countdown modes", () => {
+  for (const showReset of ["off", "primary", "all"]) {
+    assert.deepEqual(
+      footerConfigValidationErrors({ providerStatus: { showReset } }),
+      [],
+    );
+  }
+});
+
+test("footerConfigValidationErrors explains reset mode migration", () => {
+  const expected = [
+    '  - /providerStatus/showReset: use "off", "primary", or "all" (replace true with "primary" and false with "off")',
+  ];
+  for (const showReset of [true, false, "unknown"]) {
+    assert.deepEqual(
+      footerConfigValidationErrors({ providerStatus: { showReset } }),
+      expected,
+    );
+  }
+});
+
+test("the default provider status shows all reset countdowns", () => {
+  assert.equal(DEFAULT_FOOTER_CONFIG.providerStatus.showReset, "all");
+});
+
+test("writeFooterConfigSnapshot preserves a non-default reset mode", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-config-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  t.after(() => {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  });
+
+  const configPath = getFooterConfigPath();
+  assert.equal(configPath, join(dir, "fancy-footer.json"));
+
+  const config = structuredClone(DEFAULT_FOOTER_CONFIG);
+  config.providerStatus.showReset = "off";
+  writeFooterConfigSnapshot(config);
+
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  assert.equal(saved.providerStatus.showReset, "off");
 });
 
 test("footerConfigValidationErrors names unknown keys with rename hints", () => {

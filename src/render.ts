@@ -50,11 +50,12 @@ import {
 } from "./data-widgets.ts";
 import {
   buildProviderStatusGauge,
-  formatProviderStatusReset,
   formatProviderStatusText,
+  formatResetCountdown,
   isProviderStatusRelevantToModel,
   projectProviderStatusForModel,
   providerStatusColor,
+  shouldShowReset,
 } from "./provider-status.ts";
 
 // GitHub Primer's default merged/done foreground color (#8250df). This hue is
@@ -95,8 +96,9 @@ function buildProviderStatusPart(
   gaugeColors: GaugeColorsSnapshot,
   theme: Theme,
   defaultTextColor: WidgetRenderContext["defaultTextColor"],
+  nowMs: number,
 ): string {
-  const text = formatProviderStatusText(snapshot, config);
+  const text = formatProviderStatusText(snapshot, config, nowMs);
   if (!text) return "";
 
   const gauge =
@@ -105,26 +107,28 @@ function buildProviderStatusPart(
       : [];
   let body: string;
   if (gauge.length > 0) {
-    const pieces = gauge.map(
-      (segment) =>
+    const pieces = gauge.map((segment) => {
+      let piece =
         theme.fg(defaultTextColor, `${segment.label} `) +
-        theme.fg(gaugeColorFor(segment.color, gaugeColors), segment.filledGlyphs) +
+        theme.fg(
+          gaugeColorFor(segment.color, gaugeColors),
+          segment.filledGlyphs,
+        ) +
         theme.fg("dim", segment.emptyGlyphs) +
-        theme.fg(defaultTextColor, ` ${segment.percentText}`),
-    );
-    const extras: string[] = [];
-    if (config.showReset && snapshot.primary?.resetAt) {
-      const reset = formatProviderStatusReset(snapshot.primary.resetAt);
-      if (reset) extras.push(`reset:${reset}`);
-    }
+        theme.fg(defaultTextColor, ` ${segment.percentText}`);
+      if (
+        shouldShowReset(config.showReset, segment.role) &&
+        segment.resetAt !== undefined
+      ) {
+        const reset = formatResetCountdown(segment.resetAt, nowMs);
+        if (reset) piece += theme.fg("dim", ` ${reset}`);
+      }
+      return piece;
+    });
+    body = pieces.join(" ");
     if (config.showCredits && snapshot.credits) {
-      extras.push(`cr:${snapshot.credits}`);
+      body += theme.fg(defaultTextColor, ` cr:${snapshot.credits}`);
     }
-    body =
-      pieces.join(" ") +
-      (extras.length > 0
-        ? theme.fg(defaultTextColor, ` ${extras.join(" ")}`)
-        : "");
   } else {
     const color = providerStatusColor(snapshot);
     body = theme.fg(
@@ -770,10 +774,11 @@ function buildFooterWidgets(
     {
       ...baseWidgetDefaults("provider-status", iconFamily),
       styled: true,
-      visible: ({ providerStatuses, providerStatusConfig }) =>
+      visible: ({ providerStatuses, providerStatusConfig, nowMs }) =>
         providerStatuses.some(
           (snapshot) =>
-            formatProviderStatusText(snapshot, providerStatusConfig) !== "",
+            formatProviderStatusText(snapshot, providerStatusConfig, nowMs) !==
+            "",
         ),
       renderText: ({
         providerStatuses,
@@ -782,6 +787,7 @@ function buildFooterWidgets(
         gaugeWidth,
         gaugeColors,
         defaultTextColor,
+        nowMs,
       }) => {
         const parts: string[] = [];
         for (const snapshot of providerStatuses) {
@@ -793,6 +799,7 @@ function buildFooterWidgets(
             gaugeColors,
             theme,
             defaultTextColor,
+            nowMs,
           );
           if (part) parts.push(part);
         }
@@ -1020,6 +1027,7 @@ export function renderFooterLines(
   footerConfig: FooterConfigSnapshot,
   extensionWidgets: readonly NormalizedFancyFooterDataWidget[] = [],
   providerStatuses: readonly ProviderStatusSnapshot[] = [],
+  nowMs = Date.now(),
 ): string[] {
   if (width <= 0) return ["", ""];
 
@@ -1040,6 +1048,7 @@ export function renderFooterLines(
     .map((snapshot) => projectProviderStatusForModel(snapshot, ctx.model));
   const renderCtx: WidgetRenderContext = {
     width,
+    nowMs,
     theme,
     ctx,
     gaugeWidth: footerConfig.gaugeWidth,

@@ -5,6 +5,7 @@ import {
   type GaugeSegment,
   type GaugeStyleDef,
   type ProviderStatusConfigSnapshot,
+  type ProviderStatusResetMode,
   type ProviderStatusScopedWindow,
   type ProviderStatusSnapshot,
   type ProviderStatusState,
@@ -236,9 +237,17 @@ interface AuthCredentials {
   raw: Record<string, unknown>;
 }
 
+export function shouldShowReset(
+  mode: ProviderStatusResetMode,
+  role: "primary" | "secondary",
+): boolean {
+  return mode === "all" || (mode === "primary" && role === "primary");
+}
+
 export function formatProviderStatusText(
   snapshot: ProviderStatusSnapshot | undefined,
   config: Pick<ProviderStatusConfigSnapshot, "showCredits" | "showReset">,
+  nowMs = Date.now(),
 ): string {
   if (!snapshot) return "";
   if (
@@ -249,19 +258,17 @@ export function formatProviderStatusText(
   }
 
   const parts: string[] = [];
-  if (snapshot.primary) {
-    parts.push(
-      `${snapshot.primary.label}:${formatGaugePercent(snapshot.primary.usedPercent)}`,
-    );
-  }
-  if (snapshot.secondary) {
-    parts.push(
-      `${snapshot.secondary.label}:${formatGaugePercent(snapshot.secondary.usedPercent)}`,
-    );
-  }
-  if (config.showReset && snapshot.primary?.resetAt) {
-    const reset = formatReset(snapshot.primary.resetAt);
-    if (reset) parts.push(`reset:${reset}`);
+  for (const [role, window] of [
+    ["primary", snapshot.primary],
+    ["secondary", snapshot.secondary],
+  ] as const) {
+    if (!window) continue;
+    let part = `${window.label}:${formatGaugePercent(window.usedPercent)}`;
+    if (shouldShowReset(config.showReset, role) && window.resetAt !== undefined) {
+      const reset = formatResetCountdown(window.resetAt, nowMs);
+      if (reset) part += ` ${reset}`;
+    }
+    parts.push(part);
   }
   if (config.showCredits && snapshot.credits) {
     parts.push(`cr:${snapshot.credits}`);
@@ -281,6 +288,8 @@ export function providerStatusColor(
 
 export interface ProviderStatusGaugeSegment extends GaugeSegment {
   label: string;
+  role: "primary" | "secondary";
+  resetAt?: number;
 }
 
 export function buildProviderStatusGauge(
@@ -290,10 +299,15 @@ export function buildProviderStatusGauge(
 ): ProviderStatusGaugeSegment[] {
   if (!snapshot) return [];
   const segments: ProviderStatusGaugeSegment[] = [];
-  for (const window of [snapshot.primary, snapshot.secondary]) {
+  for (const [role, window] of [
+    ["primary", snapshot.primary],
+    ["secondary", snapshot.secondary],
+  ] as const) {
     if (!window) continue;
     segments.push({
       label: window.label,
+      role,
+      ...(window.resetAt !== undefined ? { resetAt: window.resetAt } : {}),
       ...buildGauge(window.usedPercent, style, cells),
     });
   }
@@ -1137,16 +1151,34 @@ function computeProviderStatusState(
   return severity === "success" ? "ok" : severity;
 }
 
-export function formatProviderStatusReset(resetAt: number): string {
-  return formatReset(resetAt);
-}
+export function formatResetCountdown(
+  resetAt: number,
+  nowMs = Date.now(),
+): string {
+  if (!Number.isFinite(resetAt) || !Number.isFinite(nowMs) || resetAt <= 0) {
+    return "";
+  }
 
-function formatReset(resetAt: number): string {
-  const date = new Date(resetAt * 1000);
-  if (!Number.isFinite(date.getTime())) return "";
-  return `${String(date.getHours()).padStart(2, "0")}:${String(
-    date.getMinutes(),
-  ).padStart(2, "0")}`;
+  const remainingMs = resetAt * 1000 - nowMs;
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return "";
+
+  const minuteMs = 60_000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  if (remainingMs >= dayMs) {
+    const days = Math.floor(remainingMs / dayMs);
+    const hours = Math.floor((remainingMs % dayMs) / hourMs);
+    return `~${days}d${hours > 0 ? `${hours}h` : ""}`;
+  }
+  if (remainingMs >= hourMs) {
+    const hours = Math.floor(remainingMs / hourMs);
+    const minutes = Math.floor((remainingMs % hourMs) / minuteMs);
+    return `~${hours}h${minutes > 0 ? `${minutes}m` : ""}`;
+  }
+  if (remainingMs >= minuteMs) {
+    return `~${Math.floor(remainingMs / minuteMs)}m`;
+  }
+  return "~now";
 }
 
 function normalizeResetAt(value: number | undefined): number | undefined {

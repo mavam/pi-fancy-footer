@@ -3,6 +3,7 @@ import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { githubMergedForegroundPrefix, renderFooterLines } from "./render.ts";
 import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
+import { parseCodexRateLimitHeaders } from "./provider-status.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
   EMPTY_GIT_INFO,
@@ -298,6 +299,231 @@ test("renderFooterLines renders a weekly-only Codex quota gauge", () => {
 
   assert.match(lines.join("\n"), /%7d ▰▱▱▱▱ 16%/);
   assert.doesNotMatch(lines.join("\n"), /5h/);
+});
+
+test("renderFooterLines places reset countdowns beside matching gauges", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const resetStatus: ProviderStatusSnapshot = {
+    ...claudeProviderStatus,
+    primary: {
+      ...claudeProviderStatus.primary!,
+      resetAt: (nowMs + (4 * 60 + 32) * 60_000) / 1000,
+    },
+    secondary: {
+      ...claudeProviderStatus.secondary!,
+      resetAt: (nowMs + (24 + 7) * 60 * 60_000) / 1000,
+    },
+  };
+  const gaugeConfig: FooterConfigSnapshot = {
+    ...footerConfig,
+    gaugeStyle: "parallelograms",
+    providerStatus: {
+      ...footerConfig.providerStatus,
+      display: "gauge",
+    },
+  };
+  const ctx = contextWithModel({
+    provider: "anthropic",
+    id: "claude-sonnet-4",
+    name: "Claude Sonnet 4",
+  }) as never;
+  const render = (showReset?: "off" | "primary" | "all") =>
+    renderFooterLines(
+      160,
+      ctx,
+      EMPTY_GIT_INFO,
+      "off",
+      theme as never,
+      usageMetrics,
+      {
+        ...gaugeConfig,
+        providerStatus:
+          showReset === undefined
+            ? gaugeConfig.providerStatus
+            : { ...gaugeConfig.providerStatus, showReset },
+      },
+      [],
+      [resetStatus],
+      nowMs,
+    ).join("\n");
+
+  assert.match(
+    render("primary"),
+    /5h ▱▱▱▱▱ 0% ~4h32m 7d ▰▱▱▱▱ 8%(?! ~1d7h)/,
+  );
+  assert.match(
+    render(),
+    /5h ▱▱▱▱▱ 0% ~4h32m 7d ▰▱▱▱▱ 8% ~1d7h/,
+  );
+  assert.doesNotMatch(render("off"), /~(?:4h32m|1d7h)/);
+});
+
+test("renderFooterLines renders gauge countdowns with the dim color", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+    getColorMode: () => "truecolor" as const,
+  };
+  const status: ProviderStatusSnapshot = {
+    ...claudeProviderStatus,
+    primary: {
+      ...claudeProviderStatus.primary!,
+      resetAt: (nowMs + 2 * 60 * 60_000) / 1000,
+    },
+  };
+  renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      providerStatus: { ...footerConfig.providerStatus, display: "gauge" },
+    },
+    [],
+    [status],
+    nowMs,
+  );
+
+  assert.ok(colors.includes("dim: ~2h"));
+});
+
+test("renderFooterLines respects reset mode for secondary-only gauges", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const secondaryOnly: ProviderStatusSnapshot = {
+    provider: "anthropic",
+    source: "api",
+    fetchedAt: new Date(nowMs).toISOString(),
+    state: "ok",
+    secondary: {
+      ...claudeProviderStatus.secondary!,
+      resetAt: (nowMs + 5 * 24 * 60 * 60_000) / 1000,
+    },
+  };
+  const ctx = contextWithModel({
+    provider: "anthropic",
+    id: "claude-sonnet-4",
+    name: "Claude Sonnet 4",
+  }) as never;
+  const render = (showReset: "primary" | "all") =>
+    renderFooterLines(
+      120,
+      ctx,
+      EMPTY_GIT_INFO,
+      "off",
+      theme as never,
+      usageMetrics,
+      {
+        ...footerConfig,
+        providerStatus: {
+          ...footerConfig.providerStatus,
+          display: "gauge",
+          showReset,
+        },
+      },
+      [],
+      [secondaryOnly],
+      nowMs,
+    ).join("\n");
+
+  assert.doesNotMatch(render("primary"), /~5d/);
+  assert.match(render("all"), /7d .* 8% ~5d/);
+});
+
+test("renderFooterLines annotates a weekly-only Codex primary gauge", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const weeklyOnly: ProviderStatusSnapshot = {
+    provider: "openai-codex",
+    source: "api",
+    fetchedAt: new Date(nowMs).toISOString(),
+    state: "ok",
+    primary: {
+      label: "7d",
+      leftPercent: 96,
+      usedPercent: 4,
+      resetAt: (nowMs + (5 * 24 + 4) * 60 * 60_000) / 1000,
+    },
+  };
+  const lines = renderFooterLines(
+    120,
+    contextWithModel({
+      provider: "openai",
+      id: "gpt-5-codex",
+      name: "GPT-5 Codex",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      providerStatus: { ...footerConfig.providerStatus, display: "gauge" },
+    },
+    [],
+    [weeklyOnly],
+    nowMs,
+  );
+
+  assert.match(lines.join("\n"), /7d .* 4% ~5d4h/);
+  assert.doesNotMatch(lines.join("\n"), /5h/);
+});
+
+test("renderFooterLines matches header-derived countdowns to each window", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const status = parseCodexRateLimitHeaders(
+    {
+      "x-codex-primary-used-percent": "20",
+      "x-codex-primary-window-minutes": "300",
+      "x-codex-primary-reset-at": String(nowMs / 1000 + 2 * 60 * 60),
+      "x-codex-secondary-used-percent": "40",
+      "x-codex-secondary-window-minutes": "10080",
+      "x-codex-secondary-reset-at": String(
+        nowMs / 1000 + (5 * 24 + 4) * 60 * 60,
+      ),
+    },
+    new Date(nowMs),
+  );
+  assert.ok(status);
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({
+      provider: "openai",
+      id: "gpt-5-codex",
+      name: "GPT-5 Codex",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      gaugeStyle: "parallelograms",
+      providerStatus: {
+        ...footerConfig.providerStatus,
+        display: "gauge",
+        showReset: "all",
+      },
+    },
+    [],
+    [status],
+    nowMs,
+  );
+
+  assert.match(
+    lines.join("\n"),
+    /5h ▰▱▱▱▱ 20% ~2h 7d ▰▰▱▱▱ 40% ~5d4h/,
+  );
 });
 
 test("renderFooterLines shows Anthropic provider status for Claude models", () => {
@@ -670,4 +896,59 @@ test("renderFooterLines clamps a grown context bar at narrow widths", () => {
   const row = lines[0] ?? "";
   assert.ok(visibleWidth(row) <= 38);
   assert.match(row, /[█░]/);
+});
+
+test("renderFooterLines truncates countdown gauges ANSI-safely", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const ansiTheme = {
+    fg: (_color: string, text: string) => `\x1b[2m${text}\x1b[0m`,
+    getColorMode: () => "truecolor" as const,
+  };
+  const status: ProviderStatusSnapshot = {
+    ...claudeProviderStatus,
+    primary: {
+      ...claudeProviderStatus.primary!,
+      resetAt: (nowMs + (4 * 60 + 32) * 60_000) / 1000,
+    },
+    secondary: {
+      ...claudeProviderStatus.secondary!,
+      resetAt: (nowMs + (24 + 7) * 60 * 60_000) / 1000,
+    },
+  };
+  const config: FooterConfigSnapshot = {
+    ...footerConfig,
+    gaugeStyle: "parallelograms",
+    providerStatus: {
+      ...footerConfig.providerStatus,
+      display: "gauge",
+      showReset: "all",
+    },
+    widgets: {
+      ...footerConfig.widgets,
+      "context-bar": { enabled: true },
+    },
+  };
+
+  for (const width of [16, 24, 32, 40]) {
+    const lines = renderFooterLines(
+      width,
+      contextWithModel({
+        provider: "anthropic",
+        id: "claude-sonnet-4",
+        name: "Claude Sonnet 4",
+      }) as never,
+      EMPTY_GIT_INFO,
+      "off",
+      ansiTheme as never,
+      usageMetrics,
+      config,
+      [],
+      [status],
+      nowMs,
+    );
+    for (const line of lines) {
+      assert.ok(visibleWidth(line) <= width);
+      assert.equal(line.replace(/\x1b\[[0-9;]*m/g, "").includes("\x1b"), false);
+    }
+  }
 });
