@@ -1,0 +1,9 @@
+created: 2026-07-27
+title: Model-scoped Claude quota limits
+intro: >-
+  The footer now shows the Claude quota window that applies to the active model, so
+  model-specific caps are visible before they interrupt a session. It continues to
+  prioritize whichever weekly limit has the least headroom.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.1.0
