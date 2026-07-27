@@ -41,6 +41,7 @@ import {
   MIN_PROVIDER_STATUS_REFRESH_MS,
   PROVIDER_STATUS_DISPLAYS,
   PROVIDER_STATUS_PROVIDER_IDS,
+  PROVIDER_STATUS_RESET_MODES,
   type BuiltInFooterWidgetId,
   type FooterConfigSnapshot,
   type FooterWidgetAlign,
@@ -72,6 +73,7 @@ const providerStatusProviderSchema = literalUnion(
   PROVIDER_STATUS_PROVIDER_IDS,
 );
 const providerStatusDisplaySchema = literalUnion(PROVIDER_STATUS_DISPLAYS);
+const providerStatusResetModeSchema = literalUnion(PROVIDER_STATUS_RESET_MODES);
 
 const providerStatusConfigSchema = Type.Object(
   {
@@ -90,7 +92,7 @@ const providerStatusConfigSchema = Type.Object(
     providers: Type.Optional(Type.Array(providerStatusProviderSchema)),
     display: Type.Optional(providerStatusDisplaySchema),
     showCredits: Type.Optional(Type.Boolean()),
-    showReset: Type.Optional(Type.Boolean()),
+    showReset: Type.Optional(providerStatusResetModeSchema),
   },
   { additionalProperties: false },
 );

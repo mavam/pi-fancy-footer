@@ -88,7 +88,7 @@ Create `~/.pi/agent/fancy-footer.json`:
     "providers": ["openai-codex", "anthropic"],
     "display": "gauge",
     "showCredits": false,
-    "showReset": false
+    "showReset": "primary"
   },
   "widgets": {
     "context-bar": {
@@ -122,7 +122,13 @@ Top-level settings:
 
 > [!NOTE]
 > `fancy-footer.json` is validated strictly. Use only the documented keys and values.
-> Invalid config falls back to defaults and logs a warning.
+> Invalid configuration falls back to defaults and logs a warning.
+>
+> [!WARNING]
+> The next major release changes `providerStatus.showReset` and no longer
+> accepts booleans. Before upgrading, replace `true` with `"primary"` and
+> `false` with `"off"`. An invalid value causes the entire file to fall back
+> to defaults.
 
 - `refreshMs` (number)
 - `iconFamily`
@@ -147,8 +153,11 @@ Top-level settings:
   - `providers` - supported provider adapters (`openai-codex`, `anthropic`)
   - `display` - render quota windows as a mini `gauge` (default) or plain
     `text`
-  - `showCredits` - include provider-specific credit balance when available
-  - `showReset` - include the primary reset time when available
+  - `showCredits` - include a provider-specific credit balance when available
+  - `showReset` - control relative reset countdowns:
+    - `"off"` - hide all countdowns
+    - `"primary"` - show the primary window countdown (default)
+    - `"all"` - show every reported window countdown
 
 Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
@@ -359,19 +368,24 @@ Notes:
   okay status. By default it uses semantic colors (warning / error / success);
   set this widget's icon color to override them.
 - `provider-status` shows provider quota windows for OpenAI Codex and Claude
-  models as mini gauges per window, e.g.
-  `5h ▰▰▰▰▱ 80% 7d ▰▰▱▱▱ 38%`,
-  where filled cells show the used quota, growing from the left just like the
-  context bar, and each window is colored by how close it is to exhaustion.
+  models as mini gauges per window, for example
+  `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38%`.
+  Filled cells show the used quota, growing from the left like the context bar,
+  and each window is colored by how close it is to exhaustion. A dim reset
+  countdown belongs to the window immediately before it. The default
+  `showReset: "primary"` annotates only the primary window; use `"all"` to
+  annotate every reported window or `"off"` to hide countdowns.
   The gauge spans `gaugeWidth` cells and reuses the configured `gaugeStyle`
-  glyphs; set `providerStatus.display` to `text` for the compact
-  `5h:5% 7d:3%` form. The widget renders only the
-  windows that the provider reports. If Codex omits its 5-hour window and
-  promotes the weekly window to primary, the footer removes the stale 5-hour
-  value and shows only `7d`. In an output such as
-  `󰾆▱▱▱▱▱ 0% 󰓅7d ▰▰▰▰▱ 84%`, `0%` is the share of pi's context window in
-  use and `84%` is the used weekly Codex quota. Codex uses existing pi
-  OpenAI Codex credentials
+  glyphs. Set `providerStatus.display` to `text` for the compact
+  `5h:5% ~4h32m 7d:3%` form. Countdown behavior is the same in both display
+  modes and applies to Claude and Codex.
+  The widget renders only the windows that the provider reports. If Codex omits
+  its 5-hour window and promotes the weekly window to primary, the footer
+  removes the stale 5-hour value and shows only `7d`. Because that weekly
+  window is primary, it receives a countdown under the default mode. In an
+  output such as `󰾆▱▱▱▱▱ 0% 󰓅7d ▰▰▰▰▱ 84% ~1d7h`, `0%` is the share of pi's
+  context window in use and `84%` is the used weekly Codex quota. Codex uses
+  existing pi OpenAI Codex credentials
   from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
   `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly

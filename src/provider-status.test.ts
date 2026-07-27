@@ -7,6 +7,7 @@ import {
   buildProviderStatusGauge,
   collectProviderStatus,
   formatProviderStatusText,
+  formatResetCountdown,
   isProviderStatusRelevantToModel,
   normalizeClaudeUsageResponse,
   normalizeCodexUsageResponse,
@@ -24,7 +25,7 @@ const providerStatusConfig: ProviderStatusConfigSnapshot = {
   providers: ["openai-codex"],
   display: "gauge",
   showCredits: false,
-  showReset: false,
+  showReset: "off",
 };
 const anthropicProviderStatusConfig: ProviderStatusConfigSnapshot = {
   ...providerStatusConfig,
@@ -430,29 +431,106 @@ test("formatProviderStatusText keeps default output provider-neutral", () => {
   assert.equal(
     formatProviderStatusText(snapshot, {
       showCredits: false,
-      showReset: false,
+      showReset: "off",
     }),
     "5h:5% 7d:3%",
   );
 });
 
-test("formatProviderStatusText supports optional credits and reset time", () => {
-  const snapshot = normalizeCodexUsageResponse(
-    {
-      rate_limit: {
-        primary_window: { used_percent: 50, reset_at: 1_778_064_000 },
-      },
-      credits: { balance: "12" },
-    },
-    now,
-  );
+test("formatResetCountdown truncates at unit boundaries", () => {
+  const nowMs = 1_800_000_000_000;
+  const resetAtAfter = (remainingMs: number) =>
+    (nowMs + remainingMs) / 1000;
 
-  assert.match(
-    formatProviderStatusText(snapshot, {
-      showCredits: true,
-      showReset: true,
-    }),
-    /^5h:50% reset:\d\d:\d\d cr:12$/,
+  assert.equal(formatResetCountdown(Number.NaN, nowMs), "");
+  assert.equal(formatResetCountdown(Number.POSITIVE_INFINITY, nowMs), "");
+  assert.equal(formatResetCountdown(resetAtAfter(60_000), Number.NaN), "");
+  assert.equal(formatResetCountdown(0, nowMs), "");
+  assert.equal(formatResetCountdown(nowMs / 1000, nowMs), "");
+  assert.equal(formatResetCountdown(resetAtAfter(1), nowMs), "~now");
+  assert.equal(formatResetCountdown(resetAtAfter(59_000), nowMs), "~now");
+  assert.equal(formatResetCountdown(resetAtAfter(60_000), nowMs), "~1m");
+  assert.equal(
+    formatResetCountdown(resetAtAfter(59 * 60_000 + 59_000), nowMs),
+    "~59m",
+  );
+  assert.equal(formatResetCountdown(resetAtAfter(60 * 60_000), nowMs), "~1h");
+  assert.equal(
+    formatResetCountdown(
+      resetAtAfter(4 * 60 * 60_000 + 32 * 60_000 + 59_000),
+      nowMs,
+    ),
+    "~4h32m",
+  );
+  assert.equal(
+    formatResetCountdown(resetAtAfter(24 * 60 * 60_000), nowMs),
+    "~1d",
+  );
+  assert.equal(
+    formatResetCountdown(
+      resetAtAfter(31 * 60 * 60_000 + 59 * 60_000),
+      nowMs,
+    ),
+    "~1d7h",
+  );
+});
+
+test("formatProviderStatusText places countdowns next to their windows", () => {
+  const nowMs = 1_800_000_000_000;
+  const snapshot = {
+    provider: "anthropic" as const,
+    source: "api" as const,
+    fetchedAt: new Date(nowMs).toISOString(),
+    state: "ok" as const,
+    primary: {
+      label: "5h",
+      usedPercent: 2,
+      leftPercent: 98,
+      resetAt: (nowMs + (4 * 60 + 32) * 60_000) / 1000,
+    },
+    secondary: {
+      label: "7d",
+      usedPercent: 97,
+      leftPercent: 3,
+      resetAt: (nowMs + (24 + 7) * 60 * 60_000) / 1000,
+    },
+    credits: "12",
+  };
+
+  assert.equal(
+    formatProviderStatusText(
+      snapshot,
+      { showCredits: true, showReset: "off" },
+      nowMs,
+    ),
+    "5h:2% 7d:97% cr:12",
+  );
+  assert.equal(
+    formatProviderStatusText(
+      snapshot,
+      { showCredits: true, showReset: "primary" },
+      nowMs,
+    ),
+    "5h:2% ~4h32m 7d:97% cr:12",
+  );
+  assert.equal(
+    formatProviderStatusText(
+      snapshot,
+      { showCredits: true, showReset: "all" },
+      nowMs,
+    ),
+    "5h:2% ~4h32m 7d:97% ~1d7h cr:12",
+  );
+  assert.equal(
+    formatProviderStatusText(
+      {
+        ...snapshot,
+        primary: { ...snapshot.primary, resetAt: nowMs / 1000 },
+      },
+      { showCredits: true, showReset: "primary" },
+      nowMs,
+    ),
+    "5h:2% 7d:97% cr:12",
   );
 });
 
@@ -467,7 +545,7 @@ test("formatProviderStatusText can show provider-specific credits without window
   assert.equal(
     formatProviderStatusText(snapshot, {
       showCredits: true,
-      showReset: false,
+      showReset: "off",
     }),
     "cr:42",
   );
@@ -1305,6 +1383,7 @@ test("buildProviderStatusGauge fills cells with used quota per window", () => {
   assert.deepEqual(segments, [
     {
       label: "5h",
+      role: "primary",
       filledGlyphs: "▰",
       emptyGlyphs: "▱▱▱▱",
       percentText: "20%",
@@ -1312,6 +1391,7 @@ test("buildProviderStatusGauge fills cells with used quota per window", () => {
     },
     {
       label: "7d",
+      role: "secondary",
       filledGlyphs: "▰▰▰▰",
       emptyGlyphs: "▱",
       percentText: "90%",

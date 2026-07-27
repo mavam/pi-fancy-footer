@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   footerConfigValidationErrors,
+  getFooterConfigPath,
   plainSettingValue,
+  writeFooterConfigSnapshot,
 } from "./config.ts";
+import { DEFAULT_FOOTER_CONFIG } from "./shared.ts";
 
 test("footerConfigValidationErrors accepts a valid config", () => {
   assert.deepEqual(
@@ -15,6 +21,53 @@ test("footerConfigValidationErrors accepts a valid config", () => {
     }),
     [],
   );
+});
+
+test("footerConfigValidationErrors accepts reset countdown modes", () => {
+  for (const showReset of ["off", "primary", "all"]) {
+    assert.deepEqual(
+      footerConfigValidationErrors({ providerStatus: { showReset } }),
+      [],
+    );
+  }
+});
+
+test("footerConfigValidationErrors rejects old and unknown reset modes", () => {
+  for (const showReset of [true, false, "unknown"]) {
+    const errors = footerConfigValidationErrors({
+      providerStatus: { showReset },
+    });
+    assert.ok(errors.length > 0);
+    assert.ok(
+      errors.every((error) =>
+        error.startsWith("  - /providerStatus/showReset: "),
+      ),
+    );
+  }
+});
+
+test("the default provider status shows the primary reset countdown", () => {
+  assert.equal(DEFAULT_FOOTER_CONFIG.providerStatus.showReset, "primary");
+});
+
+test("writeFooterConfigSnapshot preserves a non-default reset mode", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-config-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  t.after(() => {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+  });
+
+  const config = structuredClone(DEFAULT_FOOTER_CONFIG);
+  config.providerStatus.showReset = "off";
+  writeFooterConfigSnapshot(config);
+
+  const saved = JSON.parse(await readFile(getFooterConfigPath(), "utf8"));
+  assert.equal(saved.providerStatus.showReset, "off");
 });
 
 test("footerConfigValidationErrors names unknown keys with rename hints", () => {
