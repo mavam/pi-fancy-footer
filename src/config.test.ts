@@ -44,8 +44,8 @@ test("footerConfigValidationErrors explains reset mode migration", () => {
   }
 });
 
-test("the default provider status shows the primary reset countdown", () => {
-  assert.equal(DEFAULT_FOOTER_CONFIG.providerStatus.showReset, "primary");
+test("the default provider status shows all reset countdowns", () => {
+  assert.equal(DEFAULT_FOOTER_CONFIG.providerStatus.showReset, "all");
 });
 
 test("writeFooterConfigSnapshot preserves a non-default reset mode", async (t) => {

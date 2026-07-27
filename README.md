@@ -88,7 +88,7 @@ Create `~/.pi/agent/fancy-footer.json`:
     "providers": ["openai-codex", "anthropic"],
     "display": "gauge",
     "showCredits": false,
-    "showReset": "primary"
+    "showReset": "all"
   },
   "widgets": {
     "context-bar": {
@@ -155,8 +155,8 @@ Top-level settings:
   - `showCredits` - include a provider-specific credit balance when available
   - `showReset` - control relative reset countdowns:
     - `"off"` - hide all countdowns
-    - `"primary"` - show the primary window countdown (default)
-    - `"all"` - show every reported window countdown
+    - `"primary"` - show the primary window countdown
+    - `"all"` - show every reported window countdown (default)
 
 Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
@@ -368,16 +368,16 @@ Notes:
   set this widget's icon color to override them.
 - `provider-status` shows provider quota windows for OpenAI Codex and Claude
   models as mini gauges per window, for example
-  `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38%`.
+  `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38% ~4d6h`.
   Filled cells show the used quota, growing from the left like the context bar,
   and each window is colored by how close it is to exhaustion. In gauge mode,
   a dim reset countdown belongs to the window immediately before it. The
-  default `showReset: "primary"` annotates only the primary window; use
-  `"all"` to annotate every reported window or `"off"` to hide countdowns.
+  default `showReset: "all"` annotates every reported window; use `"primary"`
+  to annotate only the primary window or `"off"` to hide countdowns.
   The gauge spans `gaugeWidth` cells and reuses the configured `gaugeStyle`
   glyphs. Set `providerStatus.display` to `text` for the compact
-  `5h:5% ~4h32m 7d:3%` form. Text mode keeps the existing provider severity
-  color for the whole widget. Countdown placement and modes apply to Claude
+  `5h:5% ~4h32m 7d:3% ~5d4h` form. Text mode keeps the existing provider
+  severity color for the whole widget. Countdown placement and modes apply to Claude
   and Codex in both display styles.
   The widget renders only the windows that the provider reports. If Codex omits
   its 5-hour window and promotes the weekly window to primary, the footer

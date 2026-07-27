@@ -556,7 +556,7 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   providers: ["openai-codex", "anthropic"],
   display: "gauge",
   showCredits: false,
-  showReset: "primary",
+  showReset: "all",
 };
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {

@@ -327,7 +327,7 @@ test("renderFooterLines places reset countdowns beside matching gauges", () => {
     id: "claude-sonnet-4",
     name: "Claude Sonnet 4",
   }) as never;
-  const render = (showReset: "off" | "primary" | "all") =>
+  const render = (showReset?: "off" | "primary" | "all") =>
     renderFooterLines(
       160,
       ctx,
@@ -337,7 +337,10 @@ test("renderFooterLines places reset countdowns beside matching gauges", () => {
       usageMetrics,
       {
         ...gaugeConfig,
-        providerStatus: { ...gaugeConfig.providerStatus, showReset },
+        providerStatus:
+          showReset === undefined
+            ? gaugeConfig.providerStatus
+            : { ...gaugeConfig.providerStatus, showReset },
       },
       [],
       [resetStatus],
@@ -349,7 +352,7 @@ test("renderFooterLines places reset countdowns beside matching gauges", () => {
     /5h ▱▱▱▱▱ 0% ~4h32m 7d ▰▱▱▱▱ 8%(?! ~1d7h)/,
   );
   assert.match(
-    render("all"),
+    render(),
     /5h ▱▱▱▱▱ 0% ~4h32m 7d ▰▱▱▱▱ 8% ~1d7h/,
   );
   assert.doesNotMatch(render("off"), /~(?:4h32m|1d7h)/);
