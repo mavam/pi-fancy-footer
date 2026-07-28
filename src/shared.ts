@@ -455,7 +455,7 @@ export interface WidgetRenderContext {
   providerStatuses: readonly ProviderStatusSnapshot[];
   providerStatusConfig: Pick<
     ProviderStatusConfigSnapshot,
-    "display" | "showCredits" | "showReset"
+    "display" | "showCredits" | "showReset" | "resetMinUsedPercent"
   >;
   defaultIconColor: FooterWidgetColor;
   defaultTextColor: FooterWidgetColor;
@@ -548,6 +548,8 @@ export interface ProviderStatusConfigSnapshot {
   display: ProviderStatusDisplay;
   showCredits: boolean;
   showReset: ProviderStatusResetMode;
+  /** Inclusive used-percentage threshold for displaying reset countdowns. */
+  resetMinUsedPercent: number;
 }
 
 export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
@@ -557,6 +559,7 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   display: "gauge",
   showCredits: false,
   showReset: "all",
+  resetMinUsedPercent: 75,
 };
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {

@@ -320,6 +320,7 @@ test("renderFooterLines places reset countdowns beside matching gauges", () => {
     providerStatus: {
       ...footerConfig.providerStatus,
       display: "gauge",
+      resetMinUsedPercent: 0,
     },
   };
   const ctx = contextWithModel({
@@ -358,6 +359,48 @@ test("renderFooterLines places reset countdowns beside matching gauges", () => {
   assert.doesNotMatch(render("off"), /~(?:4h32m|1d7h)/);
 });
 
+test("renderFooterLines gates gauge countdowns by displayed usage", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
+  const status: ProviderStatusSnapshot = {
+    ...claudeProviderStatus,
+    primary: {
+      label: "5h",
+      usedPercent: 74.94,
+      leftPercent: 25.06,
+      resetAt: (nowMs + 60 * 60_000) / 1000,
+    },
+    secondary: {
+      label: "7d",
+      usedPercent: 80,
+      leftPercent: 20,
+      resetAt: (nowMs + 2 * 60 * 60_000) / 1000,
+    },
+  };
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({
+      provider: "anthropic",
+      id: "claude-sonnet-4",
+      name: "Claude Sonnet 4",
+    }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      gaugeStyle: "parallelograms",
+      providerStatus: { ...footerConfig.providerStatus, display: "gauge" },
+    },
+    [],
+    [status],
+    nowMs,
+  ).join("\n");
+
+  assert.doesNotMatch(lines, /74\.9% ~1h/);
+  assert.match(lines, /80% ~2h/);
+});
+
 test("renderFooterLines renders gauge countdowns with the dim color", () => {
   const nowMs = Date.parse("2026-06-16T10:00:00Z");
   const colors: string[] = [];
@@ -388,7 +431,11 @@ test("renderFooterLines renders gauge countdowns with the dim color", () => {
     usageMetrics,
     {
       ...footerConfig,
-      providerStatus: { ...footerConfig.providerStatus, display: "gauge" },
+      providerStatus: {
+        ...footerConfig.providerStatus,
+        display: "gauge",
+        resetMinUsedPercent: 0,
+      },
     },
     [],
     [status],
@@ -429,6 +476,7 @@ test("renderFooterLines respects reset mode for secondary-only gauges", () => {
           ...footerConfig.providerStatus,
           display: "gauge",
           showReset,
+          resetMinUsedPercent: 0,
         },
       },
       [],
@@ -449,8 +497,8 @@ test("renderFooterLines annotates a weekly-only Codex primary gauge", () => {
     state: "ok",
     primary: {
       label: "7d",
-      leftPercent: 96,
-      usedPercent: 4,
+      leftPercent: 16,
+      usedPercent: 84,
       resetAt: (nowMs + (5 * 24 + 4) * 60 * 60_000) / 1000,
     },
   };
@@ -474,7 +522,7 @@ test("renderFooterLines annotates a weekly-only Codex primary gauge", () => {
     nowMs,
   );
 
-  assert.match(lines.join("\n"), /7d .* 4% ~5d4h/);
+  assert.match(lines.join("\n"), /7d .* 84% ~5d4h/);
   assert.doesNotMatch(lines.join("\n"), /5h/);
 });
 
@@ -513,6 +561,7 @@ test("renderFooterLines matches header-derived countdowns to each window", () =>
         ...footerConfig.providerStatus,
         display: "gauge",
         showReset: "all",
+        resetMinUsedPercent: 0,
       },
     },
     [],
@@ -547,10 +596,21 @@ test("renderFooterLines shows Anthropic provider status for Claude models", () =
 });
 
 test("renderFooterLines shows the model-scoped weekly window for the active model", () => {
+  const nowMs = Date.parse("2026-06-16T10:00:00Z");
   const scopedProviderStatus: ProviderStatusSnapshot = {
     ...claudeProviderStatus,
+    secondary: {
+      ...claudeProviderStatus.secondary!,
+      resetAt: (nowMs + 60 * 60_000) / 1000,
+    },
     scoped: [
-      { label: "7d", model: "Fable", leftPercent: 4, usedPercent: 96 },
+      {
+        label: "7d",
+        model: "Fable",
+        leftPercent: 4,
+        usedPercent: 96,
+        resetAt: (nowMs + 2 * 60 * 60_000) / 1000,
+      },
     ],
   };
   const render = (model: { id: string; name: string; provider?: string }) =>
@@ -564,6 +624,7 @@ test("renderFooterLines shows the model-scoped weekly window for the active mode
       footerConfig,
       [],
       [scopedProviderStatus],
+      nowMs,
     ).join("\n");
 
   assert.match(
@@ -572,7 +633,7 @@ test("renderFooterLines shows the model-scoped weekly window for the active mode
       id: "claude-fable-5",
       name: "Claude Fable 5",
     }),
-    /5h:0% 7d:96%/,
+    /5h:0% 7d:96% ~2h/,
   );
   assert.match(
     render({
@@ -580,7 +641,7 @@ test("renderFooterLines shows the model-scoped weekly window for the active mode
       id: "claude-sonnet-4",
       name: "Claude Sonnet 4",
     }),
-    /5h:0% 7d:8%/,
+    /5h:0% 7d:8%(?! ~1h)/,
   );
 });
 
@@ -922,6 +983,7 @@ test("renderFooterLines truncates countdown gauges ANSI-safely", () => {
       ...footerConfig.providerStatus,
       display: "gauge",
       showReset: "all",
+      resetMinUsedPercent: 0,
     },
     widgets: {
       ...footerConfig.widgets,
