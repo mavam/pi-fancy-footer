@@ -729,6 +729,7 @@ test("renderFooterLines distinguishes draft, auto-merge, and merged PR icons", (
         ...pullRequest,
         state: "open",
         isDraft: true,
+        autoMergeEnabled: true,
       },
     },
     "off",
@@ -737,6 +738,33 @@ test("renderFooterLines distinguishes draft, auto-merge, and merged PR icons", (
     footerConfig,
   );
   assert.ok(colors.includes("dim:@"));
+  assert.equal(colors.includes("accent:@"), false);
+
+  colors.length = 0;
+  renderFooterLines(
+    120,
+    ctx,
+    {
+      ...EMPTY_GIT_INFO,
+      pullRequest: {
+        ...pullRequest,
+        state: "open",
+        isDraft: true,
+      },
+    },
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      widgets: {
+        ...footerConfig.widgets,
+        "pull-request": { iconColor: "warning" },
+      },
+    },
+  );
+  assert.ok(colors.includes("warning:@"));
+  assert.equal(colors.includes("dim:@"), false);
 
   colors.length = 0;
   renderFooterLines(
