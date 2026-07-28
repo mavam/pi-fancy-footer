@@ -1,0 +1,8 @@
+created: 2026-07-28
+title: Cleaner provider and pull request status
+intro: >-
+  This release keeps the footer focused by showing provider reset countdowns only
+  near quota limits and visually distinguishing draft pull requests.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.3.0
