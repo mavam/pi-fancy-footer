@@ -5,12 +5,12 @@ import {
   type GaugeSegment,
   type GaugeStyleDef,
   type ProviderStatusConfigSnapshot,
-  type ProviderStatusResetMode,
   type ProviderStatusScopedWindow,
   type ProviderStatusSnapshot,
   type ProviderStatusState,
   type ProviderStatusWindow,
   buildGauge,
+  displayedGaugePercent,
   formatGaugePercent,
   gaugeSeverity,
 } from "./shared.ts";
@@ -237,16 +237,35 @@ interface AuthCredentials {
   raw: Record<string, unknown>;
 }
 
-export function shouldShowReset(
-  mode: ProviderStatusResetMode,
+export function resetCountdownText(
+  window: Pick<ProviderStatusWindow, "usedPercent" | "resetAt">,
   role: "primary" | "secondary",
-): boolean {
-  return mode === "all" || (mode === "primary" && role === "primary");
+  config: Pick<
+    ProviderStatusConfigSnapshot,
+    "showReset" | "resetMinUsedPercent"
+  >,
+  nowMs: number,
+): string {
+  const roleEnabled =
+    config.showReset === "all" ||
+    (config.showReset === "primary" && role === "primary");
+  const displayedUsedPercent = displayedGaugePercent(window.usedPercent);
+  if (
+    !roleEnabled ||
+    window.resetAt === undefined ||
+    displayedUsedPercent < config.resetMinUsedPercent
+  ) {
+    return "";
+  }
+  return formatResetCountdown(window.resetAt, nowMs);
 }
 
 export function formatProviderStatusText(
   snapshot: ProviderStatusSnapshot | undefined,
-  config: Pick<ProviderStatusConfigSnapshot, "showCredits" | "showReset">,
+  config: Pick<
+    ProviderStatusConfigSnapshot,
+    "showCredits" | "showReset" | "resetMinUsedPercent"
+  >,
   nowMs = Date.now(),
 ): string {
   if (!snapshot) return "";
@@ -264,10 +283,8 @@ export function formatProviderStatusText(
   ] as const) {
     if (!window) continue;
     let part = `${window.label}:${formatGaugePercent(window.usedPercent)}`;
-    if (shouldShowReset(config.showReset, role) && window.resetAt !== undefined) {
-      const reset = formatResetCountdown(window.resetAt, nowMs);
-      if (reset) part += ` ${reset}`;
-    }
+    const reset = resetCountdownText(window, role, config, nowMs);
+    if (reset) part += ` ${reset}`;
     parts.push(part);
   }
   if (config.showCredits && snapshot.credits) {
@@ -289,6 +306,7 @@ export function providerStatusColor(
 export interface ProviderStatusGaugeSegment extends GaugeSegment {
   label: string;
   role: "primary" | "secondary";
+  usedPercent: number;
   resetAt?: number;
 }
 
@@ -307,6 +325,7 @@ export function buildProviderStatusGauge(
     segments.push({
       label: window.label,
       role,
+      usedPercent: window.usedPercent,
       ...(window.resetAt !== undefined ? { resetAt: window.resetAt } : {}),
       ...buildGauge(window.usedPercent, style, cells),
     });

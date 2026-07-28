@@ -26,6 +26,7 @@ const providerStatusConfig: ProviderStatusConfigSnapshot = {
   display: "gauge",
   showCredits: false,
   showReset: "off",
+  resetMinUsedPercent: 75,
 };
 const anthropicProviderStatusConfig: ProviderStatusConfigSnapshot = {
   ...providerStatusConfig,
@@ -432,6 +433,7 @@ test("formatProviderStatusText keeps default output provider-neutral", () => {
     formatProviderStatusText(snapshot, {
       showCredits: false,
       showReset: "off",
+      resetMinUsedPercent: 75,
     }),
     "5h:5% 7d:3%",
   );
@@ -496,11 +498,16 @@ test("formatProviderStatusText places countdowns next to their windows", () => {
     },
     credits: "12",
   };
+  const config = {
+    showCredits: true,
+    showReset: "all" as const,
+    resetMinUsedPercent: 0,
+  };
 
   assert.equal(
     formatProviderStatusText(
       snapshot,
-      { showCredits: true, showReset: "off" },
+      { ...config, showReset: "off" },
       nowMs,
     ),
     "5h:2% 7d:97% cr:12",
@@ -508,17 +515,13 @@ test("formatProviderStatusText places countdowns next to their windows", () => {
   assert.equal(
     formatProviderStatusText(
       snapshot,
-      { showCredits: true, showReset: "primary" },
+      { ...config, showReset: "primary" },
       nowMs,
     ),
     "5h:2% ~4h32m 7d:97% cr:12",
   );
   assert.equal(
-    formatProviderStatusText(
-      snapshot,
-      { showCredits: true, showReset: "all" },
-      nowMs,
-    ),
+    formatProviderStatusText(snapshot, config, nowMs),
     "5h:2% ~4h32m 7d:97% ~1d7h cr:12",
   );
   assert.equal(
@@ -527,10 +530,69 @@ test("formatProviderStatusText places countdowns next to their windows", () => {
         ...snapshot,
         primary: { ...snapshot.primary, resetAt: nowMs / 1000 },
       },
-      { showCredits: true, showReset: "primary" },
+      { ...config, showReset: "primary" },
       nowMs,
     ),
     "5h:2% 7d:97% cr:12",
+  );
+});
+
+test("formatProviderStatusText gates countdowns by displayed usage", () => {
+  const nowMs = 1_800_000_000_000;
+  const resetAt = (nowMs + 60 * 60_000) / 1000;
+  const text = (usedPercent: number, resetMinUsedPercent = 75) =>
+    formatProviderStatusText(
+      {
+        provider: "anthropic",
+        source: "api",
+        fetchedAt: new Date(nowMs).toISOString(),
+        state: "ok",
+        primary: {
+          label: "5h",
+          usedPercent,
+          leftPercent: 100 - usedPercent,
+          resetAt,
+        },
+      },
+      {
+        showCredits: false,
+        showReset: "all",
+        resetMinUsedPercent,
+      },
+      nowMs,
+    );
+
+  assert.equal(text(74.94), "5h:74.9%");
+  assert.equal(text(74.96), "5h:75% ~1h");
+  assert.equal(text(75), "5h:75% ~1h");
+  assert.equal(text(99.94, 100), "5h:99.9%");
+  assert.equal(text(99.96, 100), "5h:100% ~1h");
+});
+
+test("formatProviderStatusText treats unreported usage as below the threshold", () => {
+  const nowMs = 1_800_000_000_000;
+  const snapshot = normalizeCodexUsageResponse(
+    {
+      rate_limit: {
+        primary_window: { reset_at: (nowMs + 60 * 60_000) / 1000 },
+      },
+    },
+    new Date(nowMs),
+  );
+  const config = {
+    showCredits: false,
+    showReset: "all" as const,
+    resetMinUsedPercent: 75,
+  };
+
+  assert.equal(formatProviderStatusText(snapshot, config, nowMs), "5h:0%");
+  assert.equal(
+    formatProviderStatusText(
+      snapshot,
+      { ...config, resetMinUsedPercent: 0 },
+      nowMs,
+    ),
+    "5h:0% ~1h",
   );
 });
 
@@ -546,6 +608,7 @@ test("formatProviderStatusText can show provider-specific credits without window
     formatProviderStatusText(snapshot, {
       showCredits: true,
       showReset: "off",
+      resetMinUsedPercent: 75,
     }),
     "cr:42",
   );
@@ -1384,6 +1447,7 @@ test("buildProviderStatusGauge fills cells with used quota per window", () => {
     {
       label: "5h",
       role: "primary",
+      usedPercent: 20,
       filledGlyphs: "▰",
       emptyGlyphs: "▱▱▱▱",
       percentText: "20%",
@@ -1392,6 +1456,7 @@ test("buildProviderStatusGauge fills cells with used quota per window", () => {
     {
       label: "7d",
       role: "secondary",
+      usedPercent: 90,
       filledGlyphs: "▰▰▰▰",
       emptyGlyphs: "▱",
       percentText: "90%",

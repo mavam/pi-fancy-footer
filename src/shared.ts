@@ -188,9 +188,15 @@ export function buildGauge(
   };
 }
 
+export function displayedGaugePercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
 export function formatGaugePercent(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
+  const displayed = displayedGaugePercent(value);
+  return Number.isInteger(displayed)
+    ? `${displayed}%`
+    : `${displayed.toFixed(1)}%`;
 }
 
 // Compact token counts with SI-style units: 246, 1.2k, 246k, 1M, 1.2M, 12M.
@@ -457,7 +463,7 @@ export interface WidgetRenderContext {
   providerStatuses: readonly ProviderStatusSnapshot[];
   providerStatusConfig: Pick<
     ProviderStatusConfigSnapshot,
-    "display" | "showCredits" | "showReset"
+    "display" | "showCredits" | "showReset" | "resetMinUsedPercent"
   >;
   defaultIconColor: FooterWidgetColor;
   defaultTextColor: FooterWidgetColor;
@@ -550,6 +556,8 @@ export interface ProviderStatusConfigSnapshot {
   display: ProviderStatusDisplay;
   showCredits: boolean;
   showReset: ProviderStatusResetMode;
+  /** Inclusive used-percentage threshold for displaying reset countdowns. */
+  resetMinUsedPercent: number;
 }
 
 export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
@@ -559,6 +567,7 @@ export const DEFAULT_PROVIDER_STATUS_CONFIG: ProviderStatusConfigSnapshot = {
   display: "gauge",
   showCredits: false,
   showReset: "all",
+  resetMinUsedPercent: 75,
 };
 
 export const DEFAULT_FOOTER_CONFIG: FooterConfigSnapshot = {

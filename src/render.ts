@@ -51,11 +51,10 @@ import {
 import {
   buildProviderStatusGauge,
   formatProviderStatusText,
-  formatResetCountdown,
   isProviderStatusRelevantToModel,
   projectProviderStatusForModel,
   providerStatusColor,
-  shouldShowReset,
+  resetCountdownText,
 } from "./provider-status.ts";
 
 // GitHub Primer's default merged/done foreground color (#8250df). This hue is
@@ -89,7 +88,7 @@ function buildProviderStatusPart(
   snapshot: ProviderStatusSnapshot,
   config: Pick<
     ProviderStatusConfigSnapshot,
-    "display" | "showCredits" | "showReset"
+    "display" | "showCredits" | "showReset" | "resetMinUsedPercent"
   >,
   barStyle: GaugeStyleDef,
   gaugeWidth: number,
@@ -116,13 +115,8 @@ function buildProviderStatusPart(
         ) +
         theme.fg("dim", segment.emptyGlyphs) +
         theme.fg(defaultTextColor, ` ${segment.percentText}`);
-      if (
-        shouldShowReset(config.showReset, segment.role) &&
-        segment.resetAt !== undefined
-      ) {
-        const reset = formatResetCountdown(segment.resetAt, nowMs);
-        if (reset) piece += theme.fg("dim", ` ${reset}`);
-      }
+      const reset = resetCountdownText(segment, segment.role, config, nowMs);
+      if (reset) piece += theme.fg("dim", ` ${reset}`);
       return piece;
     });
     body = pieces.join(" ");

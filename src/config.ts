@@ -74,6 +74,9 @@ const providerStatusProviderSchema = literalUnion(
 );
 const providerStatusDisplaySchema = literalUnion(PROVIDER_STATUS_DISPLAYS);
 const providerStatusResetModeSchema = literalUnion(PROVIDER_STATUS_RESET_MODES);
+const PROVIDER_STATUS_RESET_MIN_USED_PERCENT_OPTIONS = [
+  0, 50, 75, 80, 90, 95, 100,
+] as const;
 
 const providerStatusConfigSchema = Type.Object(
   {
@@ -93,6 +96,9 @@ const providerStatusConfigSchema = Type.Object(
     display: Type.Optional(providerStatusDisplaySchema),
     showCredits: Type.Optional(Type.Boolean()),
     showReset: Type.Optional(providerStatusResetModeSchema),
+    resetMinUsedPercent: Type.Optional(
+      Type.Number({ minimum: 0, maximum: 100 }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -231,6 +237,9 @@ function parseProviderStatusConfig(
     showCredits:
       input?.showCredits ?? DEFAULT_PROVIDER_STATUS_CONFIG.showCredits,
     showReset: input?.showReset ?? DEFAULT_PROVIDER_STATUS_CONFIG.showReset,
+    resetMinUsedPercent:
+      input?.resetMinUsedPercent ??
+      DEFAULT_PROVIDER_STATUS_CONFIG.resetMinUsedPercent,
   };
 }
 
@@ -263,6 +272,11 @@ function describeConfigError(error: {
   if (path === "/providerStatus/showReset") {
     return [
       `  - ${display}: use "off", "primary", or "all" (replace true with "primary" and false with "off")`,
+    ];
+  }
+  if (path === "/providerStatus/resetMinUsedPercent") {
+    return [
+      `  - ${display}: use a number from 0 to 100 (the used quota percentage at which reset countdowns appear)`,
     ];
   }
   const params = error.params as
@@ -467,6 +481,8 @@ function toFooterConfigObject(
       DEFAULT_PROVIDER_STATUS_CONFIG.showCredits ||
     config.providerStatus.showReset !==
       DEFAULT_PROVIDER_STATUS_CONFIG.showReset ||
+    config.providerStatus.resetMinUsedPercent !==
+      DEFAULT_PROVIDER_STATUS_CONFIG.resetMinUsedPercent ||
     config.providerStatus.providers.join(",") !==
       DEFAULT_PROVIDER_STATUS_CONFIG.providers.join(",")
   ) {
@@ -565,6 +581,14 @@ function applyWidgetField(
   fieldId: string,
   newValue: string,
 ): void {
+  if (
+    widget.builtInId === "provider-status" &&
+    fieldId === "resetMinUsedPercent"
+  ) {
+    config.providerStatus.resetMinUsedPercent = Number(newValue);
+    return;
+  }
+
   updateWidgetOverride(config, widget, (override) => {
     switch (fieldId) {
       case "enabled":
@@ -638,7 +662,7 @@ function widgetSettingsItems(
 ): SettingItem[] {
   const override = getWidgetOverride(config, widget);
 
-  return [
+  const items: SettingItem[] = [
     {
       id: "enabled",
       label: "visibility",
@@ -690,6 +714,25 @@ function widgetSettingsItems(
       description: "Reserve at least this much width for the widget.",
     },
   ];
+
+  if (widget.builtInId === "provider-status") {
+    const values = new Set([
+      ...PROVIDER_STATUS_RESET_MIN_USED_PERCENT_OPTIONS,
+      config.providerStatus.resetMinUsedPercent,
+    ]);
+    items.push({
+      id: "resetMinUsedPercent",
+      label: "reset countdown threshold (%)",
+      currentValue: String(config.providerStatus.resetMinUsedPercent),
+      values: Array.from(values)
+        .sort((a, b) => a - b)
+        .map(String),
+      description:
+        "Show each reset countdown once its quota window reaches this used percentage. Applies to all provider windows.",
+    });
+  }
+
+  return items;
 }
 
 export function widgetSettingsSubmenu(
@@ -713,7 +756,7 @@ export function widgetSettingsSubmenu(
     );
     container.addChild(
       new Text(
-        theme.fg("dim", "Change this widget's layout and appearance"),
+        theme.fg("dim", "Change this widget's layout, appearance, and behavior"),
         1,
         0,
       ),
