@@ -15,6 +15,7 @@ interface PullRequestCandidate {
   number: number;
   url: string;
   state: PullRequestState;
+  isDraft: boolean;
   autoMergeEnabled: boolean;
   headOwner: string;
   headRefOid?: string;
@@ -24,6 +25,7 @@ interface PullRequestCandidateNode {
   number?: unknown;
   url?: unknown;
   state?: unknown;
+  isDraft?: unknown;
   autoMergeRequest?: unknown;
   headRefOid?: unknown;
   headRepositoryOwner?: { login?: unknown } | null;
@@ -215,6 +217,7 @@ function selectPullRequest(
     number: bestCandidate.number,
     url: bestCandidate.url,
     state: bestCandidate.state,
+    ...(bestCandidate.isDraft ? { isDraft: true } : {}),
     ...(bestCandidate.autoMergeEnabled ? { autoMergeEnabled: true } : {}),
     ...(location ? { host: location.host } : {}),
     ...(bestCandidate.headRefOid
@@ -251,6 +254,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
       const number = Math.max(0, Math.floor(toNumber(node?.number)));
       const url = typeof node?.url === "string" ? node.url : "";
       const state = parsePullRequestState(node?.state);
+      const isDraft = node?.isDraft === true;
       const autoMergeEnabled = parseAutoMergeEnabled(node?.autoMergeRequest);
       const headOwner =
         typeof node?.headRepositoryOwner?.login === "string"
@@ -263,6 +267,7 @@ function parsePullRequestCandidates(output: string): PullRequestCandidate[] {
         number,
         url,
         state,
+        isDraft,
         autoMergeEnabled,
         headOwner,
         headRefOid,
@@ -300,12 +305,14 @@ export function parsePullRequest(
       number?: unknown;
       url?: unknown;
       state?: unknown;
+      isDraft?: unknown;
       autoMergeRequest?: unknown;
       headRefOid?: unknown;
     };
     const number = Math.max(0, Math.floor(toNumber(parsed?.number)));
     const url = typeof parsed?.url === "string" ? parsed.url : "";
     const state = parsePullRequestState(parsed?.state);
+    const isDraft = parsed?.isDraft === true;
     const autoMergeEnabled = parseAutoMergeEnabled(parsed?.autoMergeRequest);
     const headRefOid =
       typeof parsed?.headRefOid === "string" ? parsed.headRefOid : undefined;
@@ -315,6 +322,7 @@ export function parsePullRequest(
       number,
       url,
       state,
+      ...(isDraft ? { isDraft: true } : {}),
       ...(autoMergeEnabled ? { autoMergeEnabled: true } : {}),
       ...(location ? { host: location.host } : {}),
       ...(headRefOid ? { headRefOid } : {}),
