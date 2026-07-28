@@ -303,6 +303,7 @@ export interface GitHubPullRequest {
   number: number;
   url: string;
   state: PullRequestState;
+  isDraft?: boolean;
   autoMergeEnabled?: boolean;
   host?: string;
   headRefOid?: string;
@@ -434,6 +435,7 @@ export interface FooterMetrics {
   pullRequestNumber: number;
   pullRequestUrl: string;
   pullRequestState: PullRequestState | "";
+  pullRequestIsDraft: boolean;
   pullRequestAutoMergeEnabled: boolean;
   pullRequestUnresolvedReviewThreadCount: number;
   pullRequestCiState: PullRequestCiState | "";

@@ -118,6 +118,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
           number: 7,
           url: "https://github.com/org/repo/pull/7",
           state: "OPEN",
+          isDraft: true,
         }),
         stderr: "",
       };
@@ -132,19 +133,19 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
     number: 7,
     url: "https://github.com/org/repo/pull/7",
     state: "open",
+    isDraft: true,
     host: "github.com",
   });
   assert.equal(result.pullRequestLookupEnabled, true);
   assert.notEqual(result.pullRequestLookupAt, 0);
-  assert.equal(
-    calls.some(
-      (call) =>
-        call.command === "gh" &&
-        call.args[0] === "pr" &&
-        call.args[1] === "view",
-    ),
-    true,
+  const fallbackCall = calls.find(
+    (call) =>
+      call.command === "gh" &&
+      call.args[0] === "pr" &&
+      call.args[1] === "view",
   );
+  assert.ok(fallbackCall);
+  assert.match(fallbackCall.args.join(" "), /\bisDraft\b/);
   assert.equal(
     calls
       .filter((call) => call.command === "git")
@@ -153,7 +154,7 @@ test("collectPullRequestInfo ignores foreign branch-name matches and falls back 
   );
 });
 
-test("collectPullRequestInfo queries merged and auto-merge status", async () => {
+test("collectPullRequestInfo queries PR display status", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
     if (command === "git" && gitSubcommand(args) === "rev-parse") {
       return { code: 0, stdout: "origin/feature\n", stderr: "" };
@@ -209,6 +210,7 @@ test("collectPullRequestInfo queries merged and auto-merge status", async () => 
     ?.args.find((arg) => arg.startsWith("query="));
   assert.match(query ?? "", /open: pullRequests\(states: OPEN/);
   assert.match(query ?? "", /merged: pullRequests\(states: MERGED/);
+  assert.equal(query?.match(/isDraft/g)?.length, 2);
   assert.equal(query?.match(/autoMergeRequest \{ enabledAt \}/g)?.length, 2);
 });
 

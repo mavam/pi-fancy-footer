@@ -603,6 +603,7 @@ function computeFooterMetrics(
     pullRequestNumber: git.pullRequest?.number ?? 0,
     pullRequestUrl: git.pullRequest?.url ?? "",
     pullRequestState: git.pullRequest?.state ?? "",
+    pullRequestIsDraft: git.pullRequest?.isDraft === true,
     pullRequestAutoMergeEnabled:
       git.pullRequest?.autoMergeEnabled === true,
     pullRequestUnresolvedReviewThreadCount:
@@ -734,6 +735,7 @@ function buildFooterWidgets(
       resolveIconColor: ({ metrics }, configuredColor) => {
         if (configuredColor !== "text") return configuredColor;
         if (metrics.pullRequestState === "merged") return "github-merged";
+        if (metrics.pullRequestIsDraft) return "dim";
         if (metrics.pullRequestAutoMergeEnabled) return "accent";
         return configuredColor;
       },
