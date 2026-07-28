@@ -397,7 +397,7 @@ test("renderFooterLines gates gauge countdowns by displayed usage", () => {
     nowMs,
   ).join("\n");
 
-  assert.doesNotMatch(lines, /74\.9% ~1h/);
+  assert.doesNotMatch(lines, /74\.9% ~\S+/);
   assert.match(lines, /80% ~2h/);
 });
 
@@ -454,6 +454,8 @@ test("renderFooterLines respects reset mode for secondary-only gauges", () => {
     state: "ok",
     secondary: {
       ...claudeProviderStatus.secondary!,
+      usedPercent: 90,
+      leftPercent: 10,
       resetAt: (nowMs + 5 * 24 * 60 * 60_000) / 1000,
     },
   };
@@ -476,7 +478,7 @@ test("renderFooterLines respects reset mode for secondary-only gauges", () => {
           ...footerConfig.providerStatus,
           display: "gauge",
           showReset,
-          resetMinUsedPercent: 0,
+          resetMinUsedPercent: 75,
         },
       },
       [],
@@ -484,8 +486,8 @@ test("renderFooterLines respects reset mode for secondary-only gauges", () => {
       nowMs,
     ).join("\n");
 
-  assert.doesNotMatch(render("primary"), /~5d/);
-  assert.match(render("all"), /7d .* 8% ~5d/);
+  assert.doesNotMatch(render("primary"), /90% ~\S+/);
+  assert.match(render("all"), /7d .* 90% ~5d/);
 });
 
 test("renderFooterLines annotates a weekly-only Codex primary gauge", () => {
@@ -641,7 +643,7 @@ test("renderFooterLines shows the model-scoped weekly window for the active mode
       id: "claude-sonnet-4",
       name: "Claude Sonnet 4",
     }),
-    /5h:0% 7d:8%(?! ~1h)/,
+    /5h:0% 7d:8%(?! ~\S+)/,
   );
 });
 

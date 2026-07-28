@@ -160,8 +160,8 @@ Top-level settings:
     - `"all"` - show every reported window countdown (default)
   - `resetMinUsedPercent` - show an eligible countdown once its window reaches
     this used quota percentage (0-100, default 75). The comparison is inclusive
-    and uses the displayed percentage. Set this to `0` to always show eligible
-    countdowns.
+    and uses the displayed percentage. A window without a reported usage value
+    counts as 0%. Set this to `0` to always show eligible countdowns.
 
 Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
@@ -393,12 +393,10 @@ Notes:
   removes the stale 5-hour value and shows only `7d`. Because that weekly
   window is primary, it receives a countdown under the default mode. In an
   output such as `󰾆▱▱▱▱▱ 0% 󰓅7d ▰▰▰▰▱ 84% ~1d7h`, `0%` is the share of pi's
-  context window in use and `84%` is the used weekly Codex quota. A provider
-  window without a reported usage value counts as 0% for the reset threshold.
-  Codex uses
-  existing pi OpenAI Codex credentials
-  from `~/.pi/agent/auth.json`, falling back to Codex CLI credentials in
-  `~/.codex/auth.json`. Claude uses pi Anthropic OAuth credentials from
+  context window in use and `84%` is the used weekly Codex quota. Codex uses
+  existing pi OpenAI Codex credentials from `~/.pi/agent/auth.json`, falling
+  back to Codex CLI credentials in `~/.codex/auth.json`. Claude uses pi
+  Anthropic OAuth credentials from
   `~/.pi/agent/auth.json` and reads Claude.ai usage for the 5-hour and weekly
   windows. When Claude reports a limit that applies only to the active model,
   such as the weekly Fable cap, that window replaces the account-wide window

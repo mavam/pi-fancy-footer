@@ -227,7 +227,6 @@ function parseProviderStatusConfig(
   const knownProviders = PROVIDER_STATUS_PROVIDER_IDS.filter((id) =>
     providers.includes(id),
   );
-  const resetMinUsedPercent = input?.resetMinUsedPercent;
   return {
     refreshMs:
       input?.refreshMs ?? DEFAULT_PROVIDER_STATUS_CONFIG.refreshMs,
@@ -239,10 +238,8 @@ function parseProviderStatusConfig(
       input?.showCredits ?? DEFAULT_PROVIDER_STATUS_CONFIG.showCredits,
     showReset: input?.showReset ?? DEFAULT_PROVIDER_STATUS_CONFIG.showReset,
     resetMinUsedPercent:
-      typeof resetMinUsedPercent === "number" &&
-      Number.isFinite(resetMinUsedPercent)
-        ? Math.max(0, Math.min(100, resetMinUsedPercent))
-        : DEFAULT_PROVIDER_STATUS_CONFIG.resetMinUsedPercent,
+      input?.resetMinUsedPercent ??
+      DEFAULT_PROVIDER_STATUS_CONFIG.resetMinUsedPercent,
   };
 }
 
@@ -588,10 +585,7 @@ function applyWidgetField(
     widget.builtInId === "provider-status" &&
     fieldId === "resetMinUsedPercent"
   ) {
-    const parsed = Number(newValue);
-    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
-      config.providerStatus.resetMinUsedPercent = parsed;
-    }
+    config.providerStatus.resetMinUsedPercent = Number(newValue);
     return;
   }
 
@@ -734,7 +728,7 @@ function widgetSettingsItems(
         .sort((a, b) => a - b)
         .map(String),
       description:
-        "Show each reset countdown once its quota window reaches this used percentage.",
+        "Show each reset countdown once its quota window reaches this used percentage. Applies to all provider windows.",
     });
   }
 

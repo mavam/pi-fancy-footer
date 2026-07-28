@@ -10,6 +10,7 @@ import {
   type ProviderStatusState,
   type ProviderStatusWindow,
   buildGauge,
+  displayedGaugePercent,
   formatGaugePercent,
   gaugeSeverity,
 } from "./shared.ts";
@@ -248,7 +249,7 @@ export function resetCountdownText(
   const roleEnabled =
     config.showReset === "all" ||
     (config.showReset === "primary" && role === "primary");
-  const displayedUsedPercent = Math.round(window.usedPercent * 10) / 10;
+  const displayedUsedPercent = displayedGaugePercent(window.usedPercent);
   if (
     !roleEnabled ||
     window.resetAt === undefined ||

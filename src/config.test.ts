@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { initTheme } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  buildConfigurableWidgets,
   footerConfigValidationErrors,
   getFooterConfigPath,
   plainSettingValue,
+  widgetSettingsSubmenu,
   writeFooterConfigSnapshot,
 } from "./config.ts";
 import { DEFAULT_FOOTER_CONFIG } from "./shared.ts";
@@ -116,6 +119,41 @@ test("writeFooterConfigSnapshot preserves a non-default reset threshold", async 
 
   const saved = JSON.parse(await readFile(getFooterConfigPath(), "utf8"));
   assert.equal(saved.providerStatus.resetMinUsedPercent, 80);
+});
+
+test("provider status widget settings cycle reset thresholds in numeric order", () => {
+  initTheme(undefined, false);
+  const config = structuredClone(DEFAULT_FOOTER_CONFIG);
+  config.providerStatus.resetMinUsedPercent = 12.5;
+  const widget = buildConfigurableWidgets(config, []).find(
+    ({ builtInId }) => builtInId === "provider-status",
+  );
+  assert.ok(widget);
+
+  let applyCount = 0;
+  const submenu = widgetSettingsSubmenu(
+    config,
+    {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    } as never,
+    widget,
+    () => {
+      applyCount += 1;
+    },
+  )("", () => {});
+
+  for (let index = 0; index < 5; index += 1) {
+    submenu.handleInput("\x1b[B");
+  }
+  const values: number[] = [];
+  for (let index = 0; index < 8; index += 1) {
+    submenu.handleInput(" ");
+    values.push(config.providerStatus.resetMinUsedPercent);
+  }
+
+  assert.deepEqual(values, [50, 75, 80, 90, 95, 100, 0, 12.5]);
+  assert.equal(applyCount, values.length);
 });
 
 test("footerConfigValidationErrors names unknown keys with rename hints", () => {

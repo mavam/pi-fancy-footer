@@ -569,6 +569,33 @@ test("formatProviderStatusText gates countdowns by displayed usage", () => {
   assert.equal(text(99.96, 100), "5h:100% ~1h");
 });
 
+test("formatProviderStatusText treats unreported usage as below the threshold", () => {
+  const nowMs = 1_800_000_000_000;
+  const snapshot = normalizeCodexUsageResponse(
+    {
+      rate_limit: {
+        primary_window: { reset_at: (nowMs + 60 * 60_000) / 1000 },
+      },
+    },
+    new Date(nowMs),
+  );
+  const config = {
+    showCredits: false,
+    showReset: "all" as const,
+    resetMinUsedPercent: 75,
+  };
+
+  assert.equal(formatProviderStatusText(snapshot, config, nowMs), "5h:0%");
+  assert.equal(
+    formatProviderStatusText(
+      snapshot,
+      { ...config, resetMinUsedPercent: 0 },
+      nowMs,
+    ),
+    "5h:0% ~1h",
+  );
+});
+
 test("formatProviderStatusText can show provider-specific credits without windows", () => {
   const snapshot = parseCodexRateLimitHeaders(
     {
