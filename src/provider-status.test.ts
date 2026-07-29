@@ -1090,7 +1090,7 @@ test("collectProviderStatus retires a cached scoped cap that a refresh no longer
   );
 });
 
-test("collectProviderStatus hides cached quota once its windows reset", async (t) => {
+test("collectProviderStatus marks rolled-over cached quota unknown", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
   t.after(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -1149,11 +1149,190 @@ test("collectProviderStatus hides cached quota once its windows reset", async (t
 
   assert.equal(snapshots.length, 1);
   const snapshot = snapshots[0];
-  assert.equal(snapshot?.source, "api");
+  assert.equal(snapshot?.source, "cache");
   assert.equal(snapshot?.state, "unavailable");
-  assert.equal(snapshot?.primary, undefined);
-  assert.equal(snapshot?.secondary, undefined);
+  assert.deepEqual(snapshot?.primary, {
+    label: "5h",
+    usedPercent: 0,
+    leftPercent: 100,
+    resetAt: 1,
+    usageUnknown: true,
+  });
+  assert.deepEqual(snapshot?.secondary, {
+    label: "7d",
+    usedPercent: 0,
+    leftPercent: 100,
+    resetAt: 1,
+    usageUnknown: true,
+  });
   assert.match(snapshot?.error ?? "", /429/);
+  // Reset windows keep their identity without claiming that the new period is
+  // still unused.
+  const textConfig = {
+    showCredits: false,
+    showReset: "all" as const,
+    resetMinUsedPercent: 0,
+  };
+  assert.equal(formatProviderStatusText(snapshot, textConfig), "5h:— 7d:—");
+  const gauge = buildProviderStatusGauge(
+    snapshot,
+    getGaugeStyle("parallelograms"),
+    5,
+  );
+  assert.equal(gauge[0]?.filledGlyphs, "");
+  assert.equal(gauge[0]?.emptyGlyphs, "▱▱▱▱▱");
+  assert.equal(gauge[0]?.percentText, "—");
+  assert.equal(gauge[0]?.usageUnknown, true);
+
+  // A continued outage must not turn the unconfirmed period into healthy 0%.
+  const [repeated] = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+  assert.equal(repeated?.state, "unavailable");
+  assert.equal(repeated?.primary?.usageUnknown, true);
+  assert.equal(formatProviderStatusText(repeated, textConfig), "5h:— 7d:—");
+});
+
+test("collectProviderStatus marks a window unknown when it resets inside the cache TTL", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  t.after(() => {
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+  });
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: new Date().toISOString(),
+      // The severity the exhausted weekly window had before it reset.
+      state: "error",
+      // Fetched moments ago, but the weekly window has since rolled over.
+      primary: {
+        label: "5h",
+        usedPercent: 10,
+        leftPercent: 90,
+        resetAt: nowSeconds + 600,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 96,
+        leftPercent: 4,
+        resetAt: nowSeconds - 30,
+      },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 60_000,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.source, "cache");
+  // The unexpired session window keeps its usage; the weekly usage is unknown.
+  assert.equal(snapshot?.primary?.usedPercent, 10);
+  assert.equal(snapshot?.secondary?.usedPercent, 0);
+  assert.equal(snapshot?.secondary?.leftPercent, 100);
+  assert.equal(snapshot?.secondary?.usageUnknown, true);
+  // Severity is recomputed from known windows, not carried over.
+  assert.equal(snapshot?.state, "ok");
+});
+
+test("collectProviderStatus keeps a reset session window while a refresh reports only the weekly one", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  const resetsAt = new Date(Date.now() + 7 * 24 * 3_600_000).toISOString();
+  // The shape Anthropic reports right after a weekly reset with no live session.
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        five_hour: null,
+        seven_day: { utilization: 0, resets_at: resetsAt },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ anthropic: { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "anthropic.json"),
+    JSON.stringify({
+      provider: "anthropic",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: { label: "5h", usedPercent: 3, leftPercent: 97, resetAt: 1 },
+      secondary: { label: "7d", usedPercent: 42, leftPercent: 58, resetAt: 1 },
+      url: "https://claude.ai/settings/usage",
+    }),
+    { mode: 0o600 },
+  );
+
+  const snapshots = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshots.length, 1);
+  const snapshot = snapshots[0];
+  assert.equal(snapshot?.primary?.label, "5h");
+  assert.equal(snapshot?.primary?.usageUnknown, true);
+  assert.equal(snapshot?.secondary?.label, "7d");
+  assert.equal(snapshot?.secondary?.usedPercent, 0);
+  assert.equal(snapshot?.secondary?.usageUnknown, undefined);
+  assert.equal(
+    formatProviderStatusText(snapshot, {
+      showCredits: false,
+      showReset: "off",
+      resetMinUsedPercent: 0,
+    }),
+    "5h:— 7d:0%",
+  );
 });
 
 test("collectProviderStatus keeps cached quota in effect after a failed auth refresh", async (t) => {

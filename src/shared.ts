@@ -277,6 +277,8 @@ export interface ProviderStatusWindow {
   leftPercent: number;
   usedPercent: number;
   resetAt?: number;
+  /** The cached window rolled over, but its current usage is not yet known. */
+  usageUnknown?: true;
 }
 
 export type ProviderStatusState = "ok" | "warning" | "error" | "unavailable";
