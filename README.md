@@ -405,8 +405,10 @@ Notes:
   `/model` switches without another usage request.
   Status is cached under `~/.cache/pi-fancy-footer/provider-status/`;
   when a refresh fails, cached quota windows keep showing until their reset times
-  pass instead of hiding the widget. The widget is hidden when the active model
-  selection is not backed by the status provider.
+  pass instead of hiding the widget. Once a window passes its reset time it reads
+  `0%` until a refresh reports the new period, so the gauges stay visible across
+  a quota rollover. The widget is hidden when the active model selection is not
+  backed by the status provider.
 - `provider-status` also refreshes from `x-codex-*` provider response headers
   when pi exposes them, avoiding a separate Codex status request after provider
   calls. Claude status refreshes from the Claude.ai usage endpoint, not

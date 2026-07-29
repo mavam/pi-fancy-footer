@@ -352,7 +352,12 @@ async function collectProviderStatusFromSource(
 ): Promise<ProviderStatusSnapshot> {
   const cached = await readProviderStatusCache(source.id);
   if (isProviderStatusFresh(cached, config.cacheTtlMs)) {
-    return { ...cached, source: "cache" };
+    // A window can reset within the cache TTL, which leaves the cached
+    // percentages describing the previous period.
+    return displayableCachedStatus(cached, { requireResetAt: false }) ?? {
+      ...cached,
+      source: "cache",
+    };
   }
 
   try {
@@ -362,7 +367,10 @@ async function collectProviderStatusFromSource(
     // stale or duplicated quota.
     const fresh = await source.fetch(pi);
     const merged = source.preserveMissingWindows
-      ? mergeProviderStatus(displayableCachedStatus(cached), fresh)
+      ? mergeProviderStatus(
+          displayableCachedStatus(cached, { requireResetAt: true }),
+          fresh,
+        )
       : fresh;
     const { error: _staleError, ...snapshot } = merged;
     await writeProviderStatusCache(snapshot).catch(() => undefined);
@@ -372,28 +380,43 @@ async function collectProviderStatusFromSource(
     // reset, regardless of why the refresh failed, so keep showing whichever
     // windows are still in effect.
     return (
-      displayableCachedStatus(cached, error) ??
+      displayableCachedStatus(cached, { requireResetAt: true, error }) ??
       unavailableProviderStatus(source, error)
     );
   }
 }
 
-// Projects a cached snapshot onto the windows that are still in effect, i.e.
-// have not reset yet. Returns undefined when nothing is left to display.
+interface CachedStatusProjection {
+  /**
+   * Drop windows that carry no reset time. Without one there is nothing to
+   * confirm the window still exists, which matters once the refresh that would
+   * have confirmed it failed.
+   */
+  requireResetAt: boolean;
+  error?: unknown;
+}
+
+// Projects a cached snapshot onto the current period: windows that have not
+// reset yet keep their usage, and windows past their reset time read empty.
+// Returns undefined when nothing is left to display.
 function displayableCachedStatus(
   cached: ProviderStatusSnapshot | undefined,
-  error?: unknown,
+  projection: CachedStatusProjection,
   now = new Date(),
 ): ProviderStatusSnapshot | undefined {
   if (!cached) return undefined;
 
-  const primary = windowInEffect(cached.primary, now);
-  const secondary = windowInEffect(cached.secondary, now);
+  const { requireResetAt, error } = projection;
+  const primary = windowInEffect(cached.primary, now, requireResetAt);
+  const secondary = windowInEffect(cached.secondary, now, requireResetAt);
   if (!primary && !secondary) return undefined;
 
-  const scoped = cached.scoped?.filter(
-    (window) => windowInEffect(window, now) !== undefined,
-  );
+  const scoped = cached.scoped
+    ?.map((window) => {
+      const projected = windowInEffect(window, now, requireResetAt);
+      return projected ? { ...projected, model: window.model } : undefined;
+    })
+    .filter((window): window is ProviderStatusScopedWindow => window !== undefined);
   const {
     primary: _expiredPrimary,
     secondary: _expiredSecondary,
@@ -413,18 +436,26 @@ function displayableCachedStatus(
   };
 }
 
-// A window is in effect while its reset time is still in the future. Windows
-// without a reset time have no intrinsic lifetime, so they are not shown once
-// the refresh that would confirm them has failed.
+// A cached window describes the current period while its reset time is still in
+// the future. Once that time passes the window has rolled over: the provider
+// starts the new period at zero, so the cached usage no longer applies and the
+// window reads empty until a refresh reports the new period. Rolling it over
+// instead of discarding it is what keeps the footer populated across a reset,
+// when every cached window can expire at once.
 function windowInEffect(
   window: ProviderStatusWindow | undefined,
   now: Date,
+  requireResetAt: boolean,
 ): ProviderStatusWindow | undefined {
-  if (!window?.resetAt) return undefined;
-  const resetAtMs = window.resetAt * 1000;
-  return Number.isFinite(resetAtMs) && resetAtMs > now.getTime()
-    ? window
-    : undefined;
+  if (!window) return undefined;
+  const resetAtMs = (window.resetAt ?? 0) * 1000;
+  if (!window.resetAt || !Number.isFinite(resetAtMs)) {
+    return requireResetAt ? undefined : window;
+  }
+  if (resetAtMs > now.getTime()) return window;
+  // The stale reset time stays so the window keeps its identity for merging and
+  // ordering. It never renders, because a countdown to a past instant is empty.
+  return { ...window, usedPercent: 0, leftPercent: 100 };
 }
 
 function unavailableProviderStatus(
@@ -461,7 +492,7 @@ export async function updateProviderStatusFromHeaders(
     const cached = await readProviderStatusCache(source.id);
     const freshCached =
       config && isProviderStatusFresh(cached, config.cacheTtlMs)
-        ? cached
+        ? (displayableCachedStatus(cached, { requireResetAt: false }) ?? cached)
         : undefined;
     const merged = mergeProviderStatus(freshCached, parsed, {
       // A duration-bearing weekly primary with no secondary is an explicit
