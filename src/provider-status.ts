@@ -211,7 +211,15 @@ function applyScopedWindow(
 
   let strictest = window;
   for (const match of matches) {
-    if (strictest && match.usedPercent <= strictest.usedPercent) continue;
+    if (strictest) {
+      if (match.usageUnknown) continue;
+      if (
+        !strictest.usageUnknown &&
+        match.usedPercent <= strictest.usedPercent
+      ) {
+        continue;
+      }
+    }
     const { model: _model, ...replacement } = match;
     strictest = replacement;
   }
@@ -238,7 +246,10 @@ interface AuthCredentials {
 }
 
 export function resetCountdownText(
-  window: Pick<ProviderStatusWindow, "usedPercent" | "resetAt">,
+  window: Pick<
+    ProviderStatusWindow,
+    "usedPercent" | "resetAt" | "usageUnknown"
+  >,
   role: "primary" | "secondary",
   config: Pick<
     ProviderStatusConfigSnapshot,
@@ -252,6 +263,7 @@ export function resetCountdownText(
   const displayedUsedPercent = displayedGaugePercent(window.usedPercent);
   if (
     !roleEnabled ||
+    window.usageUnknown ||
     window.resetAt === undefined ||
     displayedUsedPercent < config.resetMinUsedPercent
   ) {
@@ -269,8 +281,11 @@ export function formatProviderStatusText(
   nowMs = Date.now(),
 ): string {
   if (!snapshot) return "";
+  const hasWindows =
+    snapshot.primary !== undefined || snapshot.secondary !== undefined;
   if (
     snapshot.state === "unavailable" &&
+    !hasWindows &&
     (!config.showCredits || !snapshot.credits)
   ) {
     return "";
@@ -282,7 +297,9 @@ export function formatProviderStatusText(
     ["secondary", snapshot.secondary],
   ] as const) {
     if (!window) continue;
-    let part = `${window.label}:${formatGaugePercent(window.usedPercent)}`;
+    let part = window.usageUnknown
+      ? `${window.label}:—`
+      : `${window.label}:${formatGaugePercent(window.usedPercent)}`;
     const reset = resetCountdownText(window, role, config, nowMs);
     if (reset) part += ` ${reset}`;
     parts.push(part);
@@ -308,6 +325,7 @@ export interface ProviderStatusGaugeSegment extends GaugeSegment {
   role: "primary" | "secondary";
   usedPercent: number;
   resetAt?: number;
+  usageUnknown?: true;
 }
 
 export function buildProviderStatusGauge(
@@ -322,12 +340,19 @@ export function buildProviderStatusGauge(
     ["secondary", snapshot.secondary],
   ] as const) {
     if (!window) continue;
+    const gauge = buildGauge(
+      window.usageUnknown ? 0 : window.usedPercent,
+      style,
+      cells,
+    );
     segments.push({
       label: window.label,
       role,
       usedPercent: window.usedPercent,
       ...(window.resetAt !== undefined ? { resetAt: window.resetAt } : {}),
-      ...buildGauge(window.usedPercent, style, cells),
+      ...(window.usageUnknown ? { usageUnknown: true as const } : {}),
+      ...gauge,
+      ...(window.usageUnknown ? { percentText: "—" } : {}),
     });
   }
   return segments;
@@ -397,8 +422,8 @@ interface CachedStatusProjection {
 }
 
 // Projects a cached snapshot onto the current period: windows that have not
-// reset yet keep their usage, and windows past their reset time read empty.
-// Returns undefined when nothing is left to display.
+// reset yet keep their usage, and windows past their reset time retain their
+// identity with unknown usage. Returns undefined when nothing is displayable.
 function displayableCachedStatus(
   cached: ProviderStatusSnapshot | undefined,
   projection: CachedStatusProjection,
@@ -437,11 +462,10 @@ function displayableCachedStatus(
 }
 
 // A cached window describes the current period while its reset time is still in
-// the future. Once that time passes the window has rolled over: the provider
-// starts the new period at zero, so the cached usage no longer applies and the
-// window reads empty until a refresh reports the new period. Rolling it over
-// instead of discarding it is what keeps the footer populated across a reset,
-// when every cached window can expire at once.
+// the future. Once that time passes, its cached usage no longer applies. Retain
+// the window identity with unknown usage until a refresh confirms the new
+// period, which keeps the footer populated without claiming unconfirmed
+// headroom.
 function windowInEffect(
   window: ProviderStatusWindow | undefined,
   now: Date,
@@ -454,8 +478,13 @@ function windowInEffect(
   }
   if (resetAtMs > now.getTime()) return window;
   // The stale reset time stays so the window keeps its identity for merging and
-  // ordering. It never renders, because a countdown to a past instant is empty.
-  return { ...window, usedPercent: 0, leftPercent: 100 };
+  // ordering. Current-period usage remains unknown until the provider reports it.
+  return {
+    ...window,
+    usedPercent: 0,
+    leftPercent: 100,
+    usageUnknown: true,
+  };
 }
 
 function unavailableProviderStatus(
@@ -1193,9 +1222,12 @@ function computeProviderStatusState(
   primary: ProviderStatusWindow | undefined,
   secondary: ProviderStatusWindow | undefined,
 ): ProviderStatusState {
-  const values = [primary?.leftPercent, secondary?.leftPercent].filter(
-    (value): value is number => value !== undefined,
-  );
+  const values = [primary, secondary]
+    .filter(
+      (window): window is ProviderStatusWindow =>
+        window !== undefined && !window.usageUnknown,
+    )
+    .map((window) => window.leftPercent);
   if (values.length === 0) return "unavailable";
   const severity = gaugeSeverity(Math.min(...values));
   return severity === "success" ? "ok" : severity;

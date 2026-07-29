@@ -1090,7 +1090,7 @@ test("collectProviderStatus retires a cached scoped cap that a refresh no longer
   );
 });
 
-test("collectProviderStatus rolls cached quota over to empty once its windows reset", async (t) => {
+test("collectProviderStatus marks rolled-over cached quota unknown", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
   t.after(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -1150,32 +1150,51 @@ test("collectProviderStatus rolls cached quota over to empty once its windows re
   assert.equal(snapshots.length, 1);
   const snapshot = snapshots[0];
   assert.equal(snapshot?.source, "cache");
-  assert.equal(snapshot?.state, "ok");
+  assert.equal(snapshot?.state, "unavailable");
   assert.deepEqual(snapshot?.primary, {
     label: "5h",
     usedPercent: 0,
     leftPercent: 100,
     resetAt: 1,
+    usageUnknown: true,
   });
   assert.deepEqual(snapshot?.secondary, {
     label: "7d",
     usedPercent: 0,
     leftPercent: 100,
     resetAt: 1,
+    usageUnknown: true,
   });
   assert.match(snapshot?.error ?? "", /429/);
-  // A reset window renders as an empty gauge instead of hiding the widget.
-  assert.equal(
-    formatProviderStatusText(snapshot, {
-      showCredits: false,
-      showReset: "all",
-      resetMinUsedPercent: 0,
-    }),
-    "5h:0% 7d:0%",
+  // Reset windows keep their identity without claiming that the new period is
+  // still unused.
+  const textConfig = {
+    showCredits: false,
+    showReset: "all" as const,
+    resetMinUsedPercent: 0,
+  };
+  assert.equal(formatProviderStatusText(snapshot, textConfig), "5h:— 7d:—");
+  const gauge = buildProviderStatusGauge(
+    snapshot,
+    getGaugeStyle("parallelograms"),
+    5,
   );
+  assert.equal(gauge[0]?.filledGlyphs, "");
+  assert.equal(gauge[0]?.emptyGlyphs, "▱▱▱▱▱");
+  assert.equal(gauge[0]?.percentText, "—");
+  assert.equal(gauge[0]?.usageUnknown, true);
+
+  // A continued outage must not turn the unconfirmed period into healthy 0%.
+  const [repeated] = await collectProviderStatus({} as never, {
+    ...anthropicProviderStatusConfig,
+    cacheTtlMs: 1,
+  });
+  assert.equal(repeated?.state, "unavailable");
+  assert.equal(repeated?.primary?.usageUnknown, true);
+  assert.equal(formatProviderStatusText(repeated, textConfig), "5h:— 7d:—");
 });
 
-test("collectProviderStatus empties a window that reset inside the cache TTL", async (t) => {
+test("collectProviderStatus marks a window unknown when it resets inside the cache TTL", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
   t.after(async () => {
     await rm(dir, { recursive: true, force: true });
@@ -1229,11 +1248,12 @@ test("collectProviderStatus empties a window that reset inside the cache TTL", a
   assert.equal(snapshots.length, 1);
   const snapshot = snapshots[0];
   assert.equal(snapshot?.source, "cache");
-  // The unexpired session window keeps its usage; the weekly window is empty.
+  // The unexpired session window keeps its usage; the weekly usage is unknown.
   assert.equal(snapshot?.primary?.usedPercent, 10);
   assert.equal(snapshot?.secondary?.usedPercent, 0);
   assert.equal(snapshot?.secondary?.leftPercent, 100);
-  // Severity is recomputed from the projected windows, not carried over.
+  assert.equal(snapshot?.secondary?.usageUnknown, true);
+  // Severity is recomputed from known windows, not carried over.
   assert.equal(snapshot?.state, "ok");
 });
 
@@ -1301,9 +1321,18 @@ test("collectProviderStatus keeps a reset session window while a refresh reports
   assert.equal(snapshots.length, 1);
   const snapshot = snapshots[0];
   assert.equal(snapshot?.primary?.label, "5h");
-  assert.equal(snapshot?.primary?.usedPercent, 0);
+  assert.equal(snapshot?.primary?.usageUnknown, true);
   assert.equal(snapshot?.secondary?.label, "7d");
   assert.equal(snapshot?.secondary?.usedPercent, 0);
+  assert.equal(snapshot?.secondary?.usageUnknown, undefined);
+  assert.equal(
+    formatProviderStatusText(snapshot, {
+      showCredits: false,
+      showReset: "off",
+      resetMinUsedPercent: 0,
+    }),
+    "5h:— 7d:0%",
+  );
 });
 
 test("collectProviderStatus keeps cached quota in effect after a failed auth refresh", async (t) => {

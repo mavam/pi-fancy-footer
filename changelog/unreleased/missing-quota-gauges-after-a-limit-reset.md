@@ -14,6 +14,7 @@ Previously, a reset that happened while you were away — such as the weekly lim
 rolling over overnight — hid the `5h` and `7d` gauges entirely until your next
 agent turn.
 
-A window past its reset time now reads `0%` until the provider reports the new
-period, and a reset that falls inside the status cache lifetime no longer leaves
-the previous period's percentage on screen.
+A window past its reset time now stays visible with unknown usage (`—`) until
+the provider reports the new period. A reset that falls inside the status cache
+lifetime no longer leaves the previous period's percentage on screen or claims
+unconfirmed headroom.
