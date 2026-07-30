@@ -1,6 +1,6 @@
 {
   "name": "pi-fancy-footer",
-  "version": "2.4.0",
+  "version": "2.4.1",
   "description": "A fancy footer extension for pi",
   "type": "module",
   "peerDependencies": {

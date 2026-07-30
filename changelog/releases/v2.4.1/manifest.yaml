@@ -1,0 +1,9 @@
+created: 2026-07-30
+title: Reliable context and quota gauges
+intro: >-
+  This release keeps context and provider quota gauges accurate across compaction
+  and quota-window resets. The footer now clears stale context usage immediately and
+  preserves quota gauges until providers report the new period.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.4.0
