@@ -346,6 +346,8 @@ Notes:
   left of the top row by default, with provider quota gauges beside it. Set the widget's `fill` to
   `grow` (via `/fancy-footer` or the configuration file) to expand it into a
   full-width bar with the used tokens in front, e.g. `246k ██████████░░░`.
+  Immediately after compaction, the gauge resets to empty (`0%`) while Pi waits
+  for the next model response to report post-compaction usage.
 - `context-capacity` shows the total context window in compact SI form
   (`200k`, `1M`). It is hidden by default since the context bar already
   conveys usage; enable it via `/fancy-footer` (it starts in the `hidden`

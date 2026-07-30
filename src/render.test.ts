@@ -103,7 +103,11 @@ const agentWidgets: NormalizedFancyFooterDataWidget[] = [
 
 function contextWithModel(
   model: { id: string; name: string; provider?: string },
-  usage = { contextWindow: 200_000, tokens: 0, percent: 0 },
+  usage: {
+    contextWindow: number;
+    tokens: number | null;
+    percent: number | null;
+  } = { contextWindow: 200_000, tokens: 0, percent: 0 },
 ) {
   return {
     cwd: "/repo",
@@ -934,6 +938,36 @@ test("renderFooterLines keeps the compact context gauge by default", () => {
     (row.match(/[█░]/g) ?? []).length,
     DEFAULT_FOOTER_CONFIG.gaugeWidth,
   );
+});
+
+test("renderFooterLines resets context usage while post-compaction usage is unknown", () => {
+  const preCompactionUsage: SessionUsageMetrics = {
+    latest: {
+      input: 268_476,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: 0,
+    },
+    totalCost: 0,
+    totalCacheRead: 0,
+    totalCacheWrite: 0,
+  };
+  const lines = renderFooterLines(
+    120,
+    contextWithModel(
+      { provider: "anthropic", id: "claude-sonnet-4", name: "Claude Sonnet 4" },
+      { contextWindow: 400_000, tokens: null, percent: null },
+    ) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    preCompactionUsage,
+    contextBarFooterConfig(undefined),
+  );
+
+  const row = lines[0] ?? "";
+  assert.match(row, /░{5} 0%/);
+  assert.doesNotMatch(row, /█/);
 });
 
 test("renderFooterLines grows the context bar across the row when configured", () => {

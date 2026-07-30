@@ -535,9 +535,12 @@ function computeFooterMetrics(
   const contextTokens = contextTokensKnown
     ? Math.max(0, Math.floor(contextTokensRaw))
     : 0;
+  const contextUsageUnknown =
+    contextUsage?.tokens === null || contextUsage?.percent === null;
 
-  const usedRaw = Number(contextUsage?.percent);
-  const hasUsedPercent = Number.isFinite(usedRaw) && usedRaw >= 0;
+  const usedRaw = contextUsage?.percent;
+  const hasUsedPercent =
+    typeof usedRaw === "number" && Number.isFinite(usedRaw) && usedRaw >= 0;
   const usedPct = Math.max(
     0,
     Math.min(
@@ -562,9 +565,17 @@ function computeFooterMetrics(
   const usageFromPercent = hasUsedPercent
     ? Math.floor((usedPct * totalTokens) / 100)
     : 0;
-  const usedTokensForBar = contextTokensKnown
-    ? contextTokens
-    : Math.max(usageFromPercent, usageFromLatest);
+  // Right after compaction, Pi deliberately reports null until the next model
+  // response supplies post-compaction usage. Empty the gauge instead of falling
+  // back to the latest assistant usage, which still describes the old context.
+  let usedTokensForBar: number;
+  if (contextUsageUnknown) {
+    usedTokensForBar = 0;
+  } else if (contextTokensKnown) {
+    usedTokensForBar = contextTokens;
+  } else {
+    usedTokensForBar = Math.max(usageFromPercent, usageFromLatest);
+  }
 
   const model = normalizeModel(ctx.model?.name || ctx.model?.id || "Claude");
   const thinking = formatThinkingLevel(
