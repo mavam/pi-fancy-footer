@@ -407,6 +407,10 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  pi.on("session_compact", async () => {
+    activeFooterControls?.requestRender();
+  });
+
   pi.on("session_shutdown", async () => {
     stopDataWidgetListener();
     invalidateActiveFooter();
