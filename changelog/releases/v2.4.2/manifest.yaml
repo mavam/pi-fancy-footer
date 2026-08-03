@@ -1,0 +1,9 @@
+created: 2026-08-03
+title: Accurate pull request check status
+intro: >-
+  Pull request status reporting now matches GitHub's current checks, so superseded
+  workflow runs no longer leave the footer showing a false failure. Push-triggered
+  and external CI checks continue to contribute to the displayed status.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.4.1
