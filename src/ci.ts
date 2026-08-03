@@ -1,5 +1,3 @@
-import { parseGitHubPullRequestUrl } from "./pull-request.ts";
-
 export type PullRequestCiState = "running" | "failed" | "okay";
 
 export interface PullRequestCiStatus {
@@ -7,84 +5,76 @@ export interface PullRequestCiStatus {
   url: string;
 }
 
-interface WorkflowRun {
-  status: string;
-  conclusion: string;
+interface PullRequestCheck {
+  state: PullRequestCiState;
   url: string;
-  updatedAt: string;
+  startedAt: string;
+  completedAt: string;
 }
 
-const FAILED_CONCLUSIONS = new Set([
-  "action_required",
-  "cancelled",
-  "failure",
-  "startup_failure",
-  "timed_out",
+const CHECK_BUCKET_STATES = new Map<string, PullRequestCiState>([
+  ["fail", "failed"],
+  ["cancel", "failed"],
+  ["pending", "running"],
+  ["pass", "okay"],
+  ["skipping", "okay"],
 ]);
 
-const RUNNING_STATUSES = new Set([
-  "in_progress",
-  "pending",
-  "queued",
-  "requested",
-  "waiting",
-]);
-
-function parseWorkflowRuns(output: string): WorkflowRun[] {
+function parsePullRequestChecks(output: string): PullRequestCheck[] | undefined {
   try {
-    const parsed = JSON.parse(output) as {
-      workflow_runs?: Array<{
-        status?: unknown;
-        conclusion?: unknown;
-        html_url?: unknown;
-        updated_at?: unknown;
-      }>;
-    };
-    const runs = parsed.workflow_runs;
-    if (!Array.isArray(runs)) return [];
+    const parsed = JSON.parse(output) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
 
-    return runs
-      .map((run) => ({
-        status: typeof run.status === "string" ? run.status : "",
-        conclusion: typeof run.conclusion === "string" ? run.conclusion : "",
-        url: typeof run.html_url === "string" ? run.html_url : "",
-        updatedAt: typeof run.updated_at === "string" ? run.updated_at : "",
-      }))
-      .filter((run) => run.url !== "");
+    const checks: PullRequestCheck[] = [];
+    for (const value of parsed) {
+      if (typeof value !== "object" || value === null) return undefined;
+      const check = value as Record<string, unknown>;
+      if (typeof check.bucket !== "string") return undefined;
+      const state = CHECK_BUCKET_STATES.get(check.bucket);
+      if (!state) return undefined;
+
+      checks.push({
+        state,
+        url: typeof check.link === "string" ? check.link : "",
+        startedAt:
+          typeof check.startedAt === "string" ? check.startedAt : "",
+        completedAt:
+          typeof check.completedAt === "string" ? check.completedAt : "",
+      });
+    }
+    return checks;
   } catch {
-    return [];
+    return undefined;
   }
 }
 
-function newestFirst(runs: WorkflowRun[]): WorkflowRun[] {
-  return [...runs].sort((a, b) => {
-    const at = Date.parse(a.updatedAt);
-    const bt = Date.parse(b.updatedAt);
-    return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+function timestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function newestFirst(checks: PullRequestCheck[]): PullRequestCheck[] {
+  return [...checks].sort((a, b) => {
+    const aTimestamp = timestamp(a.completedAt) || timestamp(a.startedAt);
+    const bTimestamp = timestamp(b.completedAt) || timestamp(b.startedAt);
+    return bTimestamp - aTimestamp;
   });
 }
 
 export function selectPullRequestCiStatus(
   output: string,
+  pullRequestUrl = "",
 ): PullRequestCiStatus | undefined {
-  const runs = newestFirst(parseWorkflowRuns(output));
-  if (runs.length === 0) return undefined;
+  const checks = parsePullRequestChecks(output);
+  if (!checks || checks.length === 0) return undefined;
 
-  const failed = runs.find((run) => FAILED_CONCLUSIONS.has(run.conclusion));
-  if (failed) return { state: "failed", url: failed.url };
-
-  const running = runs.find((run) => RUNNING_STATUSES.has(run.status));
-  if (running) return { state: "running", url: running.url };
-
-  return { state: "okay", url: runs[0]!.url };
-}
-
-export function buildWorkflowRunsPath(
-  pullRequestUrl: string,
-  headRefOid: string,
-): string | undefined {
-  const location = parseGitHubPullRequestUrl(pullRequestUrl);
-  if (!location || !headRefOid) return undefined;
-  const headSha = encodeURIComponent(headRefOid);
-  return `repos/${location.owner}/${location.name}/actions/runs?head_sha=${headSha}&per_page=100`;
+  const newest = newestFirst(checks);
+  const selected =
+    newest.find((check) => check.state === "failed") ??
+    newest.find((check) => check.state === "running") ??
+    newest[0]!;
+  return {
+    state: selected.state,
+    url: selected.url || pullRequestUrl,
+  };
 }

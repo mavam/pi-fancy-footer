@@ -428,9 +428,10 @@ Notes:
   available and authenticated for the remote host.
 - `pull-request-review-threads` counts unresolved GitHub review threads
   on the current PR.
-- `pull-request-ci-status` shows GitHub Actions workflow runs for the current
-  PR head commit. It links to the relevant run and switches to failed as soon as
-  one workflow fails, even when other workflows are still running.
+- `pull-request-ci-status` summarizes the checks that GitHub reports for the
+  current pull request. It links to a relevant check and shows failed when any
+  check fails, running when none fail but at least one is active, and okay
+  otherwise.
 
 ## 🧱 Gauge styles
 

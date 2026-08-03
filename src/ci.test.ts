@@ -1,90 +1,107 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildWorkflowRunsPath, selectPullRequestCiStatus } from "./ci.ts";
+import { selectPullRequestCiStatus } from "./ci.ts";
 
-function runs(workflowRuns: unknown[]) {
-  return JSON.stringify({ workflow_runs: workflowRuns });
+function checks(statusChecks: unknown[]) {
+  return JSON.stringify(statusChecks);
 }
 
-test("selectPullRequestCiStatus reports failed as soon as one workflow failed", () => {
+test("selectPullRequestCiStatus keeps a failed PR check when a later check passes", () => {
   assert.deepEqual(
     selectPullRequestCiStatus(
-      runs([
+      checks([
         {
-          status: "in_progress",
-          conclusion: null,
-          html_url: "https://github.com/org/repo/actions/runs/1",
-          updated_at: "2026-01-01T10:00:00Z",
+          bucket: "fail",
+          link: "https://github.com/org/repo/actions/runs/1/job/1",
+          startedAt: "2026-01-01T09:00:00Z",
+          completedAt: "2026-01-01T09:30:00Z",
         },
         {
-          status: "completed",
-          conclusion: "failure",
-          html_url: "https://github.com/org/repo/actions/runs/2",
-          updated_at: "2026-01-01T09:00:00Z",
+          bucket: "pass",
+          link: "https://github.com/org/repo/actions/runs/2/job/2",
+          startedAt: "2026-01-01T10:00:00Z",
+          completedAt: "2026-01-01T10:30:00Z",
         },
       ]),
     ),
-    { state: "failed", url: "https://github.com/org/repo/actions/runs/2" },
+    {
+      state: "failed",
+      url: "https://github.com/org/repo/actions/runs/1/job/1",
+    },
   );
 });
 
-test("selectPullRequestCiStatus reports running when workflows are active and none failed", () => {
+test("selectPullRequestCiStatus reports running when no PR check failed", () => {
   assert.deepEqual(
     selectPullRequestCiStatus(
-      runs([
+      checks([
         {
-          status: "queued",
-          conclusion: null,
-          html_url: "https://github.com/org/repo/actions/runs/3",
-          updated_at: "2026-01-01T10:00:00Z",
+          bucket: "pass",
+          link: "https://github.com/org/repo/actions/runs/3/job/3",
+          startedAt: "2026-01-01T09:00:00Z",
+          completedAt: "2026-01-01T09:30:00Z",
+        },
+        {
+          bucket: "pending",
+          link: "https://github.com/org/repo/actions/runs/4/job/4",
+          startedAt: "2026-01-01T10:00:00Z",
+          completedAt: "",
         },
       ]),
     ),
-    { state: "running", url: "https://github.com/org/repo/actions/runs/3" },
+    {
+      state: "running",
+      url: "https://github.com/org/repo/actions/runs/4/job/4",
+    },
   );
 });
 
-test("selectPullRequestCiStatus reports okay for completed non-failing workflows", () => {
+test("selectPullRequestCiStatus reports okay for passing and skipped checks", () => {
   assert.deepEqual(
     selectPullRequestCiStatus(
-      runs([
+      checks([
         {
-          status: "completed",
-          conclusion: "success",
-          html_url: "https://github.com/org/repo/actions/runs/4",
-          updated_at: "2026-01-01T10:00:00Z",
+          bucket: "skipping",
+          link: "https://github.com/org/repo/actions/runs/5/job/5",
+          startedAt: "2026-01-01T09:00:00Z",
+          completedAt: "2026-01-01T09:01:00Z",
         },
         {
-          status: "completed",
-          conclusion: "skipped",
-          html_url: "https://github.com/org/repo/actions/runs/5",
-          updated_at: "2026-01-01T09:00:00Z",
+          bucket: "pass",
+          link: "https://ci.example.com/check/6",
+          startedAt: "2026-01-01T10:00:00Z",
+          completedAt: "2026-01-01T10:30:00Z",
         },
       ]),
     ),
-    { state: "okay", url: "https://github.com/org/repo/actions/runs/4" },
+    { state: "okay", url: "https://ci.example.com/check/6" },
   );
 });
 
-test("selectPullRequestCiStatus hides malformed or empty responses", () => {
+test("selectPullRequestCiStatus treats cancelled checks as failed", () => {
+  assert.deepEqual(
+    selectPullRequestCiStatus(
+      checks([
+        {
+          bucket: "cancel",
+          link: "",
+          startedAt: "2026-01-01T10:00:00Z",
+          completedAt: "2026-01-01T10:01:00Z",
+        },
+      ]),
+      "https://github.com/org/repo/pull/42",
+    ),
+    { state: "failed", url: "https://github.com/org/repo/pull/42" },
+  );
+});
+
+test("selectPullRequestCiStatus hides malformed or empty check output", () => {
   assert.equal(selectPullRequestCiStatus("not json"), undefined);
-  assert.equal(selectPullRequestCiStatus(runs([])), undefined);
-});
-
-test("buildWorkflowRunsPath creates GitHub Actions runs endpoint", () => {
+  assert.equal(selectPullRequestCiStatus("{}"), undefined);
+  assert.equal(selectPullRequestCiStatus(checks([])), undefined);
+  assert.equal(selectPullRequestCiStatus(checks([null])), undefined);
   assert.equal(
-    buildWorkflowRunsPath("https://github.com/org/repo/pull/42", "abc123"),
-    "repos/org/repo/actions/runs?head_sha=abc123&per_page=100",
-  );
-  assert.equal(
-    buildWorkflowRunsPath(
-      "https://github.example.com/org/repo/pull/42",
-      "abc123",
-    ),
-    "repos/org/repo/actions/runs?head_sha=abc123&per_page=100",
-  );
-  assert.equal(
-    buildWorkflowRunsPath("https://example.com/x/y/pull/1", "abc"),
+    selectPullRequestCiStatus(checks([{ bucket: "unknown", link: "" }])),
     undefined,
   );
 });
