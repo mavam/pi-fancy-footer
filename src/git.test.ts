@@ -349,12 +349,16 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
         stdout: JSON.stringify({
           workflow_runs: [
             {
+              workflow_id: 1,
+              run_number: 1,
               status: "in_progress",
               conclusion: null,
               html_url: "https://github.com/me/repo/actions/runs/1",
               updated_at: "2026-01-01T10:00:00Z",
             },
             {
+              workflow_id: 2,
+              run_number: 1,
               status: "completed",
               conclusion: "failure",
               html_url: "https://github.com/me/repo/actions/runs/2",
@@ -473,6 +477,8 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
         stdout: JSON.stringify({
           workflow_runs: [
             {
+              workflow_id: 1,
+              run_number: 1,
               status: "completed",
               conclusion: "success",
               html_url: "https://github.example.com/me/repo/actions/runs/1",

@@ -8,9 +8,13 @@ export interface PullRequestCiStatus {
 }
 
 interface WorkflowRun {
+  workflowId: number;
+  runNumber: number;
+  runAttempt: number;
   status: string;
   conclusion: string;
   url: string;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -30,44 +34,88 @@ const RUNNING_STATUSES = new Set([
   "waiting",
 ]);
 
+function isPositiveSafeInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" && Number.isSafeInteger(value) && value > 0
+  );
+}
+
 function parseWorkflowRuns(output: string): WorkflowRun[] {
   try {
-    const parsed = JSON.parse(output) as {
-      workflow_runs?: Array<{
-        status?: unknown;
-        conclusion?: unknown;
-        html_url?: unknown;
-        updated_at?: unknown;
-      }>;
-    };
-    const runs = parsed.workflow_runs;
-    if (!Array.isArray(runs)) return [];
+    const parsed = JSON.parse(output) as { workflow_runs?: unknown };
+    if (!Array.isArray(parsed.workflow_runs)) return [];
 
-    return runs
-      .map((run) => ({
-        status: typeof run.status === "string" ? run.status : "",
-        conclusion: typeof run.conclusion === "string" ? run.conclusion : "",
-        url: typeof run.html_url === "string" ? run.html_url : "",
-        updatedAt: typeof run.updated_at === "string" ? run.updated_at : "",
-      }))
-      .filter((run) => run.url !== "");
+    return parsed.workflow_runs.flatMap((value) => {
+      if (typeof value !== "object" || value === null) return [];
+      const run = value as Record<string, unknown>;
+      if (
+        !isPositiveSafeInteger(run.workflow_id) ||
+        !isPositiveSafeInteger(run.run_number) ||
+        typeof run.status !== "string" ||
+        typeof run.html_url !== "string" ||
+        run.html_url === ""
+      ) {
+        return [];
+      }
+
+      return [
+        {
+          workflowId: run.workflow_id,
+          runNumber: run.run_number,
+          runAttempt: isPositiveSafeInteger(run.run_attempt)
+            ? run.run_attempt
+            : 0,
+          status: run.status,
+          conclusion:
+            typeof run.conclusion === "string" ? run.conclusion : "",
+          url: run.html_url,
+          createdAt:
+            typeof run.created_at === "string" ? run.created_at : "",
+          updatedAt:
+            typeof run.updated_at === "string" ? run.updated_at : "",
+        },
+      ];
+    });
   } catch {
     return [];
   }
 }
 
+function timestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function compareWorkflowRunRecency(a: WorkflowRun, b: WorkflowRun): number {
+  return (
+    a.runNumber - b.runNumber ||
+    a.runAttempt - b.runAttempt ||
+    timestamp(a.createdAt) - timestamp(b.createdAt) ||
+    timestamp(a.updatedAt) - timestamp(b.updatedAt)
+  );
+}
+
+function latestWorkflowRuns(runs: WorkflowRun[]): WorkflowRun[] {
+  const latest = new Map<number, WorkflowRun>();
+  for (const run of runs) {
+    const previous = latest.get(run.workflowId);
+    if (!previous || compareWorkflowRunRecency(run, previous) > 0) {
+      latest.set(run.workflowId, run);
+    }
+  }
+  return [...latest.values()];
+}
+
 function newestFirst(runs: WorkflowRun[]): WorkflowRun[] {
-  return [...runs].sort((a, b) => {
-    const at = Date.parse(a.updatedAt);
-    const bt = Date.parse(b.updatedAt);
-    return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
-  });
+  return [...runs].sort(
+    (a, b) => timestamp(b.updatedAt) - timestamp(a.updatedAt),
+  );
 }
 
 export function selectPullRequestCiStatus(
   output: string,
 ): PullRequestCiStatus | undefined {
-  const runs = newestFirst(parseWorkflowRuns(output));
+  const runs = newestFirst(latestWorkflowRuns(parseWorkflowRuns(output)));
   if (runs.length === 0) return undefined;
 
   const failed = runs.find((run) => FAILED_CONCLUSIONS.has(run.conclusion));
