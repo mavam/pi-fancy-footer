@@ -339,33 +339,28 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
 
     if (
       command === "gh" &&
-      args[0] === "api" &&
-      args[1] === "--hostname" &&
-      args[2] === "github.com" &&
-      args[3] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
+      args[0] === "pr" &&
+      args[1] === "checks" &&
+      args[2] === "https://github.com/me/repo/pull/12" &&
+      args[3] === "--json" &&
+      args[4] === "bucket,link,startedAt,completedAt"
     ) {
       return {
         code: 0,
-        stdout: JSON.stringify({
-          workflow_runs: [
-            {
-              workflow_id: 1,
-              run_number: 1,
-              status: "in_progress",
-              conclusion: null,
-              html_url: "https://github.com/me/repo/actions/runs/1",
-              updated_at: "2026-01-01T10:00:00Z",
-            },
-            {
-              workflow_id: 2,
-              run_number: 1,
-              status: "completed",
-              conclusion: "failure",
-              html_url: "https://github.com/me/repo/actions/runs/2",
-              updated_at: "2026-01-01T09:00:00Z",
-            },
-          ],
-        }),
+        stdout: JSON.stringify([
+          {
+            bucket: "pending",
+            link: "https://github.com/me/repo/actions/runs/1/job/1",
+            startedAt: "2026-01-01T10:00:00Z",
+            completedAt: "",
+          },
+          {
+            bucket: "fail",
+            link: "https://github.com/me/repo/actions/runs/2/job/2",
+            startedAt: "2026-01-01T09:00:00Z",
+            completedAt: "2026-01-01T09:30:00Z",
+          },
+        ]),
         stderr: "",
       };
     }
@@ -386,7 +381,7 @@ test("collectPullRequestInfo includes PR CI status when requested", async () => 
     headRefOid: "abc123",
     ciStatus: {
       state: "failed",
-      url: "https://github.com/me/repo/actions/runs/2",
+      url: "https://github.com/me/repo/actions/runs/2/job/2",
     },
   });
 });
@@ -467,25 +462,22 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
 
     if (
       command === "gh" &&
-      args[0] === "api" &&
-      args[1] === "--hostname" &&
-      args[2] === "github.example.com" &&
-      args[3] === "repos/me/repo/actions/runs?head_sha=abc123&per_page=100"
+      args[0] === "pr" &&
+      args[1] === "checks" &&
+      args[2] === "https://github.example.com/me/repo/pull/12" &&
+      args[3] === "--json" &&
+      args[4] === "bucket,link,startedAt,completedAt"
     ) {
       return {
         code: 0,
-        stdout: JSON.stringify({
-          workflow_runs: [
-            {
-              workflow_id: 1,
-              run_number: 1,
-              status: "completed",
-              conclusion: "success",
-              html_url: "https://github.example.com/me/repo/actions/runs/1",
-              updated_at: "2026-01-01T10:00:00Z",
-            },
-          ],
-        }),
+        stdout: JSON.stringify([
+          {
+            bucket: "pass",
+            link: "https://github.example.com/me/repo/actions/runs/1/job/1",
+            startedAt: "2026-01-01T10:00:00Z",
+            completedAt: "2026-01-01T10:30:00Z",
+          },
+        ]),
         stderr: "",
       };
     }
@@ -506,7 +498,7 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
     unresolvedReviewThreadCount: 1,
     ciStatus: {
       state: "okay",
-      url: "https://github.example.com/me/repo/actions/runs/1",
+      url: "https://github.example.com/me/repo/actions/runs/1/job/1",
     },
   });
   assert.equal(
@@ -514,6 +506,15 @@ test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", asy
       .filter((call) => call.command === "gh" && call.args[0] === "api")
       .every((call) => call.args.includes("github.example.com")),
     true,
+  );
+  assert.ok(
+    calls.some(
+      (call) =>
+        call.command === "gh" &&
+        call.args[0] === "pr" &&
+        call.args[1] === "checks" &&
+        call.args[2] === "https://github.example.com/me/repo/pull/12",
+    ),
   );
 });
 

@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { buildWorkflowRunsPath, selectPullRequestCiStatus } from "./ci.ts";
+import { selectPullRequestCiStatus } from "./ci.ts";
 import {
   createGitHubRepositoryContext,
   parseGitHubPullRequestUrl,
@@ -240,25 +240,22 @@ async function collectPullRequestCiStatus(
   cwd: string,
   pullRequest: NonNullable<GitInfo["pullRequest"]>,
 ): Promise<NonNullable<GitInfo["pullRequest"]>["ciStatus"] | undefined> {
-  const path = buildWorkflowRunsPath(
-    pullRequest.url,
-    pullRequest.headRefOid ?? "",
-  );
-  if (!path) return undefined;
-  const location = parseGitHubPullRequestUrl(pullRequest.url);
-  const host = pullRequest.host ?? location?.host;
-  if (!host) return undefined;
-
   const result = await execResult(
     pi,
     "gh",
-    ["api", "--hostname", host, path],
+    [
+      "pr",
+      "checks",
+      pullRequest.url,
+      "--json",
+      "bucket,link,startedAt,completedAt",
+    ],
     cwd,
     GITHUB_COMMAND_TIMEOUT_MS,
   );
-  if (result.code !== 0 || !result.stdout) return undefined;
+  if (!result.stdout) return undefined;
 
-  return selectPullRequestCiStatus(result.stdout);
+  return selectPullRequestCiStatus(result.stdout, pullRequest.url);
 }
 
 async function enrichPullRequest(
