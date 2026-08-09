@@ -1,0 +1,10 @@
+pre-push:
+  parallel: true
+  commands:
+    test:
+      run: npm test
+    changelog-validate:
+      glob: "changelog/**"
+      run: uvx tenzir-ship validate --lenient
+    actionlint:
+      run: if command -v actionlint >/dev/null; then actionlint; fi
