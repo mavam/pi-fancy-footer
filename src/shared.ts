@@ -16,6 +16,7 @@ export const STATUSLINE_SYMBOLS = {
   nerd: {
     thinking: "󰧑",
     model: "󰚩",
+    provider: "󰅟",
     path: "",
     branch: "",
     commit: "",
@@ -40,6 +41,7 @@ export const STATUSLINE_SYMBOLS = {
   emoji: {
     thinking: "🧠",
     model: "🤖",
+    provider: "☁️",
     path: "📁",
     branch: "🌿",
     commit: "🔖",
@@ -64,6 +66,7 @@ export const STATUSLINE_SYMBOLS = {
   unicode: {
     thinking: "✦",
     model: "◉",
+    provider: "☁",
     path: "⌂",
     branch: "⎇",
     commit: "#",
@@ -88,6 +91,7 @@ export const STATUSLINE_SYMBOLS = {
   ascii: {
     thinking: "?",
     model: "%",
+    provider: "&",
     path: "/",
     branch: "*",
     commit: "#",
@@ -378,6 +382,7 @@ export type FooterWidgetResolvedIconColor =
   | "github-merged";
 
 export const FOOTER_WIDGET_IDS = [
+  "provider",
   "model",
   "thinking",
   "context-capacity",
@@ -429,6 +434,7 @@ export interface FooterWidgetIcon {
 }
 
 export interface FooterMetrics {
+  provider: string;
   model: string;
   thinking: string;
   totalTokens: number;
@@ -608,6 +614,18 @@ export const FOOTER_WIDGET_META: Record<
   BuiltInFooterWidgetId,
   FooterWidgetMeta
 > = {
+  provider: {
+    shortLabel: "provider",
+    defaults: {
+      row: 1,
+      position: 5,
+      align: "right",
+      fill: "none",
+      enabled: false,
+    },
+    description: "Shows the provider behind the active model.",
+    symbolKey: "provider",
+  },
   model: {
     shortLabel: "model",
     defaults: { row: 1, position: 6, align: "right", fill: "none" },

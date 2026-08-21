@@ -22,7 +22,7 @@ pi install npm:pi-fancy-footer
 
 ## 📊 What it shows
 
-- Active model + thinking level
+- Active model + thinking level, plus the model's provider (hidden by default)
 - Provider quota status for OpenAI Codex and Claude models
 - A mini gauge of used context, which can optionally grow into a
   full-width bar, plus an optional context-capacity widget (hidden by
@@ -181,6 +181,7 @@ Supported per-widget overrides for both `widgets` and `extensionWidgets`:
 
 Built-in widget IDs:
 
+- `provider`
 - `model`
 - `thinking`
 - `context-capacity`
@@ -332,6 +333,7 @@ leading widget icon.
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
+| `provider`                    | `󰅟`     | `☁️`       | `☁`     | `&`      |
 | `model`                       | `󰚩`     | `🤖`       | `◉`     | `%`      |
 | `thinking`                    | `󰧑`     | `🧠`       | `✦`     | `?`      |
 
@@ -357,6 +359,12 @@ Notes:
   between the context bar and the provider quota gauges.
 - `commit` shows the short Git commit SHA. It is hidden by default; enable it
   via `/fancy-footer` or with `"commit": { "enabled": true }`.
+- `provider` shows the display name of the active model's provider
+  (`Anthropic`, `OpenAI Codex`, …), which the model name alone does not reveal.
+  Providers defined only in `models.json` fall back to their id. The widget is
+  hidden by default; enable it via `/fancy-footer` or with
+  `"provider": { "enabled": true }`. It then sits left of the model on the
+  bottom row.
 - `cache-read` and `cache-write` show cumulative prompt-cache tokens for the
   session in compact form (e.g. `246k`, `1.2M`). `cache-hit-rate` shows the
   latest turn's cache hit rate, computed as
