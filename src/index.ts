@@ -407,7 +407,15 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("session_compact", async () => {
+  pi.on("model_select", () => {
+    activeFooterControls?.requestRender();
+  });
+
+  pi.on("thinking_level_select", () => {
+    activeFooterControls?.requestRender();
+  });
+
+  pi.on("session_compact", () => {
     activeFooterControls?.requestRender();
   });
 
