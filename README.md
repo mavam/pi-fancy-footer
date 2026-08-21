@@ -357,9 +357,10 @@ Notes:
   between the context bar and the provider quota gauges.
 - `commit` shows the short Git commit SHA. It is hidden by default; enable it
   via `/fancy-footer` or with `"commit": { "enabled": true }`.
-- `provider` shows the provider id of the active model (`anthropic`,
-  `openai-codex`, …), which the model name alone does not reveal. It is hidden
-  by default; enable it via `/fancy-footer` or with
+- `provider` shows the display name of the active model's provider
+  (`Anthropic`, `OpenAI Codex`, …), which the model name alone does not reveal.
+  Providers defined only in `models.json` fall back to their id. The widget is
+  hidden by default; enable it via `/fancy-footer` or with
   `"provider": { "enabled": true }`. It then sits left of the model on the
   bottom row.
 - `cache-read` and `cache-write` show cumulative prompt-cache tokens for the

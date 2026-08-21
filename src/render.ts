@@ -578,7 +578,12 @@ function computeFooterMetrics(
   }
 
   const model = normalizeModel(ctx.model?.name || ctx.model?.id || "Claude");
-  const provider = ctx.model?.provider ?? "";
+  // Providers carry a display name ("Anthropic", "OpenAI Codex"); fall back to
+  // the raw id for providers defined only in models.json.
+  const providerId = ctx.model?.provider ?? "";
+  const provider = providerId
+    ? (ctx.modelRegistry?.getProviderDisplayName(providerId) ?? providerId)
+    : "";
   const thinking = formatThinkingLevel(
     getThinkingLevelFromEntries(
       ctx.sessionManager.getBranch(),

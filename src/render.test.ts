@@ -245,11 +245,40 @@ test("renderFooterLines omits the provider widget by default", () => {
   assert.doesNotMatch(lines.join("\n"), /openai-codex/);
 });
 
-test("renderFooterLines shows the provider once the widget is enabled", () => {
+test("renderFooterLines shows the provider display name once enabled", () => {
+  const lines = renderFooterLines(
+    120,
+    {
+      ...contextWithModel({
+        provider: "openai-codex",
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+      }),
+      modelRegistry: {
+        getProviderDisplayName: (provider: string) =>
+          provider === "openai-codex" ? "OpenAI Codex" : provider,
+      },
+    } as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    {
+      ...footerConfig,
+      widgets: { ...footerConfig.widgets, provider: { enabled: true } },
+    },
+    [],
+    [],
+  );
+
+  assert.match(lines.join("\n"), /OpenAI Codex.*GPT-5\.6 Sol/);
+});
+
+test("renderFooterLines falls back to the provider id without a display name", () => {
   const lines = renderFooterLines(
     120,
     contextWithModel({
-      provider: "openai-codex",
+      provider: "my-proxy",
       id: "gpt-5.6-sol",
       name: "GPT-5.6 Sol",
     }) as never,
@@ -265,7 +294,7 @@ test("renderFooterLines shows the provider once the widget is enabled", () => {
     [],
   );
 
-  assert.match(lines.join("\n"), /openai-codex.*GPT-5\.6 Sol/);
+  assert.match(lines.join("\n"), /my-proxy.*GPT-5\.6 Sol/);
 });
 
 test("renderFooterLines hides the provider widget without a model", () => {
