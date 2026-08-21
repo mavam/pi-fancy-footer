@@ -130,7 +130,9 @@ Top-level settings:
 > replace `true` with `"primary"` and `false` with `"off"`. An invalid value
 > causes the entire file to fall back to defaults.
 
-- `refreshMs` (number)
+- `refreshMs` (number) - interval for background Git refreshes. Model,
+  thinking-level, provider-response, and extension-widget changes update from
+  events without waiting for this interval
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
 - `gaugeStyle`
