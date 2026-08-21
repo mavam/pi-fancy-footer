@@ -1,0 +1,9 @@
+created: 2026-08-21
+title: Provider identity in the footer
+intro: >-
+  This release adds an optional provider widget that identifies the provider behind
+  the active model. It also updates the model and thinking indicators immediately
+  when you change them.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.4.2
