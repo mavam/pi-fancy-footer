@@ -578,6 +578,7 @@ function computeFooterMetrics(
   }
 
   const model = normalizeModel(ctx.model?.name || ctx.model?.id || "Claude");
+  const provider = ctx.model?.provider ?? "";
   const thinking = formatThinkingLevel(
     getThinkingLevelFromEntries(
       ctx.sessionManager.getBranch(),
@@ -595,6 +596,7 @@ function computeFooterMetrics(
 
   return {
     model,
+    provider,
     thinking,
     totalTokens,
     usedTokensForBar,
@@ -649,6 +651,11 @@ function buildFooterWidgets(
   barStyle: GaugeStyleDef,
 ): FooterWidget[] {
   return [
+    {
+      ...baseWidgetDefaults("provider", iconFamily),
+      visible: ({ metrics }) => metrics.provider !== "",
+      renderText: ({ metrics }) => metrics.provider,
+    },
     {
       ...baseWidgetDefaults("model", iconFamily),
       renderText: ({ metrics }) => metrics.model,
