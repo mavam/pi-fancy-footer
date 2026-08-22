@@ -422,6 +422,8 @@ export interface FooterWidget {
   defaultEnabled?: boolean;
   minWidth?: FooterWidgetSize;
   icon?: FooterWidgetIcon;
+  /** Optional HTTP(S) destination for the complete rendered widget. */
+  href?: string;
   preferredIconColor?: FooterWidgetColor;
   textColor?: FooterWidgetColor;
   preferredTextColor?: FooterWidgetColor;

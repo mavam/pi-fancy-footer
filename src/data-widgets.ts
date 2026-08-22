@@ -22,9 +22,12 @@ import {
 
 export const MAX_DATA_WIDGET_TEXT_CODE_POINTS = 512;
 export const MAX_DATA_WIDGET_ID_LENGTH = 128;
+export const MAX_DATA_WIDGET_HREF_LENGTH = 2_048;
 
 const DATA_WIDGET_ID_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/u;
+const DATA_WIDGET_HREF_PATTERN =
+  /^https?:\/\/[^\s\u0000-\u001f\u007f-\u009f]+$/u;
 
 const literalUnion = (values: readonly string[]) =>
   Type.Union(values.map((value) => Type.Literal(value)));
@@ -56,6 +59,13 @@ const dataWidgetSchema = Type.Object(
       {
         type: Type.Literal("text"),
         text: Type.String(),
+        href: Type.Optional(
+          Type.String({
+            minLength: 1,
+            maxLength: MAX_DATA_WIDGET_HREF_LENGTH,
+            pattern: DATA_WIDGET_HREF_PATTERN.source,
+          }),
+        ),
       },
       { additionalProperties: false },
     ),
@@ -122,7 +132,7 @@ export interface NormalizedFancyFooterDataWidget {
   id: string;
   label: string;
   description: string;
-  content: { type: "text"; text: string };
+  content: { type: "text"; text: string; href?: string };
   icon?: FancyFooterDataWidgetIcon | false;
   preferredTextColor?: FooterWidgetColor;
   defaults: FooterWidgetEditorDefaults;
@@ -174,7 +184,11 @@ function normalizeWidget(
     id,
     label,
     description,
-    content: { type: "text", text: sanitizeDataWidgetText(widget.content.text) },
+    content: {
+      type: "text",
+      text: sanitizeDataWidgetText(widget.content.text),
+      ...(widget.content.href ? { href: widget.content.href } : {}),
+    },
     icon: normalizeIcon(widget.icon),
     preferredTextColor: widget.style?.textColor,
     defaults: {

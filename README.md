@@ -234,7 +234,11 @@ export default function (pi: ExtensionAPI) {
         id: "acme.build-status",
         label: "Build status",
         description: "Current build result",
-        content: { type: "text", text: status },
+        content: {
+          type: "text",
+          text: status,
+          href: "https://ci.example.com/builds/latest",
+        },
         icon: {
           glyphs: {
             nerd: "󰙨",
@@ -288,8 +292,10 @@ characters and contain two or more dot-separated segments. Each segment starts
 with a letter or digit and may also contain letters, digits, underscores, and
 hyphens, for example `acme.build-status`. An empty `content.text` hides the
 widget while keeping it configurable, even when the widget is explicitly
-enabled. A `remove` message drops the live widget definition. Widget text is
-limited to 512 Unicode code points and terminal control characters are stripped.
+enabled. Set `content.href` to an HTTP or HTTPS URL to make the complete widget,
+including its icon, clickable. A `remove` message drops the live widget
+definition. Widget text is limited to 512 Unicode code points and terminal
+control characters are stripped.
 
 The structured snapshot can provide `label`, `description`, an icon glyph or
 per-family glyph map, icon and text colors, and layout defaults (`enabled`,

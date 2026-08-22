@@ -13,6 +13,8 @@ export const FANCY_FOOTER_READY_CHANNEL = "pi-fancy-footer:ready";
 export interface FancyFooterTextContent {
   type: "text";
   text: string;
+  /** Optional HTTP(S) destination for the complete rendered widget. */
+  href?: string;
 }
 
 export interface FancyFooterDataWidgetIcon {

@@ -29,7 +29,11 @@ test("typed client emits the raw data-widget protocol", () => {
   const client = createFancyFooterClient({ events: bus } as unknown as ExtensionAPI);
   client.upsert({
     id: "acme.status",
-    content: { type: "text", text: "passing" },
+    content: {
+      type: "text",
+      text: "passing",
+      href: "https://ci.example.com/build/1",
+    },
   });
   client.remove("acme.status");
 
@@ -41,7 +45,11 @@ test("typed client emits the raw data-widget protocol", () => {
         type: "upsert",
         widget: {
           id: "acme.status",
-          content: { type: "text", text: "passing" },
+          content: {
+            type: "text",
+            text: "passing",
+            href: "https://ci.example.com/build/1",
+          },
         },
       },
     ],

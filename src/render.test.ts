@@ -72,7 +72,11 @@ const agentWidgets: NormalizedFancyFooterDataWidget[] = [
     id: "pi-agents.workflows",
     label: "Active workflows",
     description: "Shows active workflow executions.",
-    content: { type: "text", text: "2" },
+    content: {
+      type: "text",
+      text: "2",
+      href: "https://example.com/workflows",
+    },
     icon: { glyphs: "❖", color: "accent" },
     defaults: {
       enabled: false,
@@ -189,6 +193,10 @@ test("data widgets honor default visibility and user color overrides", () => {
     agentWidgets,
   );
   assert.match(enabledLines.join("\n"), /❖2.*✦1\/3/);
+  assert.match(
+    enabledLines.join("\n"),
+    /\u001b\]8;;https:\/\/example\.com\/workflows\u0007❖2\u001b\]8;;\u0007/,
+  );
   assert.ok(colors.includes("success:❖"));
   assert.ok(colors.includes("warning:2"));
   assert.ok(colors.includes("success:✦"));

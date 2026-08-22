@@ -291,8 +291,11 @@ function renderWidget(
       : "";
 
   const combined = `${styledIcon}${styledText}`;
-  if (maxTotalWidth === undefined) return combined;
-  return truncateFooterText(combined, maxTotalWidth, "");
+  const linked = widget.href
+    ? formatTerminalHyperlink(widget.href, combined)
+    : combined;
+  if (maxTotalWidth === undefined) return linked;
+  return truncateFooterText(linked, maxTotalWidth, "");
 }
 
 function prepareWidgetGroup(
@@ -754,6 +757,7 @@ function buildExtensionWidgets(
         ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
         : undefined,
     icon: resolveDataWidgetIcon(widget.icon, iconFamily),
+    href: widget.content.href,
     preferredIconColor: widget.icon ? widget.icon.color : undefined,
     preferredTextColor: widget.preferredTextColor,
     forceVisibleWhenEnabled: false,
