@@ -1,0 +1,9 @@
+created: 2026-08-22
+title: Hide inactive opt-in widgets
+intro: >-
+  This release keeps opt-in extension widgets out of the footer while they have no
+  text to display. It reduces clutter from inactive workflow and agent indicators
+  while preserving default-enabled status icons.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.0.0
