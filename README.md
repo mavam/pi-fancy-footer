@@ -1,8 +1,7 @@
 # ✨ pi-fancy-footer
 
-A [pi](https://github.com/earendil-works/pi-mono/tree/main/packages/coding-agent)
-extension that replaces the default footer with a compact, two-line fancy status
-footer.
+A [Pi](https://pi.dev) extension that replaces the default footer with a compact,
+two-line fancy status footer.
 
 <!-- markdownlint-disable MD033 -->
 
