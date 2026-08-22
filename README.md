@@ -29,9 +29,11 @@ pi install npm:pi-fancy-footer
 - Total session cost
 - Prompt-cache statistics: cumulative cache-read/write tokens and the latest
   turn's cache hit rate
-- Repo / path, branch, optional commit SHA (hidden by default), open or merged
-  PR number, auto-merge status, unresolved PR review threads, and PR CI status
+- Current path, branch, and optional commit SHA (hidden by default)
 - Git diff stats and ahead/behind status
+
+Pull request widgets come from [pi-pr](https://github.com/mavam/pi-pr), which
+owns GitHub polling and publishes them into this footer.
 
 ## 📸 Configuration editor
 
@@ -192,9 +194,6 @@ Built-in widget IDs:
 - `location`
 - `branch`
 - `commit`
-- `pull-request`
-- `pull-request-review-threads`
-- `pull-request-ci-status`
 - `provider-status`
 - `diff-added`
 - `diff-removed`
@@ -326,9 +325,6 @@ leading widget icon.
 | `location`                    | ``     | `📁`       | `⌂`     | `/`      |
 | `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
 | `commit`                      | ``     | `🔖`       | `#`     | `#`      |
-| `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
-| `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
-| `pull-request-ci-status`      | `//` | `⏳/❌/✅` | `◷/✕/✓` | `~/x/+`  |
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
@@ -373,14 +369,6 @@ Notes:
   the session has no cache activity or the terminal is narrower than 60
   columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
-- `pull-request` keeps merged PRs visible. A non-default icon color override
-  always takes precedence. Otherwise, the PR icon uses a fixed GitHub purple
-  (`#8250df`, with a 256-color fallback) for merged PRs, the theme's dim color
-  for draft PRs, the accent color when auto-merge is enabled, and the configured
-  icon color for other open PRs. The purple is deliberately theme-independent.
-- `pull-request-ci-status` is icon-only and uses symbols for running / failed /
-  okay status. By default it uses semantic colors (warning / error / success);
-  set this widget's icon color to override them.
 - `provider-status` shows provider quota windows for OpenAI Codex and Claude
   models as mini gauges per window, for example
   `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38%`.
@@ -431,16 +419,8 @@ Notes:
   work better in terminals that don't use a Nerd Font.
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
-- The PR widgets appear only for open or merged pull requests on GitHub and
-  GitHub Enterprise hosts such as `github.example.com`. The footer also detects
-  auto-merge on open PRs. These widgets rely on the GitHub CLI (`gh`) being
-  available and authenticated for the remote host.
-- `pull-request-review-threads` counts unresolved GitHub review threads
-  on the current PR.
-- `pull-request-ci-status` summarizes the checks that GitHub reports for the
-  current pull request. It links to a relevant check and shows failed when any
-  check fails, running when none fail but at least one is active, and okay
-  otherwise.
+- Pull request widgets live in [pi-pr](https://github.com/mavam/pi-pr), which
+  owns all GitHub polling and publishes them through the data-widget protocol.
 
 ## 🧱 Gauge styles
 

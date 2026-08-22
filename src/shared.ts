@@ -20,11 +20,6 @@ export const STATUSLINE_SYMBOLS = {
     path: "",
     branch: "",
     commit: "",
-    pullRequest: "",
-    pullRequestReviewThreads: "󰅺",
-    pullRequestCiRunning: "",
-    pullRequestCiFailed: "",
-    pullRequestCiOkay: "",
     providerStatus: "󰓅",
     contextBarMarker: "󰾆",
     contextCapacityMarker: "",
@@ -45,11 +40,6 @@ export const STATUSLINE_SYMBOLS = {
     path: "📁",
     branch: "🌿",
     commit: "🔖",
-    pullRequest: "🔀",
-    pullRequestReviewThreads: "💬",
-    pullRequestCiRunning: "⏳",
-    pullRequestCiFailed: "❌",
-    pullRequestCiOkay: "✅",
     providerStatus: "📊",
     contextBarMarker: "🔋",
     contextCapacityMarker: "💾",
@@ -70,11 +60,6 @@ export const STATUSLINE_SYMBOLS = {
     path: "⌂",
     branch: "⎇",
     commit: "#",
-    pullRequest: "⇄",
-    pullRequestReviewThreads: "✎",
-    pullRequestCiRunning: "◷",
-    pullRequestCiFailed: "✕",
-    pullRequestCiOkay: "✓",
     providerStatus: "%",
     contextBarMarker: "◧",
     contextCapacityMarker: "□",
@@ -95,11 +80,6 @@ export const STATUSLINE_SYMBOLS = {
     path: "/",
     branch: "*",
     commit: "#",
-    pullRequest: "@",
-    pullRequestReviewThreads: "!",
-    pullRequestCiRunning: "~",
-    pullRequestCiFailed: "x",
-    pullRequestCiOkay: "+",
     providerStatus: "%",
     contextBarMarker: "|",
     contextCapacityMarker: "[]",
@@ -273,8 +253,6 @@ export interface GitCounts {
   behind: number;
 }
 
-export type PullRequestState = "open" | "merged";
-export type PullRequestCiState = "running" | "failed" | "okay";
 
 export interface ProviderStatusWindow {
   label: string;
@@ -311,47 +289,17 @@ export interface ProviderStatusSnapshot {
   error?: string;
 }
 
-export interface GitHubPullRequest {
-  number: number;
-  url: string;
-  state: PullRequestState;
-  isDraft?: boolean;
-  autoMergeEnabled?: boolean;
-  host?: string;
-  headRefOid?: string;
-  unresolvedReviewThreadCount?: number;
-  ciStatus?: {
-    state: PullRequestCiState;
-    url: string;
-  };
-}
-
-export interface GitHubRepositoryRef {
-  host: string;
-  owner: string;
-  name: string;
-  repository: string;
-}
-
 export interface GitInfo {
-  repository: string;
   branch: string;
   commit: string;
-  pullRequest: GitHubPullRequest | undefined;
-  pullRequestLookupEnabled: boolean;
-  pullRequestLookupAt: number;
   added: number;
   removed: number;
   counts: GitCounts;
 }
 
 export const EMPTY_GIT_INFO: GitInfo = {
-  repository: "",
   branch: "",
   commit: "",
-  pullRequest: undefined,
-  pullRequestLookupEnabled: false,
-  pullRequestLookupAt: 0,
   added: 0,
   removed: 0,
   counts: {
@@ -377,9 +325,6 @@ export const FOOTER_WIDGET_COLORS = [
 ] as const;
 
 export type FooterWidgetColor = (typeof FOOTER_WIDGET_COLORS)[number];
-export type FooterWidgetResolvedIconColor =
-  | FooterWidgetColor
-  | "github-merged";
 
 export const FOOTER_WIDGET_IDS = [
   "provider",
@@ -394,9 +339,6 @@ export const FOOTER_WIDGET_IDS = [
   "location",
   "branch",
   "commit",
-  "pull-request",
-  "pull-request-review-threads",
-  "pull-request-ci-status",
   "provider-status",
   "diff-added",
   "diff-removed",
@@ -446,14 +388,6 @@ export interface FooterMetrics {
   locationText: string;
   branch: string;
   commit: string;
-  pullRequestNumber: number;
-  pullRequestUrl: string;
-  pullRequestState: PullRequestState | "";
-  pullRequestIsDraft: boolean;
-  pullRequestAutoMergeEnabled: boolean;
-  pullRequestUnresolvedReviewThreadCount: number;
-  pullRequestCiState: PullRequestCiState | "";
-  pullRequestCiUrl: string;
   added: number;
   removed: number;
   gitStatusSymbol: string;
@@ -489,10 +423,6 @@ export interface FooterWidget {
   minWidth?: FooterWidgetSize;
   icon?: FooterWidgetIcon;
   preferredIconColor?: FooterWidgetColor;
-  resolveIconColor?: (
-    ctx: WidgetRenderContext,
-    configuredColor: FooterWidgetColor,
-  ) => FooterWidgetResolvedIconColor;
   textColor?: FooterWidgetColor;
   preferredTextColor?: FooterWidgetColor;
   styled?: boolean;
@@ -684,7 +614,7 @@ export const FOOTER_WIDGET_META: Record<
   location: {
     shortLabel: "loc",
     defaults: { row: 1, position: 0, align: "left", fill: "none" },
-    description: "Shows the repository name or current path.",
+    description: "Shows the current path.",
     symbolKey: "path",
   },
   branch: {
@@ -704,28 +634,6 @@ export const FOOTER_WIDGET_META: Record<
     },
     description: "Shows the short Git commit SHA.",
     symbolKey: "commit",
-  },
-  "pull-request": {
-    shortLabel: "pr",
-    defaults: { row: 1, position: 3, align: "left", fill: "none" },
-    description:
-      "Shows the open or merged GitHub pull request number for the current branch.",
-    symbolKey: "pullRequest",
-  },
-  "pull-request-review-threads": {
-    shortLabel: "pr-threads",
-    defaults: { row: 1, position: 4, align: "left", fill: "none" },
-    description:
-      "Shows unresolved GitHub pull request review threads for the current branch.",
-    symbolKey: "pullRequestReviewThreads",
-  },
-  "pull-request-ci-status": {
-    shortLabel: "pr-ci",
-    defaults: { row: 1, position: 5, align: "left", fill: "none" },
-    description:
-      "Shows the GitHub Actions CI status for the current pull request.",
-    symbolKey: "pullRequestCiOkay",
-    hasFooterIcon: false,
   },
   "provider-status": {
     shortLabel: "quota",
@@ -847,42 +755,6 @@ export function formatThinkingLevel(level: string): string {
   return level;
 }
 
-function parseGitHubHost(host: string): string {
-  const normalized = host.toLowerCase();
-  if (normalized === "github.com") return normalized;
-  if (/^github(?:[.-][a-z0-9][a-z0-9-]*)+\.[a-z]{2,}$/i.test(normalized)) {
-    return normalized;
-  }
-  return "";
-}
-
-export function parseGitHubRemote(url: string): GitHubRepositoryRef | undefined {
-  const trimmed = url.trim();
-  const scpLike = trimmed.includes("://")
-    ? undefined
-    : trimmed.match(/^.+@([^:/]+):([^/][^:]*\/[^:]+)$/);
-  const urlLike = trimmed.match(
-    /^(?:https?:\/\/|ssh:\/\/.+@)([^/:]+)(?::\d+)?\/(.+\/.+)$/,
-  );
-  const match = scpLike ?? urlLike;
-  if (!match) return undefined;
-
-  const [, rawHost, rawRepository] = match;
-  const host = parseGitHubHost(rawHost ?? "");
-  if (!host || !rawRepository) return undefined;
-
-  const repository = rawRepository.replace(/\.git$/i, "");
-  const slash = repository.indexOf("/");
-  if (slash <= 0 || slash >= repository.length - 1) return undefined;
-
-  return {
-    host,
-    owner: repository.slice(0, slash),
-    name: repository.slice(slash + 1),
-    repository,
-  };
-}
-
 export function formatTerminalHyperlink(url: string, text: string): string {
   if (!url) return text;
   return `\x1b]8;;${url}\x07${text}\x1b]8;;\x07`;
@@ -975,8 +847,7 @@ export function widgetSummary(
   const meta = FOOTER_WIDGET_META[widgetId];
   const defaults = meta.defaults;
   const hasBuiltInIcon = meta.hasFooterIcon !== false;
-  const hasConfigurableIconColor =
-    hasBuiltInIcon || widgetId === "pull-request-ci-status";
+  const hasConfigurableIconColor = hasBuiltInIcon;
 
   const override = config.widgets[widgetId];
   if (!override) return "default";

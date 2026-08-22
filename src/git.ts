@@ -1,15 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { selectPullRequestCiStatus } from "./ci.ts";
-import {
-  createGitHubRepositoryContext,
-  parseGitHubPullRequestUrl,
-  parsePullRequest,
-  parsePullRequestReviewThreadsPage,
-  selectPullRequestFromGraphQL,
-} from "./pull-request.ts";
 import {
   EMPTY_GIT_INFO,
-  type GitHubRepositoryRef,
   type GitInfo,
   parseNumstat,
   toNumber,
@@ -21,57 +12,9 @@ interface ExecResult {
   stderr: string;
 }
 
-interface PullRequestCollectionOptions {
-  includeReviewThreads?: boolean;
-  includeCiStatus?: boolean;
-}
-
 const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
-const GITHUB_COMMAND_TIMEOUT_MS = 5_000;
 const PULL_REQUEST_REFRESH_MS = 60_000;
 const GIT_NO_OPTIONAL_LOCKS_ARG = "--no-optional-locks";
-const PULL_REQUEST_QUERY = [
-  "query($owner: String!, $name: String!, $branch: String!) {",
-  "  repository(owner: $owner, name: $name) {",
-  "    open: pullRequests(states: OPEN, headRefName: $branch, first: 100, orderBy: { field: CREATED_AT, direction: DESC }) {",
-  "      nodes {",
-  "        number",
-  "        url",
-  "        state",
-  "        isDraft",
-  "        autoMergeRequest { enabledAt }",
-  "        headRefOid",
-  "        headRepositoryOwner { login }",
-  "      }",
-  "    }",
-  "    merged: pullRequests(states: MERGED, headRefName: $branch, first: 100, orderBy: { field: CREATED_AT, direction: DESC }) {",
-  "      nodes {",
-  "        number",
-  "        url",
-  "        state",
-  "        isDraft",
-  "        autoMergeRequest { enabledAt }",
-  "        headRefOid",
-  "        headRepositoryOwner { login }",
-  "      }",
-  "    }",
-  "  }",
-  "}",
-].join(" ");
-const PULL_REQUEST_REVIEW_THREADS_QUERY = [
-  "query($owner: String!, $name: String!, $number: Int!, $after: String) {",
-  "  repository(owner: $owner, name: $name) {",
-  "    pullRequest(number: $number) {",
-  "      reviewThreads(first: 100, after: $after) {",
-  "        pageInfo { hasNextPage endCursor }",
-  "        nodes { isResolved }",
-  "      }",
-  "    }",
-  "  }",
-  "}",
-].join(" ");
-const MAX_PULL_REQUEST_REVIEW_THREAD_PAGES = 10;
-
 async function execResult(
   pi: ExtensionAPI,
   command: string,
@@ -128,279 +71,20 @@ async function execGit(
   return result.stdout;
 }
 
-async function collectPullRequestFromBaseRepository(
-  pi: ExtensionAPI,
-  cwd: string,
-  baseRepository: GitHubRepositoryRef,
-  branch: string,
-  headOwners: string[],
-): Promise<GitInfo["pullRequest"]> {
-  if (!branch) return undefined;
-
-  const result = await execResult(
-    pi,
-    "gh",
-    [
-      "api",
-      "graphql",
-      "--hostname",
-      baseRepository.host,
-      "-f",
-      `query=${PULL_REQUEST_QUERY}`,
-      "-F",
-      `owner=${baseRepository.owner}`,
-      "-F",
-      `name=${baseRepository.name}`,
-      "-F",
-      `branch=${branch}`,
-    ],
-    cwd,
-    GITHUB_COMMAND_TIMEOUT_MS,
-  );
-  if (result.code !== 0 || !result.stdout) return undefined;
-
-  const pullRequest = selectPullRequestFromGraphQL(result.stdout, headOwners);
-  if (!pullRequest) return undefined;
-  return { ...pullRequest, host: pullRequest.host ?? baseRepository.host };
-}
-
-async function collectCurrentBranchPullRequest(
-  pi: ExtensionAPI,
-  cwd: string,
-): Promise<GitInfo["pullRequest"]> {
-  const result = await execResult(
-    pi,
-    "gh",
-    [
-      "pr",
-      "view",
-      "--json",
-      "number,url,headRefOid,state,isDraft,autoMergeRequest",
-    ],
-    cwd,
-    GITHUB_COMMAND_TIMEOUT_MS,
-  );
-  if (result.code !== 0 || !result.stdout) return undefined;
-
-  return parsePullRequest(result.stdout);
-}
-
-async function collectPullRequestReviewThreadCount(
-  pi: ExtensionAPI,
-  cwd: string,
-  pullRequest: NonNullable<GitInfo["pullRequest"]>,
-): Promise<number | undefined> {
-  const location = parseGitHubPullRequestUrl(pullRequest.url);
-  if (!location) return undefined;
-
-  let unresolvedCount = 0;
-  let cursor = "";
-
-  for (let page = 0; page < MAX_PULL_REQUEST_REVIEW_THREAD_PAGES; page++) {
-    const args = [
-      "api",
-      "graphql",
-      "--hostname",
-      location.host,
-      "-f",
-      `query=${PULL_REQUEST_REVIEW_THREADS_QUERY}`,
-      "-F",
-      `owner=${location.owner}`,
-      "-F",
-      `name=${location.name}`,
-      "-F",
-      `number=${location.number}`,
-    ];
-    if (cursor) {
-      args.push("-F", `after=${cursor}`);
-    }
-
-    const result = await execResult(
-      pi,
-      "gh",
-      args,
-      cwd,
-      GITHUB_COMMAND_TIMEOUT_MS,
-    );
-    if (result.code !== 0 || !result.stdout) return undefined;
-
-    const parsed = parsePullRequestReviewThreadsPage(result.stdout);
-    if (!parsed) return undefined;
-
-    unresolvedCount += parsed.unresolvedCount;
-    if (!parsed.hasNextPage || !parsed.endCursor) return unresolvedCount;
-    cursor = parsed.endCursor;
-  }
-
-  return unresolvedCount;
-}
-
-async function collectPullRequestCiStatus(
-  pi: ExtensionAPI,
-  cwd: string,
-  pullRequest: NonNullable<GitInfo["pullRequest"]>,
-): Promise<NonNullable<GitInfo["pullRequest"]>["ciStatus"] | undefined> {
-  const result = await execResult(
-    pi,
-    "gh",
-    [
-      "pr",
-      "checks",
-      pullRequest.url,
-      "--json",
-      "bucket,link,startedAt,completedAt",
-    ],
-    cwd,
-    GITHUB_COMMAND_TIMEOUT_MS,
-  );
-  if (!result.stdout) return undefined;
-
-  return selectPullRequestCiStatus(result.stdout, pullRequest.url);
-}
-
-async function enrichPullRequest(
-  pi: ExtensionAPI,
-  cwd: string,
-  pullRequest: GitInfo["pullRequest"],
-  options: Required<PullRequestCollectionOptions>,
-): Promise<GitInfo["pullRequest"]> {
-  if (!pullRequest) return undefined;
-
-  const [unresolvedReviewThreadCount, ciStatus] = await Promise.all([
-    options.includeReviewThreads
-      ? collectPullRequestReviewThreadCount(pi, cwd, pullRequest)
-      : Promise.resolve(undefined),
-    options.includeCiStatus
-      ? collectPullRequestCiStatus(pi, cwd, pullRequest)
-      : Promise.resolve(undefined),
-  ]);
-
-  return {
-    ...pullRequest,
-    ...(unresolvedReviewThreadCount !== undefined
-      ? { unresolvedReviewThreadCount }
-      : {}),
-    ...(ciStatus ? { ciStatus } : {}),
-  };
-}
-
-export function shouldRefreshPullRequest(
-  git: Pick<
-    GitInfo,
-    "branch" | "pullRequestLookupEnabled" | "pullRequestLookupAt"
-  >,
-): boolean {
-  return (
-    git.pullRequestLookupEnabled &&
-    !!git.branch &&
-    Date.now() - git.pullRequestLookupAt >= PULL_REQUEST_REFRESH_MS
-  );
-}
-
-export async function collectPullRequestInfo(
-  pi: ExtensionAPI,
-  cwd: string,
-  branch: string,
-  options: PullRequestCollectionOptions = {},
-): Promise<
-  Pick<
-    GitInfo,
-    "pullRequest" | "pullRequestLookupEnabled" | "pullRequestLookupAt"
-  >
-> {
-  const includeReviewThreads = options.includeReviewThreads ?? true;
-  const includeCiStatus = options.includeCiStatus ?? false;
-  const enrichmentOptions = { includeReviewThreads, includeCiStatus };
-
-  if (!branch) {
-    return {
-      pullRequest: undefined,
-      pullRequestLookupEnabled: false,
-      pullRequestLookupAt: 0,
-    };
-  }
-
-  const [upstream, remoteUrls] = await Promise.all([
-    execGit(
-      pi,
-      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
-      cwd,
-    ),
-    execGit(pi, ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
-  ]);
-
-  const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
-  const plan = repositoryContext.pullRequestLookupPlan;
-  const pullRequestLookupAt = Date.now();
-  if (!plan) {
-    return {
-      pullRequest: undefined,
-      pullRequestLookupEnabled: repositoryContext.pullRequestLookupEnabled,
-      pullRequestLookupAt,
-    };
-  }
-
-  for (const baseRepository of plan.baseRepositories) {
-    const pullRequest = await collectPullRequestFromBaseRepository(
-      pi,
-      cwd,
-      baseRepository,
-      branch,
-      plan.headOwners,
-    );
-    if (pullRequest) {
-      return {
-        pullRequest: await enrichPullRequest(
-          pi,
-          cwd,
-          pullRequest,
-          enrichmentOptions,
-        ),
-        pullRequestLookupEnabled: true,
-        pullRequestLookupAt,
-      };
-    }
-  }
-
-  const fallbackPullRequest = plan.allowCurrentBranchFallback
-    ? await collectCurrentBranchPullRequest(pi, cwd)
-    : undefined;
-  return {
-    pullRequest: await enrichPullRequest(
-      pi,
-      cwd,
-      fallbackPullRequest,
-      enrichmentOptions,
-    ),
-    pullRequestLookupEnabled: true,
-    pullRequestLookupAt,
-  };
-}
-
 export async function collectGitInfo(
   pi: ExtensionAPI,
   cwd: string,
-  previousGit:
-    | Pick<
-        GitInfo,
-        | "repository"
-        | "branch"
-        | "pullRequest"
-        | "pullRequestLookupEnabled"
-        | "pullRequestLookupAt"
-      >
-    | undefined = undefined,
 ): Promise<GitInfo> {
-  const [porcelainV2, remoteUrls] = await Promise.all([
-    execGit(pi, ["status", "--porcelain=2", "--branch"], cwd),
-    execGit(pi, ["config", "--get-regexp", "^remote\\..*\\.url$"], cwd),
-  ]);
+  const porcelainV2 = await execGit(
+    pi,
+    ["status", "--porcelain=2", "--branch"],
+    cwd,
+  );
 
   if (!porcelainV2) return { ...EMPTY_GIT_INFO };
 
   let branch = "";
   let commit = "";
-  let upstream = "";
   let staged = 0;
   let modified = 0;
   let untracked = 0;
@@ -419,11 +103,6 @@ export async function collectGitInfo(
     if (line.startsWith("# branch.oid ")) {
       const oid = line.slice("# branch.oid ".length).trim();
       if (oid && oid !== "(initial)") commit = oid.slice(0, 7);
-      continue;
-    }
-
-    if (line.startsWith("# branch.upstream ")) {
-      upstream = line.slice("# branch.upstream ".length).trim();
       continue;
     }
 
@@ -454,12 +133,6 @@ export async function collectGitInfo(
     }
   }
 
-  const repositoryContext = createGitHubRepositoryContext(remoteUrls, upstream);
-  const samePullRequestTarget =
-    previousGit !== undefined &&
-    previousGit.repository === repositoryContext.repository &&
-    previousGit.branch === branch;
-
   let added = 0;
   let removed = 0;
 
@@ -480,14 +153,8 @@ export async function collectGitInfo(
   }
 
   return {
-    repository: repositoryContext.repository,
     branch,
     commit,
-    pullRequest: samePullRequestTarget ? previousGit?.pullRequest : undefined,
-    pullRequestLookupEnabled: repositoryContext.pullRequestLookupEnabled,
-    pullRequestLookupAt: samePullRequestTarget
-      ? (previousGit?.pullRequestLookupAt ?? 0)
-      : 0,
     added,
     removed,
     counts: {

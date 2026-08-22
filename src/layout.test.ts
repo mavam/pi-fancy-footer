@@ -68,9 +68,6 @@ test("buildLayoutModel groups default widgets like the renderer", () => {
   assert.deepEqual(ids(model.rows[1]!.groups.left), [
     "location",
     "branch",
-    "pull-request",
-    "pull-request-review-threads",
-    "pull-request-ci-status",
     "diff-added",
     "diff-removed",
     "git-status",
@@ -104,16 +101,16 @@ test("buildLayoutModel breaks position ties by base order", () => {
 
 test("buildLayoutModel puts disabled widgets on the bench", () => {
   const config = makeConfig();
-  config.widgets["pull-request"] = { enabled: false };
+  config.widgets["diff-added"] = { enabled: false };
   const model = buildLayoutModel(config, builtInWidgets(config));
 
   assert.deepEqual(ids(model.bench), [
     "provider",
     "context-capacity",
     "commit",
-    "pull-request",
+    "diff-added",
   ]);
-  assert.ok(!ids(model.rows[1]!.groups.left).includes("pull-request"));
+  assert.ok(!ids(model.rows[1]!.groups.left).includes("diff-added"));
 });
 
 // ── moveHorizontal ─────────────────────────────────────────────────────
@@ -126,7 +123,7 @@ test("moveHorizontal swaps within a group", () => {
   const model = buildLayoutModel(config, widgets);
   assert.deepEqual(ids(model.rows[1]!.groups.left).slice(0, 3), [
     "location",
-    "pull-request",
+    "diff-added",
     "branch",
   ]);
 });
@@ -214,13 +211,13 @@ test("moveVertical round-trip restores a minimal config", () => {
   moveVertical(config, widgets, "branch", 1);
   // Coming back down appends at the end of the left group; walk it back to
   // its default slot right after "location".
-  for (let i = 0; i < 6; i++) moveHorizontal(config, widgets, "branch", -1);
+  for (let i = 0; i < 3; i++) moveHorizontal(config, widgets, "branch", -1);
 
   const model = buildLayoutModel(config, widgets);
   assert.deepEqual(ids(model.rows[1]!.groups.left).slice(0, 3), [
     "location",
     "branch",
-    "pull-request",
+    "diff-added",
   ]);
   assert.deepEqual(config.widgets, {});
 });
