@@ -745,6 +745,7 @@ function buildExtensionWidgets(
 ): FooterWidget[] {
   return widgets.map((widget) => {
     const icon = resolveDataWidgetIcon(widget.icon, iconFamily);
+    const showIconWhenEmpty = widget.defaults.enabled !== false;
     return {
       id: widget.id,
       location: {
@@ -763,7 +764,9 @@ function buildExtensionWidgets(
       preferredIconColor: widget.icon ? widget.icon.color : undefined,
       preferredTextColor: widget.preferredTextColor,
       forceVisibleWhenEnabled: false,
-      visible: () => widget.content.text !== "" || icon !== undefined,
+      visible: () =>
+        widget.content.text !== "" ||
+        (showIconWhenEmpty && icon !== undefined),
       renderText: () => widget.content.text,
     };
   });

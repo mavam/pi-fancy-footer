@@ -291,12 +291,15 @@ wins if multiple producers use the same ID. IDs must be at most 128 ASCII
 characters and contain two or more dot-separated segments. Each segment starts
 with a letter or digit and may also contain letters, digits, underscores, and
 hyphens, for example `acme.build-status`. An empty `content.text` creates an
-icon-only widget when the selected icon family has a glyph; without a glyph,
-the widget stays hidden. Set `content.href` to an HTTP or HTTPS URL to make the
-complete widget, including its icon, clickable. Invalid links are omitted
-without dropping the widget update. A `remove` message drops the live widget
-definition. Widget text is limited to 512 Unicode code points and terminal
-control characters are stripped.
+icon-only widget when the selected icon family has a glyph. Widgets with
+`layout.enabled: false` stay hidden while their text is empty, even when a user
+enables them. This keeps opt-in activity widgets out of the footer while they
+have nothing to report. Without a glyph, an empty widget also stays hidden. Set
+`content.href` to an HTTP or HTTPS URL to make the complete widget, including
+its icon, clickable. Invalid links are omitted without dropping the widget
+update. A `remove` message drops the live widget definition. Widget text is
+limited to 512 Unicode code points and terminal control characters are
+stripped.
 
 The structured snapshot can provide `label`, `description`, an icon glyph or
 per-family glyph map, icon and text colors, and layout defaults (`enabled`,

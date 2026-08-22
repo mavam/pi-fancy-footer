@@ -27,6 +27,10 @@ export interface FancyFooterDataWidgetStyle {
 }
 
 export interface FancyFooterDataWidgetLayout {
+  /**
+   * Whether the widget is enabled by default. Opt-in widgets hide when their
+   * text is empty.
+   */
   enabled?: boolean;
   row?: number;
   position?: number;

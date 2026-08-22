@@ -202,7 +202,7 @@ test("data widgets honor default visibility and user color overrides", () => {
   assert.ok(colors.includes("success:✦"));
 });
 
-test("enabled data widgets render icons without text", () => {
+test("enabled opt-in data widgets remain hidden without text", () => {
   const enabledConfig: FooterConfigSnapshot = {
     ...footerConfig,
     extensionWidgets: {
@@ -226,7 +226,29 @@ test("enabled data widgets render icons without text", () => {
     emptyWidgets,
   );
 
-  assert.match(lines.join("\n"), /❖.*✦/);
+  assert.doesNotMatch(lines.join("\n"), /❖|✦|·/);
+});
+
+test("default-enabled data widgets render icons without text", () => {
+  const widget = {
+    ...agentWidgets[0]!,
+    id: "pi-prs.ci",
+    content: { type: "text" as const, text: "" },
+    defaults: { ...agentWidgets[0]!.defaults, enabled: undefined },
+  };
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    footerConfig,
+    [widget],
+  );
+
+  assert.match(lines.join("\n"), /❖/);
 });
 
 test("enabled data widgets remain hidden without text or an icon", () => {
