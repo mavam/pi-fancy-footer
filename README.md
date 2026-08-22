@@ -32,7 +32,7 @@ pi install npm:pi-fancy-footer
 - Current path, branch, and optional commit SHA (hidden by default)
 - Git diff stats and ahead/behind status
 
-Pull request widgets come from [pi-pr](https://github.com/mavam/pi-pr), which
+Pull request widgets come from [pi-prs](https://github.com/mavam/pi-prs), which
 owns GitHub polling and publishes them into this footer.
 
 ## 📸 Configuration editor
@@ -426,7 +426,7 @@ Notes:
   work better in terminals that don't use a Nerd Font.
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
-- Pull request widgets live in [pi-pr](https://github.com/mavam/pi-pr), which
+- Pull request widgets live in [pi-prs](https://github.com/mavam/pi-prs), which
   owns all GitHub polling and publishes them through the data-widget protocol.
 
 ## 🧱 Gauge styles
