@@ -1,0 +1,9 @@
+created: 2026-08-22
+title: Delegate pull request widgets to pi-prs
+intro: >-
+  This release delegates pull request status widgets to pi-prs, keeping GitHub polling
+  in its dedicated extension. It also improves data widgets with clickable links,
+  icon-only rendering, and reliable location paths.
+source:
+  mode: sync-stable-queue
+  previous_stable: v2.5.0
