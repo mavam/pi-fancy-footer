@@ -290,11 +290,11 @@ test("widgetSummary hides icon-only overrides for iconless widgets", () => {
   );
 });
 
-test("widgetSummary shows icon color overrides for the PR CI status widget", () => {
+test("widgetSummary shows icon color overrides", () => {
   assert.equal(
     widgetSummary(
-      withWidgets({ "pull-request-ci-status": { iconColor: "accent" } }),
-      "pull-request-ci-status",
+      withWidgets({ branch: { iconColor: "accent" } }),
+      "branch",
     ),
     "icon:accent",
   );

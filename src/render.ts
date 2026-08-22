@@ -16,7 +16,6 @@ import {
   type FooterIconFamily,
   type FooterMetrics,
   type FooterWidget,
-  type FooterWidgetResolvedIconColor,
   type FooterWidgetSize,
   type GitCounts,
   type GitInfo,
@@ -56,33 +55,6 @@ import {
   providerStatusColor,
   resetCountdownText,
 } from "./provider-status.ts";
-
-// GitHub Primer's default merged/done foreground color (#8250df). This hue is
-// fixed rather than theme-derived: pi themes have no "merged" role, and the
-// runtime exposes no light/dark background signal to pick between Primer's
-// light (#8250df) and dark (#a371f7) tokens. Users who want a different hue
-// override the pull-request widget's icon color, which takes precedence.
-export const GITHUB_MERGED_PURPLE = { red: 130, green: 80, blue: 223 } as const;
-// Closest xterm-256 cube entry to #8250df (index 98, #875fd7).
-export const GITHUB_MERGED_PURPLE_256 = 98;
-
-/** Foreground escape prefix for the fixed merged-PR purple. */
-export function githubMergedForegroundPrefix(
-  colorMode: ReturnType<Theme["getColorMode"]>,
-): string {
-  return colorMode === "256color"
-    ? `\x1b[38;5;${GITHUB_MERGED_PURPLE_256}m`
-    : `\x1b[38;2;${GITHUB_MERGED_PURPLE.red};${GITHUB_MERGED_PURPLE.green};${GITHUB_MERGED_PURPLE.blue}m`;
-}
-
-function styleFooterIcon(
-  theme: Theme,
-  color: FooterWidgetResolvedIconColor,
-  text: string,
-): string {
-  if (color !== "github-merged") return theme.fg(color, text);
-  return `${githubMergedForegroundPrefix(theme.getColorMode())}${text}\x1b[39m`;
-}
 
 function buildProviderStatusPart(
   snapshot: ProviderStatusSnapshot,
@@ -237,35 +209,6 @@ function buildGitStatus(
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
 
-function buildPullRequestCiStatus(
-  state: FooterMetrics["pullRequestCiState"],
-  iconFamily: FooterIconFamily,
-  configuredColor: FooterConfigSnapshot["defaultIconColor"],
-):
-  | { symbol: string; color: FooterConfigSnapshot["defaultIconColor"] }
-  | undefined {
-  const symbols = getStatuslineSymbols(iconFamily);
-  switch (state) {
-    case "running":
-      return {
-        symbol: symbols.pullRequestCiRunning,
-        color: configuredColor === "text" ? "warning" : configuredColor,
-      };
-    case "failed":
-      return {
-        symbol: symbols.pullRequestCiFailed,
-        color: configuredColor === "text" ? "error" : configuredColor,
-      };
-    case "okay":
-      return {
-        symbol: symbols.pullRequestCiOkay,
-        color: configuredColor === "text" ? "success" : configuredColor,
-      };
-    default:
-      return undefined;
-  }
-}
-
 function resolveGitStatusSymbolColor(
   symbol: string,
   configuredColor: FooterConfigSnapshot["defaultIconColor"],
@@ -337,24 +280,22 @@ function renderWidget(
       : Math.max(0, maxTotalWidth - iconWidth);
 
   const rawText = widget.renderText(renderCtx, contentWidth);
-  if (!rawText) return "";
+  if (!rawText && !hasIcon) return "";
   const styledText = widget.styled
     ? rawText
     : renderCtx.theme.fg(widget.textColor ?? "dim", rawText);
 
   const styledIcon =
     hasIcon && widget.icon
-      ? styleFooterIcon(
-          renderCtx.theme,
-          widget.resolveIconColor?.(renderCtx, widget.icon.color) ??
-            widget.icon.color,
-          iconText,
-        )
+      ? renderCtx.theme.fg(widget.icon.color, iconText)
       : "";
 
   const combined = `${styledIcon}${styledText}`;
-  if (maxTotalWidth === undefined) return combined;
-  return truncateFooterText(combined, maxTotalWidth, "");
+  const linked = widget.href
+    ? formatTerminalHyperlink(widget.href, combined)
+    : combined;
+  if (maxTotalWidth === undefined) return linked;
+  return truncateFooterText(linked, maxTotalWidth, "");
 }
 
 function prepareWidgetGroup(
@@ -612,16 +553,6 @@ function computeFooterMetrics(
     locationText: git.repository || normalizePath(ctx.cwd),
     branch: git.branch,
     commit: git.commit,
-    pullRequestNumber: git.pullRequest?.number ?? 0,
-    pullRequestUrl: git.pullRequest?.url ?? "",
-    pullRequestState: git.pullRequest?.state ?? "",
-    pullRequestIsDraft: git.pullRequest?.isDraft === true,
-    pullRequestAutoMergeEnabled:
-      git.pullRequest?.autoMergeEnabled === true,
-    pullRequestUnresolvedReviewThreadCount:
-      git.pullRequest?.unresolvedReviewThreadCount ?? 0,
-    pullRequestCiState: git.pullRequest?.ciStatus?.state ?? "",
-    pullRequestCiUrl: git.pullRequest?.ciStatus?.url ?? "",
     added: git.added,
     removed: git.removed,
     ...buildGitStatus(git.counts, iconFamily),
@@ -748,49 +679,6 @@ function buildFooterWidgets(
       renderText: ({ metrics }) => metrics.commit,
     },
     {
-      ...baseWidgetDefaults("pull-request", iconFamily),
-      resolveIconColor: ({ metrics }, configuredColor) => {
-        if (configuredColor !== "text") return configuredColor;
-        if (metrics.pullRequestState === "merged") return "github-merged";
-        if (metrics.pullRequestIsDraft) return "dim";
-        if (metrics.pullRequestAutoMergeEnabled) return "accent";
-        return configuredColor;
-      },
-      visible: ({ metrics }) => metrics.pullRequestNumber > 0,
-      renderText: ({ metrics }) =>
-        formatTerminalHyperlink(
-          metrics.pullRequestUrl,
-          `${metrics.pullRequestNumber}`,
-        ),
-    },
-    {
-      ...baseWidgetDefaults("pull-request-review-threads", iconFamily),
-      visible: ({ metrics }) =>
-        metrics.pullRequestUnresolvedReviewThreadCount > 0,
-      renderText: ({ metrics }) =>
-        formatTerminalHyperlink(
-          metrics.pullRequestUrl,
-          `${metrics.pullRequestUnresolvedReviewThreadCount}`,
-        ),
-    },
-    {
-      ...baseWidgetDefaults("pull-request-ci-status", iconFamily),
-      styled: true,
-      visible: ({ metrics }) => metrics.pullRequestCiState !== "",
-      renderText: ({ metrics, theme, defaultIconColor }) => {
-        const status = buildPullRequestCiStatus(
-          metrics.pullRequestCiState,
-          iconFamily,
-          defaultIconColor,
-        );
-        if (!status) return "";
-        return formatTerminalHyperlink(
-          metrics.pullRequestCiUrl,
-          theme.fg(status.color, status.symbol),
-        );
-      },
-    },
-    {
       ...baseWidgetDefaults("provider-status", iconFamily),
       styled: true,
       visible: ({ providerStatuses, providerStatusConfig, nowMs }) =>
@@ -855,26 +743,30 @@ function buildExtensionWidgets(
   widgets: readonly NormalizedFancyFooterDataWidget[],
   iconFamily: FooterIconFamily,
 ): FooterWidget[] {
-  return widgets.map((widget) => ({
-    id: widget.id,
-    location: {
-      row: clampInt(widget.defaults.row, 0, MAX_WIDGET_ROW),
-      position: clampInt(widget.defaults.position, 0, MAX_WIDGET_POSITION),
-    },
-    align: widget.defaults.align,
-    fill: widget.defaults.fill,
-    defaultEnabled: widget.defaults.enabled,
-    minWidth:
-      widget.defaults.minWidth !== undefined
-        ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
-        : undefined,
-    icon: resolveDataWidgetIcon(widget.icon, iconFamily),
-    preferredIconColor: widget.icon ? widget.icon.color : undefined,
-    preferredTextColor: widget.preferredTextColor,
-    forceVisibleWhenEnabled: false,
-    visible: () => widget.content.text !== "",
-    renderText: () => widget.content.text,
-  }));
+  return widgets.map((widget) => {
+    const icon = resolveDataWidgetIcon(widget.icon, iconFamily);
+    return {
+      id: widget.id,
+      location: {
+        row: clampInt(widget.defaults.row, 0, MAX_WIDGET_ROW),
+        position: clampInt(widget.defaults.position, 0, MAX_WIDGET_POSITION),
+      },
+      align: widget.defaults.align,
+      fill: widget.defaults.fill,
+      defaultEnabled: widget.defaults.enabled,
+      minWidth:
+        widget.defaults.minWidth !== undefined
+          ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
+          : undefined,
+      icon,
+      href: widget.content.href,
+      preferredIconColor: widget.icon ? widget.icon.color : undefined,
+      preferredTextColor: widget.preferredTextColor,
+      forceVisibleWhenEnabled: false,
+      visible: () => widget.content.text !== "" || icon !== undefined,
+      renderText: () => widget.content.text,
+    };
+  });
 }
 
 function applyWidgetConfigOverrides(

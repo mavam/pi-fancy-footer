@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  collectGitInfo,
-  collectPullRequestInfo,
-  shouldRefreshPullRequest,
-} from "./git.ts";
+import { collectGitInfo } from "./git.ts";
 
 interface ExecInvocation {
   command: string;
@@ -55,536 +51,93 @@ function createPi(
   };
 }
 
-test("collectPullRequestInfo ignores foreign branch-name matches and falls back to gh pr view", async () => {
-  const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/fix-ci\n", stderr: "" };
-    }
+const STATUS = [
+  "# branch.oid abcdef1234567890",
+  "# branch.head main",
+  "# branch.upstream origin/main",
+  "# branch.ab +2 -1",
+  "1 M. N... 100644 100644 100644 aaa bbb src/index.ts",
+  "1 .M N... 100644 100644 100644 ccc ddd src/render.ts",
+  "? notes.txt",
+].join("\n");
 
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: [
-          "remote.origin.url https://github.com/me/repo.git",
-          "remote.upstream.url https://github.com/org/repo.git",
-        ].join("\n"),
-        stderr: "",
-      };
-    }
-
-    if (command === "gh" && args[0] === "api") {
-      if (args.includes("owner=org")) {
-        return {
-          code: 0,
-          stdout: JSON.stringify({
-            data: {
-              repository: {
-                pullRequests: {
-                  nodes: [
-                    {
-                      number: 42,
-                      url: "https://github.com/org/repo/pull/42",
-                      state: "OPEN",
-                      headRepositoryOwner: { login: "someone-else" },
-                    },
-                  ],
-                },
-              },
-            },
-          }),
-          stderr: "",
-        };
-      }
-
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequests: {
-                nodes: [],
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    if (command === "gh" && args[0] === "pr" && args[1] === "view") {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          number: 7,
-          url: "https://github.com/org/repo/pull/7",
-          state: "OPEN",
-          isDraft: true,
-        }),
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "fix-ci");
-
-  assert.deepEqual(result.pullRequest, {
-    number: 7,
-    url: "https://github.com/org/repo/pull/7",
-    state: "open",
-    isDraft: true,
-    host: "github.com",
-  });
-  assert.equal(result.pullRequestLookupEnabled, true);
-  assert.notEqual(result.pullRequestLookupAt, 0);
-  const fallbackCall = calls.find(
-    (call) =>
-      call.command === "gh" &&
-      call.args[0] === "pr" &&
-      call.args[1] === "view",
-  );
-  assert.ok(fallbackCall);
-  assert.match(fallbackCall.args.join(" "), /\bisDraft\b/);
-  assert.equal(
-    calls
-      .filter((call) => call.command === "git")
-      .every((call) => call.args[0] === "--no-optional-locks"),
-    true,
-  );
-});
-
-test("collectPullRequestInfo queries PR display status", async () => {
-  const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/feature\n", stderr: "" };
-    }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url https://github.com/me/repo.git",
-        stderr: "",
-      };
-    }
-
-    if (command === "gh" && args[0] === "api") {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              open: { nodes: [] },
-              merged: {
-                nodes: [
-                  {
-                    number: 12,
-                    url: "https://github.com/me/repo/pull/12",
-                    state: "MERGED",
-                    headRepositoryOwner: { login: "me" },
-                  },
-                ],
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
-    includeReviewThreads: false,
-  });
-
-  assert.deepEqual(result.pullRequest, {
-    number: 12,
-    url: "https://github.com/me/repo/pull/12",
-    state: "merged",
-    host: "github.com",
-  });
-  const query = calls
-    .find((call) => call.command === "gh")
-    ?.args.find((arg) => arg.startsWith("query="));
-  assert.match(query ?? "", /open: pullRequests\(states: OPEN/);
-  assert.match(query ?? "", /merged: pullRequests\(states: MERGED/);
-  assert.equal(query?.match(/isDraft/g)?.length, 2);
-  assert.equal(query?.match(/autoMergeRequest \{ enabledAt \}/g)?.length, 2);
-});
-
-test("collectPullRequestInfo includes unresolved review thread count", async () => {
-  const { pi } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/feature\n", stderr: "" };
-    }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url https://github.com/me/repo.git",
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "api" &&
-      args.includes("branch=feature")
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequests: {
-                nodes: [
-                  {
-                    number: 12,
-                    url: "https://github.com/me/repo/pull/12",
-                    state: "OPEN",
-                    headRepositoryOwner: { login: "me" },
-                  },
-                ],
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    if (command === "gh" && args[0] === "api" && args.includes("number=12")) {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: {
-                    hasNextPage: false,
-                    endCursor: null,
-                  },
-                  nodes: [
-                    { isResolved: false },
-                    { isResolved: true },
-                    { isResolved: false },
-                  ],
-                },
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "feature");
-
-  assert.deepEqual(result.pullRequest, {
-    number: 12,
-    url: "https://github.com/me/repo/pull/12",
-    state: "open",
-    host: "github.com",
-    unresolvedReviewThreadCount: 2,
-  });
-});
-
-test("collectPullRequestInfo includes PR CI status when requested", async () => {
-  const { pi } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/feature\n", stderr: "" };
-    }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url https://github.com/me/repo.git",
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "api" &&
-      args.includes("branch=feature")
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequests: {
-                nodes: [
-                  {
-                    number: 12,
-                    url: "https://github.com/me/repo/pull/12",
-                    state: "OPEN",
-                    headRefOid: "abc123",
-                    headRepositoryOwner: { login: "me" },
-                  },
-                ],
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "pr" &&
-      args[1] === "checks" &&
-      args[2] === "https://github.com/me/repo/pull/12" &&
-      args[3] === "--json" &&
-      args[4] === "bucket,link,startedAt,completedAt"
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            bucket: "pending",
-            link: "https://github.com/me/repo/actions/runs/1/job/1",
-            startedAt: "2026-01-01T10:00:00Z",
-            completedAt: "",
-          },
-          {
-            bucket: "fail",
-            link: "https://github.com/me/repo/actions/runs/2/job/2",
-            startedAt: "2026-01-01T09:00:00Z",
-            completedAt: "2026-01-01T09:30:00Z",
-          },
-        ]),
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
-    includeReviewThreads: false,
-    includeCiStatus: true,
-  });
-
-  assert.deepEqual(result.pullRequest, {
-    number: 12,
-    url: "https://github.com/me/repo/pull/12",
-    state: "open",
-    host: "github.com",
-    headRefOid: "abc123",
-    ciStatus: {
-      state: "failed",
-      url: "https://github.com/me/repo/actions/runs/2/job/2",
-    },
-  });
-});
-
-test("collectPullRequestInfo uses the GitHub Enterprise host for API calls", async () => {
-  const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/feature\n", stderr: "" };
-    }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url git@github.example.com:me/repo.git",
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "api" &&
-      args[1] === "graphql" &&
-      args[2] === "--hostname" &&
-      args[3] === "github.example.com" &&
-      args.includes("branch=feature")
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequests: {
-                nodes: [
-                  {
-                    number: 12,
-                    url: "https://github.example.com/me/repo/pull/12",
-                    state: "OPEN",
-                    headRefOid: "abc123",
-                    headRepositoryOwner: { login: "me" },
-                  },
-                ],
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "api" &&
-      args[1] === "graphql" &&
-      args[2] === "--hostname" &&
-      args[3] === "github.example.com" &&
-      args.includes("number=12")
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify({
-          data: {
-            repository: {
-              pullRequest: {
-                reviewThreads: {
-                  pageInfo: {
-                    hasNextPage: false,
-                    endCursor: null,
-                  },
-                  nodes: [{ isResolved: false }],
-                },
-              },
-            },
-          },
-        }),
-        stderr: "",
-      };
-    }
-
-    if (
-      command === "gh" &&
-      args[0] === "pr" &&
-      args[1] === "checks" &&
-      args[2] === "https://github.example.com/me/repo/pull/12" &&
-      args[3] === "--json" &&
-      args[4] === "bucket,link,startedAt,completedAt"
-    ) {
-      return {
-        code: 0,
-        stdout: JSON.stringify([
-          {
-            bucket: "pass",
-            link: "https://github.example.com/me/repo/actions/runs/1/job/1",
-            startedAt: "2026-01-01T10:00:00Z",
-            completedAt: "2026-01-01T10:30:00Z",
-          },
-        ]),
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "feature", {
-    includeCiStatus: true,
-  });
-
-  assert.deepEqual(result.pullRequest, {
-    number: 12,
-    url: "https://github.example.com/me/repo/pull/12",
-    state: "open",
-    host: "github.example.com",
-    headRefOid: "abc123",
-    unresolvedReviewThreadCount: 1,
-    ciStatus: {
-      state: "okay",
-      url: "https://github.example.com/me/repo/actions/runs/1/job/1",
-    },
-  });
-  assert.equal(
-    calls
-      .filter((call) => call.command === "gh" && call.args[0] === "api")
-      .every((call) => call.args.includes("github.example.com")),
-    true,
-  );
-  assert.ok(
-    calls.some(
-      (call) =>
-        call.command === "gh" &&
-        call.args[0] === "pr" &&
-        call.args[1] === "checks" &&
-        call.args[2] === "https://github.example.com/me/repo/pull/12",
-    ),
-  );
-});
-
-test("collectPullRequestInfo skips GitHub CLI lookups when the repository has no GitHub remote", async () => {
-  const { pi, calls } = createPi(({ command, args }) => {
-    if (command === "git" && gitSubcommand(args) === "rev-parse") {
-      return { code: 0, stdout: "origin/main\n", stderr: "" };
-    }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url ssh://git.example.com/team/repo.git",
-        stderr: "",
-      };
-    }
-
-    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
-  });
-
-  const result = await collectPullRequestInfo(pi as never, "/repo", "main");
-
-  assert.equal(result.pullRequest, undefined);
-  assert.equal(result.pullRequestLookupEnabled, false);
-  assert.equal(
-    calls.every((call) => call.command === "git"),
-    true,
-  );
-  assert.equal(
-    calls.every((call) => call.args[0] === "--no-optional-locks"),
-    true,
-  );
-});
-
-test("collectGitInfo disables periodic PR refreshes for non-GitHub repositories", async () => {
+test("collectGitInfo reads branch, commit, and working tree counts", async () => {
   const { pi, calls } = createPi(({ command, args }) => {
     if (command === "git" && gitSubcommand(args) === "status") {
-      return {
-        code: 0,
-        stdout: [
-          "# branch.oid abcdef1234567890",
-          "# branch.head main",
-          "# branch.upstream origin/main",
-          "# branch.ab +0 -0",
-        ].join("\n"),
-        stderr: "",
-      };
+      return { code: 0, stdout: STATUS, stderr: "" };
     }
-
-    if (command === "git" && gitSubcommand(args) === "config") {
-      return {
-        code: 0,
-        stdout: "remote.origin.url ssh://git.example.com/team/repo.git",
-        stderr: "",
-      };
-    }
-
     if (command === "git" && gitSubcommand(args) === "diff") {
-      return { code: 0, stdout: "", stderr: "" };
+      return { code: 0, stdout: "4\t2\tsrc/index.ts", stderr: "" };
     }
-
     throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
   });
 
   const git = await collectGitInfo(pi as never, "/repo");
 
-  assert.equal(git.pullRequestLookupEnabled, false);
-  assert.equal(shouldRefreshPullRequest(git), false);
+  assert.equal(git.branch, "main");
+  assert.equal(git.commit, "abcdef1");
+  assert.equal(git.added, 4);
+  assert.equal(git.removed, 2);
+  assert.deepEqual(git.counts, {
+    staged: 1,
+    modified: 1,
+    untracked: 1,
+    ahead: 2,
+    behind: 1,
+  });
   assert.equal(
     calls.every((call) => call.args[0] === "--no-optional-locks"),
     true,
   );
+});
+
+test("collectGitInfo never invokes the GitHub CLI", async () => {
+  const { pi, calls } = createPi(({ command, args }) => {
+    if (command !== "git") {
+      throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+    }
+    if (gitSubcommand(args) === "status") {
+      return { code: 0, stdout: STATUS, stderr: "" };
+    }
+    return { code: 0, stdout: "", stderr: "" };
+  });
+
+  await collectGitInfo(pi as never, "/repo");
+
+  assert.equal(
+    calls.some((call) => call.command === "gh"),
+    false,
+  );
+});
+
+test("collectGitInfo sums staged and unstaged diffs without a HEAD commit", async () => {
+  const { pi } = createPi(({ command, args }) => {
+    if (command === "git" && gitSubcommand(args) === "status") {
+      return { code: 0, stdout: "# branch.head main", stderr: "" };
+    }
+    if (command === "git" && args.includes("HEAD")) {
+      return { code: 1, stdout: "", stderr: "no HEAD" };
+    }
+    if (command === "git" && args.includes("--cached")) {
+      return { code: 0, stdout: "3\t1\tsrc/a.ts", stderr: "" };
+    }
+    if (command === "git" && gitSubcommand(args) === "diff") {
+      return { code: 0, stdout: "1\t1\tsrc/b.ts", stderr: "" };
+    }
+    throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);
+  });
+
+  const git = await collectGitInfo(pi as never, "/repo");
+
+  assert.equal(git.added, 4);
+  assert.equal(git.removed, 2);
+});
+
+test("collectGitInfo returns empty info outside a repository", async () => {
+  const { pi } = createPi(() => ({ code: 128, stdout: "", stderr: "" }));
+
+  const git = await collectGitInfo(pi as never, "/tmp");
+
+  assert.equal(git.branch, "");
+  assert.equal(git.commit, "");
 });

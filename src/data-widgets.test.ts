@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createMicrotaskCoalescer,
   FancyFooterDataWidgetStore,
+  MAX_DATA_WIDGET_HREF_LENGTH,
   MAX_DATA_WIDGET_TEXT_CODE_POINTS,
   resolveDataWidgetIcon,
   sanitizeDataWidgetText,
@@ -103,6 +104,36 @@ test("data widgets sanitize terminal controls and clamp text", () => {
     text: "✓",
     color: "success",
   });
+});
+
+test("data widgets retain safe links and omit unsafe destinations", () => {
+  const store = new FancyFooterDataWidgetStore();
+  const href = "https://github.com/acme/repo/actions/runs/1";
+  assert.equal(
+    store.apply(
+      upsert("acme.status", "passing", {
+        content: { type: "text", text: "passing", href },
+      }),
+    ),
+    true,
+  );
+  assert.equal(store.values()[0]?.content.href, href);
+
+  for (const invalid of [
+    "javascript:alert(1)",
+    "https://example.com/unsafe\ntext",
+    `https://example.com/${"x".repeat(MAX_DATA_WIDGET_HREF_LENGTH)}`,
+  ]) {
+    assert.equal(
+      store.apply(
+        upsert("acme.status", "unsafe", {
+          content: { type: "text", text: "unsafe", href: invalid },
+        }),
+      ),
+      true,
+    );
+    assert.equal(store.values()[0]?.content.href, undefined);
+  }
 });
 
 test("data widgets reject invalid, conflicting, and unsupported messages", () => {

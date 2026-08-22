@@ -22,9 +22,12 @@ import {
 
 export const MAX_DATA_WIDGET_TEXT_CODE_POINTS = 512;
 export const MAX_DATA_WIDGET_ID_LENGTH = 128;
+export const MAX_DATA_WIDGET_HREF_LENGTH = 2_048;
 
 const DATA_WIDGET_ID_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/u;
+const DATA_WIDGET_HREF_PATTERN =
+  /^https?:\/\/[^\s\u0000-\u001f\u007f-\u009f]+$/u;
 
 const literalUnion = (values: readonly string[]) =>
   Type.Union(values.map((value) => Type.Literal(value)));
@@ -56,6 +59,7 @@ const dataWidgetSchema = Type.Object(
       {
         type: Type.Literal("text"),
         text: Type.String(),
+        href: Type.Optional(Type.String()),
       },
       { additionalProperties: false },
     ),
@@ -122,7 +126,7 @@ export interface NormalizedFancyFooterDataWidget {
   id: string;
   label: string;
   description: string;
-  content: { type: "text"; text: string };
+  content: { type: "text"; text: string; href?: string };
   icon?: FancyFooterDataWidgetIcon | false;
   preferredTextColor?: FooterWidgetColor;
   defaults: FooterWidgetEditorDefaults;
@@ -138,6 +142,17 @@ function sanitizeInlineText(text: string, maxCodePoints: number): string {
 
 export function sanitizeDataWidgetText(text: string): string {
   return sanitizeInlineText(text, MAX_DATA_WIDGET_TEXT_CODE_POINTS);
+}
+
+function normalizeHref(value: string | undefined): string | undefined {
+  if (
+    !value ||
+    value.length > MAX_DATA_WIDGET_HREF_LENGTH ||
+    !DATA_WIDGET_HREF_PATTERN.test(value)
+  ) {
+    return undefined;
+  }
+  return value;
 }
 
 function sanitizeGlyph(text: string): string {
@@ -170,11 +185,16 @@ function normalizeWidget(
   const label = sanitizeInlineText(widget.label ?? id, 128) || id;
   const description =
     sanitizeInlineText(widget.description ?? label, 512) || label;
+  const href = normalizeHref(widget.content.href);
   return {
     id,
     label,
     description,
-    content: { type: "text", text: sanitizeDataWidgetText(widget.content.text) },
+    content: {
+      type: "text",
+      text: sanitizeDataWidgetText(widget.content.text),
+      ...(href ? { href } : {}),
+    },
     icon: normalizeIcon(widget.icon),
     preferredTextColor: widget.style?.textColor,
     defaults: {

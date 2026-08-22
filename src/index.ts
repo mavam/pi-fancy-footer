@@ -21,11 +21,7 @@ import {
   loadFooterConfig,
   writeFooterConfigSnapshot,
 } from "./config.ts";
-import {
-  collectGitInfo,
-  collectPullRequestInfo,
-  shouldRefreshPullRequest,
-} from "./git.ts";
+import { collectGitInfo } from "./git.ts";
 import {
   FANCY_FOOTER_PROTOCOL_VERSION,
   FANCY_FOOTER_READY_CHANNEL,
@@ -114,8 +110,6 @@ export default function (pi: ExtensionAPI) {
       let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
       let refreshQueued = false;
-      let pullRequestRefreshing = false;
-      let pullRequestRefreshQueued = false;
       let providerStatusRefreshing = false;
       let providerStatusRefreshQueued = false;
       let providerStatusRefreshAt = 0;
@@ -129,21 +123,6 @@ export default function (pi: ExtensionAPI) {
         if (!isActiveFooter()) return;
         tui.requestRender();
       };
-
-      const isPullRequestReviewThreadsWidgetEnabled = () => {
-        const widget = footerConfig.widgets["pull-request-review-threads"];
-        return widget?.enabled !== false;
-      };
-
-      const isPullRequestCiStatusWidgetEnabled = () => {
-        const widget = footerConfig.widgets["pull-request-ci-status"];
-        return widget?.enabled !== false;
-      };
-
-      const isPullRequestBackedWidgetEnabled = () =>
-        footerConfig.widgets["pull-request"]?.enabled !== false ||
-        isPullRequestReviewThreadsWidgetEnabled() ||
-        isPullRequestCiStatusWidgetEnabled();
 
       const isProviderStatusWidgetEnabled = () =>
         footerConfig.widgets["provider-status"]?.enabled !== false;
@@ -186,65 +165,6 @@ export default function (pi: ExtensionAPI) {
         }
       };
 
-      // Keep networked PR discovery off the local git refresh path.
-      const refreshPullRequest = async () => {
-        if (
-          !isActiveFooter() ||
-          !isPullRequestBackedWidgetEnabled() ||
-          !shouldRefreshPullRequest(currentGit)
-        ) {
-          return;
-        }
-        if (pullRequestRefreshing) {
-          pullRequestRefreshQueued = true;
-          return;
-        }
-
-        pullRequestRefreshing = true;
-        try {
-          do {
-            pullRequestRefreshQueued = false;
-
-            if (
-              !isActiveFooter() ||
-              !isPullRequestBackedWidgetEnabled() ||
-              !shouldRefreshPullRequest(currentGit)
-            ) {
-              continue;
-            }
-
-            const targetBranch = currentGit.branch;
-            const targetRepository = currentGit.repository;
-            const targetLookupAt = currentGit.pullRequestLookupAt;
-            const pullRequest = await collectPullRequestInfo(
-              pi,
-              ctx.cwd,
-              targetBranch,
-              {
-                includeReviewThreads: isPullRequestReviewThreadsWidgetEnabled(),
-                includeCiStatus: isPullRequestCiStatusWidgetEnabled(),
-              },
-            );
-            if (!isActiveFooter()) return;
-            if (
-              currentGit.branch !== targetBranch ||
-              currentGit.repository !== targetRepository ||
-              currentGit.pullRequestLookupAt !== targetLookupAt
-            ) {
-              continue;
-            }
-
-            currentGit = {
-              ...currentGit,
-              ...pullRequest,
-            };
-            requestRender();
-          } while (isActiveFooter() && pullRequestRefreshQueued);
-        } finally {
-          pullRequestRefreshing = false;
-        }
-      };
-
       const refreshGit = async () => {
         if (!isActiveFooter()) return;
         if (refreshing) {
@@ -261,11 +181,10 @@ export default function (pi: ExtensionAPI) {
             footerConfig = loadFooterConfig();
             usageMetrics = collectSessionUsageMetrics(ctx);
 
-            const git = await collectGitInfo(pi, ctx.cwd, currentGit);
+            const git = await collectGitInfo(pi, ctx.cwd);
             if (!isActiveFooter()) return;
             currentGit = git;
             requestRender();
-            void refreshPullRequest();
           } while (isActiveFooter() && refreshQueued);
         } finally {
           refreshing = false;

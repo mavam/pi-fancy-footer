@@ -29,9 +29,11 @@ pi install npm:pi-fancy-footer
 - Total session cost
 - Prompt-cache statistics: cumulative cache-read/write tokens and the latest
   turn's cache hit rate
-- Repo / path, branch, optional commit SHA (hidden by default), open or merged
-  PR number, auto-merge status, unresolved PR review threads, and PR CI status
+- Current path, branch, and optional commit SHA (hidden by default)
 - Git diff stats and ahead/behind status
+
+Pull request widgets come from [pi-pr](https://github.com/mavam/pi-pr), which
+owns GitHub polling and publishes them into this footer.
 
 ## 📸 Configuration editor
 
@@ -192,9 +194,6 @@ Built-in widget IDs:
 - `location`
 - `branch`
 - `commit`
-- `pull-request`
-- `pull-request-review-threads`
-- `pull-request-ci-status`
 - `provider-status`
 - `diff-added`
 - `diff-removed`
@@ -235,7 +234,11 @@ export default function (pi: ExtensionAPI) {
         id: "acme.build-status",
         label: "Build status",
         description: "Current build result",
-        content: { type: "text", text: status },
+        content: {
+          type: "text",
+          text: status,
+          href: "https://ci.example.com/builds/latest",
+        },
         icon: {
           glyphs: {
             nerd: "󰙨",
@@ -287,10 +290,13 @@ Each `upsert` replaces the complete snapshot for its `id`; the latest command
 wins if multiple producers use the same ID. IDs must be at most 128 ASCII
 characters and contain two or more dot-separated segments. Each segment starts
 with a letter or digit and may also contain letters, digits, underscores, and
-hyphens, for example `acme.build-status`. An empty `content.text` hides the
-widget while keeping it configurable, even when the widget is explicitly
-enabled. A `remove` message drops the live widget definition. Widget text is
-limited to 512 Unicode code points and terminal control characters are stripped.
+hyphens, for example `acme.build-status`. An empty `content.text` creates an
+icon-only widget when the selected icon family has a glyph; without a glyph,
+the widget stays hidden. Set `content.href` to an HTTP or HTTPS URL to make the
+complete widget, including its icon, clickable. Invalid links are omitted
+without dropping the widget update. A `remove` message drops the live widget
+definition. Widget text is limited to 512 Unicode code points and terminal
+control characters are stripped.
 
 The structured snapshot can provide `label`, `description`, an icon glyph or
 per-family glyph map, icon and text colors, and layout defaults (`enabled`,
@@ -326,9 +332,6 @@ leading widget icon.
 | `location`                    | ``     | `📁`       | `⌂`     | `/`      |
 | `branch`                      | ``     | `🌿`       | `⎇`     | `*`      |
 | `commit`                      | ``     | `🔖`       | `#`     | `#`      |
-| `pull-request`                | ``     | `🔀`       | `⇄`     | `@`      |
-| `pull-request-review-threads` | `󰅺`     | `💬`       | `✎`     | `!`      |
-| `pull-request-ci-status`      | `//` | `⏳/❌/✅` | `◷/✕/✓` | `~/x/+`  |
 | `diff-added`                  | `↗`     | `➕`       | `+`     | `+`      |
 | `diff-removed`                | `↘`     | `➖`       | `−`     | `-`      |
 | `git-status`                  | `//` | `🔼/🔽/🔀` | `↑/↓/↕` | `^/_/<>` |
@@ -373,14 +376,6 @@ Notes:
   the session has no cache activity or the terminal is narrower than 60
   columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
-- `pull-request` keeps merged PRs visible. A non-default icon color override
-  always takes precedence. Otherwise, the PR icon uses a fixed GitHub purple
-  (`#8250df`, with a 256-color fallback) for merged PRs, the theme's dim color
-  for draft PRs, the accent color when auto-merge is enabled, and the configured
-  icon color for other open PRs. The purple is deliberately theme-independent.
-- `pull-request-ci-status` is icon-only and uses symbols for running / failed /
-  okay status. By default it uses semantic colors (warning / error / success);
-  set this widget's icon color to override them.
 - `provider-status` shows provider quota windows for OpenAI Codex and Claude
   models as mini gauges per window, for example
   `5h ▰▰▰▰▱ 80% ~1h12m 7d ▰▰▱▱▱ 38%`.
@@ -431,16 +426,8 @@ Notes:
   work better in terminals that don't use a Nerd Font.
 - Per-widget icon overrides only let you hide the icon. The selected
   `iconFamily` controls which icon each widget uses.
-- The PR widgets appear only for open or merged pull requests on GitHub and
-  GitHub Enterprise hosts such as `github.example.com`. The footer also detects
-  auto-merge on open PRs. These widgets rely on the GitHub CLI (`gh`) being
-  available and authenticated for the remote host.
-- `pull-request-review-threads` counts unresolved GitHub review threads
-  on the current PR.
-- `pull-request-ci-status` summarizes the checks that GitHub reports for the
-  current pull request. It links to a relevant check and shows failed when any
-  check fails, running when none fail but at least one is active, and okay
-  otherwise.
+- Pull request widgets live in [pi-pr](https://github.com/mavam/pi-pr), which
+  owns all GitHub polling and publishes them through the data-widget protocol.
 
 ## 🧱 Gauge styles
 
