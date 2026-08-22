@@ -202,7 +202,7 @@ test("data widgets honor default visibility and user color overrides", () => {
   assert.ok(colors.includes("success:✦"));
 });
 
-test("enabled data widgets remain hidden while their content is empty", () => {
+test("enabled data widgets render icons without text", () => {
   const enabledConfig: FooterConfigSnapshot = {
     ...footerConfig,
     extensionWidgets: {
@@ -226,7 +226,32 @@ test("enabled data widgets remain hidden while their content is empty", () => {
     emptyWidgets,
   );
 
-  assert.doesNotMatch(lines.join("\n"), /❖|✦|·/);
+  assert.match(lines.join("\n"), /❖.*✦/);
+});
+
+test("enabled data widgets remain hidden without text or an icon", () => {
+  const widget = {
+    ...agentWidgets[0]!,
+    content: { type: "text" as const, text: "" },
+    icon: false as const,
+  };
+  const config: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: { [widget.id]: { enabled: true } },
+  };
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    theme as never,
+    usageMetrics,
+    config,
+    [widget],
+  );
+
+  assert.doesNotMatch(lines.join("\n"), /❖|·/);
 });
 
 test("renderFooterLines omits the provider widget by default", () => {

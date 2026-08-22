@@ -290,10 +290,11 @@ Each `upsert` replaces the complete snapshot for its `id`; the latest command
 wins if multiple producers use the same ID. IDs must be at most 128 ASCII
 characters and contain two or more dot-separated segments. Each segment starts
 with a letter or digit and may also contain letters, digits, underscores, and
-hyphens, for example `acme.build-status`. An empty `content.text` hides the
-widget while keeping it configurable, even when the widget is explicitly
-enabled. Set `content.href` to an HTTP or HTTPS URL to make the complete widget,
-including its icon, clickable. A `remove` message drops the live widget
+hyphens, for example `acme.build-status`. An empty `content.text` creates an
+icon-only widget when the selected icon family has a glyph; without a glyph,
+the widget stays hidden. Set `content.href` to an HTTP or HTTPS URL to make the
+complete widget, including its icon, clickable. Invalid links are omitted
+without dropping the widget update. A `remove` message drops the live widget
 definition. Widget text is limited to 512 Unicode code points and terminal
 control characters are stripped.
 

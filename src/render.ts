@@ -280,7 +280,7 @@ function renderWidget(
       : Math.max(0, maxTotalWidth - iconWidth);
 
   const rawText = widget.renderText(renderCtx, contentWidth);
-  if (!rawText) return "";
+  if (!rawText && !hasIcon) return "";
   const styledText = widget.styled
     ? rawText
     : renderCtx.theme.fg(widget.textColor ?? "dim", rawText);
@@ -743,27 +743,30 @@ function buildExtensionWidgets(
   widgets: readonly NormalizedFancyFooterDataWidget[],
   iconFamily: FooterIconFamily,
 ): FooterWidget[] {
-  return widgets.map((widget) => ({
-    id: widget.id,
-    location: {
-      row: clampInt(widget.defaults.row, 0, MAX_WIDGET_ROW),
-      position: clampInt(widget.defaults.position, 0, MAX_WIDGET_POSITION),
-    },
-    align: widget.defaults.align,
-    fill: widget.defaults.fill,
-    defaultEnabled: widget.defaults.enabled,
-    minWidth:
-      widget.defaults.minWidth !== undefined
-        ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
-        : undefined,
-    icon: resolveDataWidgetIcon(widget.icon, iconFamily),
-    href: widget.content.href,
-    preferredIconColor: widget.icon ? widget.icon.color : undefined,
-    preferredTextColor: widget.preferredTextColor,
-    forceVisibleWhenEnabled: false,
-    visible: () => widget.content.text !== "",
-    renderText: () => widget.content.text,
-  }));
+  return widgets.map((widget) => {
+    const icon = resolveDataWidgetIcon(widget.icon, iconFamily);
+    return {
+      id: widget.id,
+      location: {
+        row: clampInt(widget.defaults.row, 0, MAX_WIDGET_ROW),
+        position: clampInt(widget.defaults.position, 0, MAX_WIDGET_POSITION),
+      },
+      align: widget.defaults.align,
+      fill: widget.defaults.fill,
+      defaultEnabled: widget.defaults.enabled,
+      minWidth:
+        widget.defaults.minWidth !== undefined
+          ? clampInt(widget.defaults.minWidth, 0, MAX_WIDGET_MIN_WIDTH)
+          : undefined,
+      icon,
+      href: widget.content.href,
+      preferredIconColor: widget.icon ? widget.icon.color : undefined,
+      preferredTextColor: widget.preferredTextColor,
+      forceVisibleWhenEnabled: false,
+      visible: () => widget.content.text !== "" || icon !== undefined,
+      renderText: () => widget.content.text,
+    };
+  });
 }
 
 function applyWidgetConfigOverrides(

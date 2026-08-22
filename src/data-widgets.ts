@@ -59,13 +59,7 @@ const dataWidgetSchema = Type.Object(
       {
         type: Type.Literal("text"),
         text: Type.String(),
-        href: Type.Optional(
-          Type.String({
-            minLength: 1,
-            maxLength: MAX_DATA_WIDGET_HREF_LENGTH,
-            pattern: DATA_WIDGET_HREF_PATTERN.source,
-          }),
-        ),
+        href: Type.Optional(Type.String()),
       },
       { additionalProperties: false },
     ),
@@ -150,6 +144,17 @@ export function sanitizeDataWidgetText(text: string): string {
   return sanitizeInlineText(text, MAX_DATA_WIDGET_TEXT_CODE_POINTS);
 }
 
+function normalizeHref(value: string | undefined): string | undefined {
+  if (
+    !value ||
+    value.length > MAX_DATA_WIDGET_HREF_LENGTH ||
+    !DATA_WIDGET_HREF_PATTERN.test(value)
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
 function sanitizeGlyph(text: string): string {
   return sanitizeInlineText(text, 16);
 }
@@ -180,6 +185,7 @@ function normalizeWidget(
   const label = sanitizeInlineText(widget.label ?? id, 128) || id;
   const description =
     sanitizeInlineText(widget.description ?? label, 512) || label;
+  const href = normalizeHref(widget.content.href);
   return {
     id,
     label,
@@ -187,7 +193,7 @@ function normalizeWidget(
     content: {
       type: "text",
       text: sanitizeDataWidgetText(widget.content.text),
-      ...(widget.content.href ? { href: widget.content.href } : {}),
+      ...(href ? { href } : {}),
     },
     icon: normalizeIcon(widget.icon),
     preferredTextColor: widget.style?.textColor,

@@ -1,5 +1,5 @@
 ---
-title: Move pull request widgets to pi-pr
+title: Delegate pull request widgets to pi-pr
 type: breaking
 authors:
   - mavam
@@ -13,19 +13,12 @@ publishes the widgets through the data-widget protocol. Data widgets can now
 provide an HTTP or HTTPS link for their complete rendered content, so the moved
 pull request widgets remain clickable.
 
-To keep those widgets, install pi-pr:
+Install pi-pr to show these widgets:
 
 ```sh
 pi install npm:pi-pr
 ```
 
-Their configuration does not carry over. The built-in `pull-request`,
-`pull-request-review-threads`, and `pull-request-ci-status` widgets are gone,
-and pi-pr publishes `pi-pr.number`, `pi-pr.review-threads`, and `pi-pr.ci`
-instead. Re-apply placement, visibility, and color overrides for the new IDs in
-`/fancy-footer`. Overrides for the removed IDs are dropped from the config.
-
-Two smaller changes come with the split: merged pull requests no longer use the
-fixed GitHub purple, since extension widgets pick from the footer's standard
-colors, and the `location` widget always shows the path instead of falling back
-to the GitHub repository name.
+Data widgets can now render an icon without placeholder text. Invalid links are
+omitted without rejecting the widget update. Merged pull requests use the
+footer's standard colors, and the `location` widget always shows the path.

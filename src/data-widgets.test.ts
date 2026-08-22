@@ -106,7 +106,7 @@ test("data widgets sanitize terminal controls and clamp text", () => {
   });
 });
 
-test("data widgets retain safe links and reject unsafe destinations", () => {
+test("data widgets retain safe links and omit unsafe destinations", () => {
   const store = new FancyFooterDataWidgetStore();
   const href = "https://github.com/acme/repo/actions/runs/1";
   assert.equal(
@@ -130,8 +130,9 @@ test("data widgets retain safe links and reject unsafe destinations", () => {
           content: { type: "text", text: "unsafe", href: invalid },
         }),
       ),
-      false,
+      true,
     );
+    assert.equal(store.values()[0]?.content.href, undefined);
   }
 });
 
