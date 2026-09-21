@@ -569,7 +569,7 @@ test("formatProviderStatusText gates countdowns by displayed usage", () => {
   assert.equal(text(99.96, 100), "5h:100% ~1h");
 });
 
-test("formatProviderStatusText treats unreported usage as below the threshold", () => {
+test("formatProviderStatusText reports unmeasured usage as unknown, not as empty", () => {
   const nowMs = 1_800_000_000_000;
   const snapshot = normalizeCodexUsageResponse(
     {
@@ -585,15 +585,35 @@ test("formatProviderStatusText treats unreported usage as below the threshold", 
     resetMinUsedPercent: 75,
   };
 
-  assert.equal(formatProviderStatusText(snapshot, config, nowMs), "5h:0%");
+  assert.equal(snapshot?.primary?.usageUnknown, true);
+  assert.equal(formatProviderStatusText(snapshot, config, nowMs), "5h:\u2014");
   assert.equal(
     formatProviderStatusText(
       snapshot,
       { ...config, resetMinUsedPercent: 0 },
       nowMs,
     ),
-    "5h:0% ~1h",
+    "5h:\u2014",
   );
+});
+
+test("parseCodexRateLimitHeaders flags a window whose usage the headers omit", () => {
+  const resetAt = Math.round(now.getTime() / 1000) + 604_800;
+  const snapshot = parseCodexRateLimitHeaders(
+    {
+      "x-codex-primary-used-percent": "12",
+      "x-codex-primary-window-minutes": 300,
+      "x-codex-secondary-window-minutes": 10_080,
+      "x-codex-secondary-reset-at": String(resetAt),
+    },
+    now,
+  );
+
+  assert.equal(snapshot?.primary?.usedPercent, 12);
+  assert.equal(snapshot?.primary?.usageUnknown, undefined);
+  assert.equal(snapshot?.secondary?.label, "7d");
+  assert.equal(snapshot?.secondary?.usageUnknown, true);
+  assert.equal(snapshot?.secondary?.resetAt, resetAt);
 });
 
 test("formatProviderStatusText can show provider-specific credits without windows", () => {
@@ -995,6 +1015,90 @@ test("collectProviderStatus retains a valid five-hour cache window after a parti
   assert.equal(snapshot?.secondary?.label, "7d");
   assert.equal(snapshot?.secondary?.usedPercent, 7);
   assert.equal(snapshot?.error, undefined);
+});
+
+test("collectProviderStatus keeps cached usage when a Codex refresh omits a percentage", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousHome = process.env.HOME;
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  const previousFetch = globalThis.fetch;
+  process.env.HOME = dir;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 604_800;
+  // A refresh that names the weekly window but reports no percentage for it.
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: {
+            used_percent: 4,
+            limit_window_seconds: 18_000,
+            reset_at: futureResetAt,
+          },
+          secondary_window: {
+            limit_window_seconds: 604_800,
+            reset_at: futureResetAt,
+          },
+        },
+      }),
+    );
+  t.after(() => {
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+    globalThis.fetch = previousFetch;
+  });
+
+  await mkdir(join(dir, ".pi", "agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".pi", "agent", "auth.json"),
+    JSON.stringify({ "openai-codex": { access: "test-access-token" } }),
+    { mode: 0o600 },
+  );
+
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "openai-codex.json"),
+    JSON.stringify({
+      provider: "openai-codex",
+      source: "api",
+      fetchedAt: "2026-05-06T09:00:00Z",
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 3,
+        leftPercent: 97,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 78,
+        leftPercent: 22,
+        resetAt: futureResetAt,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const [snapshot] = await collectProviderStatus({} as never, {
+    ...providerStatusConfig,
+    cacheTtlMs: 1,
+  });
+
+  assert.equal(snapshot?.primary?.usedPercent, 4);
+  assert.equal(snapshot?.secondary?.label, "7d");
+  assert.equal(snapshot?.secondary?.usedPercent, 78);
+  assert.equal(snapshot?.secondary?.usageUnknown, undefined);
 });
 
 test("collectProviderStatus retires a cached scoped cap that a refresh no longer reports", async (t) => {
@@ -1554,6 +1658,96 @@ test("updateProviderStatusFromHeaders clears a stale Codex session window for a 
   assert.equal(snapshot?.primary?.label, "7d");
   assert.equal(snapshot?.primary?.leftPercent, 84);
   assert.equal(snapshot?.secondary, undefined);
+});
+
+test("updateProviderStatusFromHeaders keeps cached usage when headers omit a percentage", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-fancy-footer-test-"));
+  t.after(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const previousXdgCacheHome = process.env.XDG_CACHE_HOME;
+  process.env.XDG_CACHE_HOME = join(dir, "cache");
+  t.after(() => {
+    if (previousXdgCacheHome === undefined) delete process.env.XDG_CACHE_HOME;
+    else process.env.XDG_CACHE_HOME = previousXdgCacheHome;
+  });
+
+  const futureResetAt = Math.ceil(Date.now() / 1000) + 604_800;
+  const cacheDir = join(
+    process.env.XDG_CACHE_HOME,
+    "pi-fancy-footer",
+    "provider-status",
+  );
+  await mkdir(cacheDir, { recursive: true });
+  await writeFile(
+    join(cacheDir, "openai-codex.json"),
+    JSON.stringify({
+      provider: "openai-codex",
+      source: "api",
+      fetchedAt: new Date().toISOString(),
+      state: "ok",
+      primary: {
+        label: "5h",
+        usedPercent: 3,
+        leftPercent: 97,
+        resetAt: futureResetAt,
+      },
+      secondary: {
+        label: "7d",
+        usedPercent: 78,
+        leftPercent: 22,
+        resetAt: futureResetAt,
+      },
+    }),
+    { mode: 0o600 },
+  );
+
+  const [snapshot] = await updateProviderStatusFromHeaders(
+    {
+      "x-codex-primary-used-percent": "6",
+      "x-codex-primary-window-minutes": "300",
+      "x-codex-secondary-window-minutes": "10080",
+      "x-codex-secondary-reset-at": String(futureResetAt),
+    },
+    providerStatusConfig,
+  );
+
+  assert.equal(snapshot?.primary?.usedPercent, 6);
+  assert.equal(snapshot?.secondary?.label, "7d");
+  assert.equal(snapshot?.secondary?.usedPercent, 78);
+  assert.equal(snapshot?.secondary?.usageUnknown, undefined);
+  assert.equal(snapshot?.state, "error");
+
+  // A reset-only update must not carry the old percentage into a new period.
+  const nextResetAt = futureResetAt + 604_800;
+  const [nextPeriod] = await updateProviderStatusFromHeaders(
+    {
+      "x-codex-secondary-window-minutes": "10080",
+      "x-codex-secondary-reset-at": String(nextResetAt),
+    },
+    providerStatusConfig,
+  );
+  assert.equal(nextPeriod?.secondary?.usageUnknown, true);
+  assert.equal(nextPeriod?.secondary?.resetAt, nextResetAt);
+
+  // Repeated partial updates must not resurrect the previous period's usage.
+  const [repeated] = await updateProviderStatusFromHeaders(
+    { "x-codex-secondary-reset-at": String(nextResetAt) },
+    providerStatusConfig,
+  );
+  assert.equal(repeated?.secondary?.usageUnknown, true);
+
+  // An explicitly measured zero is still a real reading, not unknown usage.
+  const [measured] = await updateProviderStatusFromHeaders(
+    {
+      "x-codex-secondary-used-percent": "0",
+      "x-codex-secondary-reset-at": String(nextResetAt),
+    },
+    providerStatusConfig,
+  );
+  assert.equal(measured?.secondary?.usedPercent, 0);
+  assert.equal(measured?.secondary?.usageUnknown, undefined);
 });
 
 test("updateProviderStatusFromHeaders does not merge expired cached windows", async (t) => {

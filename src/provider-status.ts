@@ -389,14 +389,13 @@ async function collectProviderStatusFromSource(
     // Anthropic refreshes can be partial and report only the weekly window.
     // Codex refreshes are authoritative: OpenAI can remove a window and promote
     // the weekly window to primary, so retaining a missing window would show a
-    // stale or duplicated quota.
+    // stale or duplicated quota. Even then the cached usage fills in windows the
+    // response named without reporting a percentage.
     const fresh = await source.fetch(pi);
+    const projected = displayableCachedStatus(cached, { requireResetAt: true });
     const merged = source.preserveMissingWindows
-      ? mergeProviderStatus(
-          displayableCachedStatus(cached, { requireResetAt: true }),
-          fresh,
-        )
-      : fresh;
+      ? mergeProviderStatus(projected, fresh)
+      : withCachedUsage(projected, fresh);
     const { error: _staleError, ...snapshot } = merged;
     await writeProviderStatusCache(snapshot).catch(() => undefined);
     return snapshot;
@@ -1056,14 +1055,16 @@ function mergeProviderStatus(
   if (!existing) return update;
 
   const preserveMissingWindows = options.preserveMissingWindows ?? true;
+  const cachedWindows = windowsByLabel(existing);
   const windows = new Map<string, ProviderStatusWindow>();
   if (preserveMissingWindows) {
-    for (const window of providerStatusWindows(existing)) {
-      windows.set(window.label, window);
-    }
+    for (const [label, window] of cachedWindows) windows.set(label, window);
   }
   for (const window of providerStatusWindows(update)) {
-    windows.set(window.label, window);
+    windows.set(
+      window.label,
+      preferKnownUsage(cachedWindows.get(window.label), window),
+    );
   }
 
   const [primary, secondary] = Array.from(windows.values()).sort(
@@ -1111,6 +1112,65 @@ function providerStatusWindows(
   );
 }
 
+function windowsByLabel(
+  snapshot: ProviderStatusSnapshot,
+): Map<string, ProviderStatusWindow> {
+  return new Map(
+    providerStatusWindows(snapshot).map((window) => [window.label, window]),
+  );
+}
+
+// Keeps the window set the update reports — which windows exist and how they
+// are ordered — while filling in usage the update left unreported from the
+// cached window of the same label.
+function withCachedUsage(
+  existing: ProviderStatusSnapshot | undefined,
+  update: ProviderStatusSnapshot,
+): ProviderStatusSnapshot {
+  if (!existing) return update;
+
+  const cachedWindows = windowsByLabel(existing);
+  const resolve = (window: ProviderStatusWindow | undefined) =>
+    window ? preferKnownUsage(cachedWindows.get(window.label), window) : undefined;
+  const primary = resolve(update.primary);
+  const secondary = resolve(update.secondary);
+  if (primary === update.primary && secondary === update.secondary) {
+    return update;
+  }
+
+  return {
+    ...update,
+    ...(primary ? { primary } : {}),
+    ...(secondary ? { secondary } : {}),
+    state: computeProviderStatusState(primary, secondary),
+  };
+}
+
+// A provider can name a window without reporting its usage, for instance by
+// sending a reset time with no percentage. Such a window carries identity only,
+// so it must not displace a cached percentage that still describes the current
+// period: the footer would drop a known 78% to an unreported reading until the
+// next response happened to carry the number again.
+function preferKnownUsage(
+  cached: ProviderStatusWindow | undefined,
+  update: ProviderStatusWindow,
+  nowMs = Date.now(),
+): ProviderStatusWindow {
+  if (!update.usageUnknown || !cached || cached.usageUnknown) return update;
+  const resetAtMs = (cached.resetAt ?? 0) * 1000;
+  // Only reuse usage whose period is still valid. A different reset time
+  // identifies a different period; never extend cached usage into that period.
+  if (
+    !cached.resetAt ||
+    !Number.isFinite(resetAtMs) ||
+    resetAtMs <= nowMs ||
+    (update.resetAt !== undefined && update.resetAt !== cached.resetAt)
+  ) {
+    return update;
+  }
+  return cached;
+}
+
 function windowDurationMinutes(label: string): number {
   const match = label.match(/^(\d+(?:\.\d+)?)(m|h|d)$/);
   if (!match) return Number.POSITIVE_INFINITY;
@@ -1153,7 +1213,7 @@ function parseHeaderWindow(
       : windowLabelFromSeconds(windowMinutes * 60);
   return windowFromUsedPercent(
     durationLabel ?? label,
-    usedPercent ?? 0,
+    usedPercent,
     resetAt,
     now,
   );
@@ -1171,7 +1231,7 @@ function normalizeApiWindow(
   const label =
     windowLabelFromSeconds(numberValue(value.limit_window_seconds)) ??
     fallbackLabel;
-  return windowFromUsedPercent(label, usedPercent ?? 0, resetAt, now);
+  return windowFromUsedPercent(label, usedPercent, resetAt, now);
 }
 
 function normalizeClaudeUsageWindow(
@@ -1203,12 +1263,24 @@ function windowLabelFromSeconds(
   return undefined;
 }
 
+// A window whose usage the provider did not report keeps its identity and is
+// flagged unknown. Substituting 0% would be indistinguishable from an untouched
+// quota and would render a full, reassuring gauge for usage nobody measured.
 function windowFromUsedPercent(
   label: string,
-  usedPercent: number,
+  usedPercent: number | undefined,
   resetAt: number | undefined,
   _now: Date,
 ): ProviderStatusWindow {
+  if (usedPercent === undefined) {
+    return {
+      label,
+      usedPercent: 0,
+      leftPercent: 100,
+      usageUnknown: true,
+      ...(resetAt !== undefined ? { resetAt } : {}),
+    };
+  }
   const clampedUsed = Math.max(0, Math.min(100, usedPercent));
   return {
     label,
