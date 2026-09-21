@@ -1,0 +1,9 @@
+created: 2026-09-21
+title: Accurate provider quota readings
+intro: >-
+  Provider quota gauges now show unknown usage instead of a misleading 0% when a response
+  omits its percentage. Valid cached readings remain visible without carrying stale
+  usage into a different reset period.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.0.1
