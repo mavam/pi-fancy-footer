@@ -344,6 +344,8 @@ export function footerConfigValidationErrors(value: unknown): string[] {
   const seen = new Set<string>();
   const messages: string[] = [];
   for (const error of validateFooterConfigFile.Errors(value)) {
+    // Newer TypeBox also reports each rejected key as "schema is false".
+    if (error.keyword === "boolean") continue;
     for (const message of describeConfigError(error)) {
       if (seen.has(message)) continue;
       seen.add(message);
