@@ -26,9 +26,10 @@ pi install npm:pi-fancy-footer
 - A mini gauge of used context, which can optionally grow into a
   full-width bar, plus an optional context-capacity widget (hidden by
   default)
-- Total session cost
-- Prompt-cache statistics: cumulative cache-read/write tokens and the latest
-  turn's cache hit rate
+- Total session cost, including model usage reported by tools such as codemode
+  and by cache warming, compaction, and branch summaries
+- Prompt-cache statistics: cumulative cache-read/write tokens for the whole
+  session and the active branch's latest assistant cache hit rate
 - Current path, branch, and optional commit SHA (hidden by default)
 - Git diff stats and ahead/behind status
 
@@ -132,8 +133,9 @@ Top-level settings:
 > causes the entire file to fall back to defaults.
 
 - `refreshMs` (number) - interval for background Git refreshes. Model,
-  thinking-level, provider-response, and extension-widget changes update from
-  events without waiting for this interval
+  thinking-level, provider-response, completed assistant/tool messages,
+  compaction, tree navigation, and extension-widget changes update from events
+  without waiting for this interval
 - `iconFamily`
   (`nerd` | `emoji` | `unicode` | `ascii`)
 - `gaugeStyle`
@@ -370,12 +372,20 @@ Notes:
   hidden by default; enable it via `/fancy-footer` or with
   `"provider": { "enabled": true }`. It then sits left of the model on the
   bottom row.
-- `cache-read` and `cache-write` show cumulative prompt-cache tokens for the
-  session in compact form (e.g. `246k`, `1.2M`). `cache-hit-rate` shows the
-  latest turn's cache hit rate, computed as
-  `cacheRead / (input + cacheRead + cacheWrite)`, matching the `R` / `W` /
-  `CH` stats in pi's built-in footer. All three sit on the right of the top
-  row by default, before `total-cost` (which stays rightmost), and hide when
+- `total-cost`, `cache-read`, and `cache-write` include usage from the whole
+  session, including other conversation branches and history summarized by
+  compaction. They also include model usage reported by tools (such as codemode
+  classifier calls), cache warming, compaction, and branch summaries, matching
+  Pi's built-in session totals. Nested tool usage is counted once, through the
+  parent result. Tools that do not report model usage add nothing to these
+  totals.
+- `cache-read` and `cache-write` show cumulative prompt-cache tokens in compact
+  form (for example, `246k`, `1.2M`). `cache-hit-rate` uses only the active
+  branch's latest assistant response, computed as
+  `cacheRead / (input + cacheRead + cacheWrite)`. Model usage from tools, cache
+  warming, and summaries does not replace this response or inflate the context
+  gauge. All three sit on the right of the top row by default, before
+  `total-cost` (which stays rightmost), and hide when
   the session has no cache activity or the terminal is narrower than 60
   columns.
 - `git-status` uses symbols for ahead / behind / diverged status.
