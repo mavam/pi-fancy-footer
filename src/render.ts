@@ -285,20 +285,6 @@ function buildGitStatus(
   return { gitStatusSymbol: "", gitStatusText: "" };
 }
 
-function resolveGitStatusSymbolColor(
-  symbol: string,
-  configuredColor: FooterConfigSnapshot["defaultIconColor"],
-  iconFamily: FooterIconFamily,
-): FooterConfigSnapshot["defaultIconColor"] {
-  if (configuredColor !== "text") return configuredColor;
-
-  const symbols = getStatuslineSymbols(iconFamily);
-  if (symbol === symbols.gitBehind) return "warning";
-  if (symbol === symbols.gitAhead || symbol === symbols.gitDiverged)
-    return "accent";
-  return configuredColor;
-}
-
 function truncateFooterText(
   text: string,
   maxWidth: number,
@@ -804,12 +790,7 @@ function buildFooterWidgets(
       styled: true,
       visible: ({ metrics }) => metrics.gitStatusSymbol !== "",
       renderText: ({ metrics, theme, defaultIconColor, defaultTextColor }) => {
-        const symbolColor = resolveGitStatusSymbolColor(
-          metrics.gitStatusSymbol,
-          defaultIconColor,
-          iconFamily,
-        );
-        return `${theme.fg(symbolColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`;
+        return `${theme.fg(defaultIconColor, metrics.gitStatusSymbol)}${theme.fg(defaultTextColor, metrics.gitStatusText)}`;
       },
     },
   ];
