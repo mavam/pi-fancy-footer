@@ -1,0 +1,9 @@
+created: 2026-09-30
+title: Consistent git status icon colors
+intro: >-
+  This release makes git status icons use your configured icon color instead of hardcoded
+  blue and yellow. It also fixes duplicate unknown-key errors in config validation
+  with current TypeBox.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.0.3
