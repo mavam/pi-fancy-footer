@@ -13,7 +13,6 @@ import {
   clampInt,
   type FooterConfigSnapshot,
   type ProviderStatusSnapshot,
-  type SessionUsageMetrics,
 } from "./shared.ts";
 import {
   cloneFooterConfig,
@@ -42,6 +41,7 @@ import {
 
 interface ActiveFooterControls {
   requestRender: () => void;
+  requestUsageRender: () => void;
   reschedule: () => void;
   rescheduleProviderStatus: () => void;
   updateProviderStatus: (status: ProviderStatusSnapshot) => void;
@@ -107,7 +107,6 @@ export default function (pi: ExtensionAPI) {
       const fallbackThinkingLevel = pi.getThinkingLevel();
       let currentGit = { ...EMPTY_GIT_INFO };
       let providerStatuses = new Map<string, ProviderStatusSnapshot>();
-      let usageMetrics: SessionUsageMetrics = collectSessionUsageMetrics(ctx);
       let refreshing = false;
       let refreshQueued = false;
       let providerStatusRefreshing = false;
@@ -116,12 +115,23 @@ export default function (pi: ExtensionAPI) {
       let disposed = false;
       let refreshTimer: ReturnType<typeof setTimeout> | undefined;
       let providerStatusTimer: ReturnType<typeof setTimeout> | undefined;
+      let usageRenderTimer: ReturnType<typeof setTimeout> | undefined;
 
       const isActiveFooter = () => !disposed && instanceId === footerInstanceId;
 
       const requestRender = () => {
         if (!isActiveFooter()) return;
         tui.requestRender();
+      };
+
+      const requestUsageRender = () => {
+        if (!isActiveFooter() || usageRenderTimer !== undefined) return;
+        // message_end handlers run before Pi persists the finalized message.
+        // A timer lets persistence finish and coalesces parallel tool results.
+        usageRenderTimer = setTimeout(() => {
+          usageRenderTimer = undefined;
+          requestRender();
+        }, 0);
       };
 
       const isProviderStatusWidgetEnabled = () =>
@@ -179,7 +189,6 @@ export default function (pi: ExtensionAPI) {
             if (!isActiveFooter()) continue;
 
             footerConfig = loadFooterConfig();
-            usageMetrics = collectSessionUsageMetrics(ctx);
 
             const git = await collectGitInfo(pi, ctx.cwd);
             if (!isActiveFooter()) return;
@@ -227,13 +236,13 @@ export default function (pi: ExtensionAPI) {
 
       const onBranchChange = footerData.onBranchChange(() => {
         if (!isActiveFooter()) return;
-        usageMetrics = collectSessionUsageMetrics(ctx);
         requestRender();
         void refreshGit();
       });
 
       activeFooterControls = {
         requestRender,
+        requestUsageRender,
         reschedule: scheduleRefresh,
         rescheduleProviderStatus: scheduleProviderStatusRefresh,
         updateProviderStatus: (status) => {
@@ -255,6 +264,7 @@ export default function (pi: ExtensionAPI) {
           onBranchChange();
           if (refreshTimer) clearTimeout(refreshTimer);
           if (providerStatusTimer) clearTimeout(providerStatusTimer);
+          if (usageRenderTimer !== undefined) clearTimeout(usageRenderTimer);
           if (activeFooterControls?.requestRender === requestRender) {
             activeFooterControls = undefined;
           }
@@ -268,7 +278,7 @@ export default function (pi: ExtensionAPI) {
             currentGit,
             fallbackThinkingLevel,
             theme,
-            usageMetrics,
+            collectSessionUsageMetrics(ctx),
             footerConfig,
             extensionWidgets,
             Array.from(providerStatuses.values()).sort((a, b) =>
@@ -331,6 +341,19 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("thinking_level_select", () => {
+    activeFooterControls?.requestRender();
+  });
+
+  pi.on("message_end", (event) => {
+    if (
+      event.message.role === "assistant" ||
+      event.message.role === "toolResult"
+    ) {
+      activeFooterControls?.requestUsageRender();
+    }
+  });
+
+  pi.on("session_tree", () => {
     activeFooterControls?.requestRender();
   });
 

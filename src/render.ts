@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type {
   ExtensionContext,
   SessionEntry,
@@ -106,15 +106,53 @@ function buildProviderStatusPart(
   return body;
 }
 
-function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
+// Structural typing also accepts usage recorded by newer Pi versions without
+// requiring those fields in older Pi's session-entry declarations.
+interface RecordedUsageEntry {
+  type: string;
+  usage?: Usage;
+  message?: { role: string; usage?: Usage };
+}
+
+function getUsageData(
+  entries: SessionEntry[],
+  branch: SessionEntry[],
+): SessionUsageMetrics {
   let latest: SessionUsageMetrics["latest"];
   let totalCost = 0;
   let totalCacheRead = 0;
   let totalCacheWrite = 0;
 
   for (const entry of entries) {
-    if (entry.type !== "message") continue;
+    const recorded = entry as RecordedUsageEntry;
+    let usage: Usage | undefined;
+    if (recorded.type === "message") {
+      if (
+        recorded.message?.role === "assistant" ||
+        recorded.message?.role === "toolResult"
+      ) {
+        // Pi already aggregates nested calls into the parent's result usage.
+        usage = recorded.message.usage;
+      }
+    } else if (
+      recorded.type === "usage" ||
+      recorded.type === "compaction" ||
+      recorded.type === "branch_summary"
+    ) {
+      usage = recorded.usage;
+    }
+    if (!usage) continue;
 
+    totalCost += Math.max(0, toNumber(usage.cost?.total));
+    totalCacheRead += Math.max(0, toNumber(usage.cacheRead));
+    totalCacheWrite += Math.max(0, toNumber(usage.cacheWrite));
+  }
+
+  // Only the active branch's latest assistant describes the main prompt.
+  // Tool calls, cache warming, and summaries must not replace this snapshot.
+  for (let index = branch.length - 1; index >= 0; index -= 1) {
+    const entry = branch[index];
+    if (entry.type !== "message") continue;
     const message = entry.message as Partial<AssistantMessage>;
     if (message.role !== "assistant" || !message.usage) continue;
 
@@ -125,18 +163,56 @@ function getUsageData(entries: SessionEntry[]): SessionUsageMetrics {
       cacheWrite: Math.max(0, toNumber(usage.cacheWrite)),
       cost: Math.max(0, toNumber(usage.cost?.total)),
     };
-    totalCost += latest.cost;
-    totalCacheRead += latest.cacheRead;
-    totalCacheWrite += latest.cacheWrite;
+    break;
   }
 
   return { latest, totalCost, totalCacheRead, totalCacheWrite };
 }
 
+interface CachedSessionUsageMetrics {
+  sessionId: string;
+  leafId: string | null;
+  entryCount: number;
+  metrics: SessionUsageMetrics;
+}
+
+const sessionUsageMetricsCache = new WeakMap<
+  ExtensionContext["sessionManager"],
+  CachedSessionUsageMetrics
+>();
+
 export function collectSessionUsageMetrics(
   ctx: ExtensionContext,
 ): SessionUsageMetrics {
-  return getUsageData(ctx.sessionManager.getBranch());
+  const manager = ctx.sessionManager as ExtensionContext["sessionManager"] & {
+    getEntryCount?: () => number;
+  };
+  const sessionId = manager.getSessionId();
+  const leafId = manager.getLeafId();
+  let entries: SessionEntry[] | undefined;
+  // Newer Pi can check the count without copying the complete session.
+  const entryCount =
+    manager.getEntryCount?.() ?? (entries = manager.getEntries()).length;
+  const cached = sessionUsageMetricsCache.get(manager);
+  if (
+    cached?.sessionId === sessionId &&
+    cached.leafId === leafId &&
+    cached.entryCount === entryCount
+  ) {
+    return cached.metrics;
+  }
+
+  const metrics = getUsageData(
+    entries ?? manager.getEntries(),
+    manager.getBranch(),
+  );
+  sessionUsageMetricsCache.set(manager, {
+    sessionId,
+    leafId,
+    entryCount,
+    metrics,
+  });
+  return metrics;
 }
 
 function contextUsedPercent(totalTokens: number, usedTokens: number): number {
