@@ -1,0 +1,10 @@
+created: 2026-09-30
+title: Complete session usage totals
+intro: >-
+  The footer now includes model usage from codemode and other tools, cache warming,
+  compaction, and branch summaries in whole-session cost and cache totals. Statistics
+  refresh as messages finish while the context gauge and cache-hit rate stay tied
+  to the active conversation.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.0.2
