@@ -612,7 +612,7 @@ function computeFooterMetrics(
     totalCacheRead,
     totalCacheWrite,
     cacheHitRatePercent,
-    locationText: git.repository || normalizePath(ctx.cwd),
+    locationText: normalizePath(ctx.cwd),
     branch: git.branch,
     commit: git.commit,
     added: git.added,
