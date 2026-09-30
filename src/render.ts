@@ -294,8 +294,6 @@ function resolveGitStatusSymbolColor(
 
   const symbols = getStatuslineSymbols(iconFamily);
   if (symbol === symbols.gitBehind) return "warning";
-  if (symbol === symbols.gitAhead || symbol === symbols.gitDiverged)
-    return "accent";
   return configuredColor;
 }
 
