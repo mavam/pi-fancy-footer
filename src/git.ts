@@ -16,7 +16,7 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 2_000;
 const PULL_REQUEST_REFRESH_MS = 60_000;
 const GIT_NO_OPTIONAL_LOCKS_ARG = "--no-optional-locks";
 async function execResult(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   command: string,
   args: string[],
   cwd: string,
@@ -36,7 +36,7 @@ async function execResult(
 }
 
 async function exec(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   command: string,
   args: string[],
   cwd: string,
@@ -47,7 +47,7 @@ async function exec(
 }
 
 async function execGitResult(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   args: string[],
   cwd: string,
   timeout = DEFAULT_COMMAND_TIMEOUT_MS,
@@ -62,7 +62,7 @@ async function execGitResult(
 }
 
 async function execGit(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   args: string[],
   cwd: string,
 ): Promise<string> {
@@ -72,7 +72,7 @@ async function execGit(
 }
 
 export async function collectGitInfo(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   cwd: string,
 ): Promise<GitInfo> {
   const porcelainV2 = await execGit(

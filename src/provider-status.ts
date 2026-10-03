@@ -39,7 +39,7 @@ export interface ProviderStatusSource {
   label: string;
   usageUrl: string;
   preserveMissingWindows: boolean;
-  fetch(pi: ExtensionAPI): Promise<ProviderStatusSnapshot>;
+  fetch(pi: Pick<ExtensionAPI, "exec">): Promise<ProviderStatusSnapshot>;
   parseHeaders(
     headers: HeaderLike,
     now?: Date,
@@ -359,7 +359,7 @@ export function buildProviderStatusGauge(
 }
 
 export async function collectProviderStatus(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   config: ProviderStatusConfigSnapshot,
 ): Promise<ProviderStatusSnapshot[]> {
   const snapshots = await Promise.all(
@@ -371,7 +371,7 @@ export async function collectProviderStatus(
 }
 
 async function collectProviderStatusFromSource(
-  pi: ExtensionAPI,
+  pi: Pick<ExtensionAPI, "exec">,
   source: ProviderStatusSource,
   config: ProviderStatusConfigSnapshot,
 ): Promise<ProviderStatusSnapshot> {
@@ -727,7 +727,7 @@ export function isProviderStatusFresh(
 }
 
 async function fetchCodexProviderStatus(
-  _pi: ExtensionAPI,
+  _pi: Pick<ExtensionAPI, "exec">,
 ): Promise<ProviderStatusSnapshot> {
   let auth = await resolveCodexAuth();
 
@@ -766,7 +766,7 @@ async function fetchCodexProviderStatus(
 }
 
 async function fetchClaudeProviderStatus(
-  _pi: ExtensionAPI,
+  _pi: Pick<ExtensionAPI, "exec">,
 ): Promise<ProviderStatusSnapshot> {
   let auth = await resolveClaudeAuth();
 

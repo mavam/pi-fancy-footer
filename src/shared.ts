@@ -3,6 +3,13 @@ import type { ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 
 export type ThinkingLevel = ModelThinkingLevel;
 
+/** Rendering needs state, not the coding agent's extension lifecycle. */
+export type FooterRenderContext = Pick<ExtensionContext, "cwd" | "model" | "getContextUsage"> & {
+  thinkingLevel?: ThinkingLevel;
+  sessionManager?: Pick<ExtensionContext["sessionManager"], "getBranch">;
+  modelRegistry?: Pick<ExtensionContext["modelRegistry"], "getProviderDisplayName">;
+};
+
 export const FOOTER_ICON_FAMILIES = [
   "nerd",
   "emoji",
@@ -398,7 +405,7 @@ export interface WidgetRenderContext {
   width: number;
   nowMs: number;
   theme: Theme;
-  ctx: ExtensionContext;
+  ctx: FooterRenderContext;
   gaugeWidth: number;
   gaugeColors: GaugeColorsSnapshot;
   metrics: FooterMetrics;
