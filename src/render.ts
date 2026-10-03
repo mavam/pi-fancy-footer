@@ -15,6 +15,7 @@ import {
   type FooterWidgetConfigOverride,
   type FooterIconFamily,
   type FooterMetrics,
+  type FooterRenderContext,
   type FooterWidget,
   type FooterWidgetSize,
   type GitCounts,
@@ -514,7 +515,7 @@ function composeAlignedRow(
 }
 
 function computeFooterMetrics(
-  ctx: ExtensionContext,
+  ctx: FooterRenderContext,
   git: GitInfo,
   fallbackThinkingLevel: ThinkingLevel,
   usageMetrics: SessionUsageMetrics,
@@ -588,8 +589,8 @@ function computeFooterMetrics(
     ? (ctx.modelRegistry?.getProviderDisplayName(providerId) ?? providerId)
     : "";
   const thinking = formatThinkingLevel(
-    getThinkingLevelFromEntries(
-      ctx.sessionManager.getBranch(),
+    ctx.thinkingLevel ?? getThinkingLevelFromEntries(
+      ctx.sessionManager?.getBranch() ?? [],
       fallbackThinkingLevel,
     ),
   );
@@ -990,7 +991,7 @@ function renderWidgetRow(
 
 export function renderFooterLines(
   width: number,
-  ctx: ExtensionContext,
+  ctx: FooterRenderContext,
   git: GitInfo,
   fallbackThinkingLevel: ThinkingLevel,
   theme: Theme,

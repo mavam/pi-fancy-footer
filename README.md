@@ -36,6 +36,33 @@ pi install npm:pi-fancy-footer
 Pull request widgets come from [pi-prs](https://github.com/mavam/pi-prs), which
 owns GitHub polling and publishes them into this footer.
 
+## 🧬 Pi Durable
+
+For a custom Pi Durable host, import `createDurableFooter` from
+`pi-fancy-footer/durable` and mount its component in your existing TUI:
+
+```ts
+import { createDurableFooter } from "pi-fancy-footer/durable";
+
+const footer = createDurableFooter({
+  view: () => conversationView.value,
+  model: () => selectedModel,
+  theme,
+  exec,
+  requestRender: () => tui.requestRender(),
+});
+```
+
+Subscribe to the conversation view to request renders when committed state
+changes. Call `footer.dispose()` when the host closes. The adapter uses the same
+`fancy-footer.json`, Git collection, and quota polling as normal Pi. Costs and
+cache totals come from the shown conversation's durable usage document, including
+compacted history and tool spend; other conversations have their own totals.
+
+This experimental adapter requires Pi Durable 1.0. It does not load ordinary Pi
+extensions, register `/fancy-footer`, or connect the extension-widget event bus.
+The host supplies commands and mounts the component.
+
 ## 📸 Configuration editor
 
 <!-- markdownlint-disable MD033 -->
