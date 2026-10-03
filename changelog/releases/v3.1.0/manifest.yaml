@@ -1,0 +1,8 @@
+created: 2026-10-03
+title: Pi Durable footer
+intro: >-
+  Mount the familiar footer in a Pi Durable host with your existing configuration,
+  Git status, and quota display. Conversation usage remains available after compaction.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.0.4

@@ -1,6 +1,6 @@
 {
   "name": "pi-fancy-footer",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "description": "A fancy footer extension for pi",
   "type": "module",
   "peerDependencies": {
@@ -11,7 +11,9 @@
     "typebox": "*"
   },
   "peerDependenciesMeta": {
-    "@earendil-works/pi-durable": { "optional": true }
+    "@earendil-works/pi-durable": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "*",
