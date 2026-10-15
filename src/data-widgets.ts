@@ -4,6 +4,7 @@ import {
   FANCY_FOOTER_PROTOCOL_VERSION,
   type FancyFooterDataWidget,
   type FancyFooterDataWidgetIcon,
+  type FancyFooterTextSpan,
 } from "./api.ts";
 import {
   FOOTER_ICON_FAMILIES,
@@ -23,6 +24,7 @@ import {
 export const MAX_DATA_WIDGET_TEXT_CODE_POINTS = 512;
 export const MAX_DATA_WIDGET_ID_LENGTH = 128;
 export const MAX_DATA_WIDGET_HREF_LENGTH = 2_048;
+export const MAX_DATA_WIDGET_SPANS = 64;
 
 const DATA_WIDGET_ID_PATTERN =
   /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9][A-Za-z0-9_-]*)+$/u;
@@ -59,6 +61,18 @@ const dataWidgetSchema = Type.Object(
       {
         type: Type.Literal("text"),
         text: Type.String(),
+        spans: Type.Optional(
+          Type.Array(
+            Type.Object(
+              {
+                text: Type.String(),
+                color: Type.Optional(colorSchema),
+              },
+              { additionalProperties: false },
+            ),
+            { maxItems: MAX_DATA_WIDGET_SPANS },
+          ),
+        ),
         href: Type.Optional(Type.String()),
       },
       { additionalProperties: false },
@@ -126,7 +140,13 @@ export interface NormalizedFancyFooterDataWidget {
   id: string;
   label: string;
   description: string;
-  content: { type: "text"; text: string; href?: string };
+  content: {
+    type: "text";
+    /** Plain text; derived from `spans` when spans are present. */
+    text: string;
+    spans?: FancyFooterTextSpan[];
+    href?: string;
+  };
   icon?: FancyFooterDataWidgetIcon | false;
   preferredTextColor?: FooterWidgetColor;
   defaults: FooterWidgetEditorDefaults;
@@ -142,6 +162,40 @@ function sanitizeInlineText(text: string, maxCodePoints: number): string {
 
 export function sanitizeDataWidgetText(text: string): string {
   return sanitizeInlineText(text, MAX_DATA_WIDGET_TEXT_CODE_POINTS);
+}
+
+/**
+ * Sanitize spans as one line of text: control characters become spaces,
+ * whitespace collapses across span boundaries, the joined text is trimmed,
+ * and the total length is clamped. Empty spans are dropped.
+ */
+export function sanitizeDataWidgetSpans(
+  spans: readonly FancyFooterTextSpan[],
+): FancyFooterTextSpan[] {
+  const result: FancyFooterTextSpan[] = [];
+  let remaining = MAX_DATA_WIDGET_TEXT_CODE_POINTS;
+  let previousEndsWithSpace = true;
+  for (const span of spans) {
+    if (remaining <= 0) break;
+    let text = span.text
+      .replace(/[\u0000-\u001f\u007f-\u009f]/gu, " ")
+      .replace(/\s+/gu, " ");
+    if (previousEndsWithSpace) text = text.replace(/^ /u, "");
+    const codePoints = Array.from(text).slice(0, remaining);
+    if (codePoints.length === 0) continue;
+    remaining -= codePoints.length;
+    previousEndsWithSpace = codePoints[codePoints.length - 1] === " ";
+    result.push({
+      text: codePoints.join(""),
+      ...(span.color ? { color: span.color } : {}),
+    });
+  }
+  const last = result[result.length - 1];
+  if (last && previousEndsWithSpace) {
+    last.text = last.text.replace(/ $/u, "");
+    if (last.text === "") result.pop();
+  }
+  return result;
 }
 
 function normalizeHref(value: string | undefined): string | undefined {
@@ -186,13 +240,20 @@ function normalizeWidget(
   const description =
     sanitizeInlineText(widget.description ?? label, 512) || label;
   const href = normalizeHref(widget.content.href);
+  const spans = widget.content.spans
+    ? sanitizeDataWidgetSpans(widget.content.spans)
+    : undefined;
+  const text = spans
+    ? spans.map((span) => span.text).join("")
+    : sanitizeDataWidgetText(widget.content.text);
   return {
     id,
     label,
     description,
     content: {
       type: "text",
-      text: sanitizeDataWidgetText(widget.content.text),
+      text,
+      ...(spans ? { spans } : {}),
       ...(href ? { href } : {}),
     },
     icon: normalizeIcon(widget.icon),

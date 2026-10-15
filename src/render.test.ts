@@ -1095,3 +1095,50 @@ test("renderFooterLines truncates countdown gauges ANSI-safely", () => {
     }
   }
 });
+
+test("data widget spans render their colors and fall back to the text color", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+    getColorMode: () => "truecolor" as const,
+  };
+  const widget: NormalizedFancyFooterDataWidget = {
+    ...agentWidgets[1]!,
+    content: {
+      type: "text",
+      text: "2◉ 1●",
+      spans: [
+        { text: "2" },
+        { text: "◉", color: "warning" },
+        { text: " 1" },
+        { text: "●", color: "success" },
+      ],
+    },
+    preferredTextColor: "muted",
+    defaults: { ...agentWidgets[1]!.defaults, enabled: undefined },
+  };
+  const config: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: { [widget.id]: { textColor: "accent" } },
+  };
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    config,
+    [widget],
+  );
+
+  assert.match(lines.join("\n"), /2◉ 1●/);
+  assert.ok(colors.includes("accent:2"));
+  assert.ok(colors.includes("warning:◉"));
+  assert.ok(colors.includes("accent: 1"));
+  assert.ok(colors.includes("success:●"));
+});

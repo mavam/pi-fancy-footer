@@ -804,6 +804,7 @@ function buildExtensionWidgets(
   return widgets.map((widget) => {
     const icon = resolveDataWidgetIcon(widget.icon, iconFamily);
     const showIconWhenEmpty = widget.defaults.enabled !== false;
+    const spans = widget.content.spans;
     return {
       id: widget.id,
       location: {
@@ -825,7 +826,18 @@ function buildExtensionWidgets(
       visible: () =>
         widget.content.text !== "" ||
         (showIconWhenEmpty && icon !== undefined),
-      renderText: () => widget.content.text,
+      ...(spans ? { styled: true } : {}),
+      renderText: spans
+        ? (renderCtx) =>
+            spans
+              .map((span) =>
+                renderCtx.theme.fg(
+                  span.color ?? renderCtx.defaultTextColor,
+                  span.text,
+                ),
+              )
+              .join("")
+        : () => widget.content.text,
     };
   });
 }

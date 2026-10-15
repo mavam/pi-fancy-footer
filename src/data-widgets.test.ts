@@ -202,3 +202,46 @@ test("microtask coalescing emits once per turn", async () => {
   await Promise.resolve();
   assert.equal(calls, 2);
 });
+
+test("data widget spans are sanitized and derive the plain text", () => {
+  const store = new FancyFooterDataWidgetStore();
+  assert.equal(
+    store.apply(
+      upsert("acme.agents", "ignored", {
+        content: {
+          type: "text",
+          text: "ignored",
+          spans: [
+            { text: " 2" },
+            { text: "◉\n", color: "warning" },
+            { text: " 1\x1b[31m" },
+            { text: "" },
+            { text: "● ", color: "success" },
+          ],
+        },
+      }),
+    ),
+    true,
+  );
+  const [widget] = store.values();
+  assert.equal(widget?.content.text, "2◉ 1 [31m●");
+  assert.deepEqual(widget?.content.spans, [
+    { text: "2" },
+    { text: "◉ ", color: "warning" },
+    { text: "1 [31m" },
+    { text: "●", color: "success" },
+  ]);
+});
+
+test("data widgets reject invalid spans", () => {
+  const store = new FancyFooterDataWidgetStore();
+  const withSpans = (spans: unknown) =>
+    upsert("acme.agents", "x", {
+      content: { type: "text", text: "x", spans },
+    });
+  assert.equal(store.apply(withSpans([{ text: "x", color: "red" }])), false);
+  assert.equal(store.apply(withSpans([{ text: 1 }])), false);
+  assert.equal(store.apply(withSpans([{ text: "x", bold: true }])), false);
+  assert.equal(store.apply(withSpans("x")), false);
+  assert.equal(store.values().length, 0);
+});
