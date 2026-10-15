@@ -1,0 +1,9 @@
+created: 2026-10-15
+title: Colored extension widget text
+intro: >-
+  Extension widgets can now color parts of their text with theme-colored spans, so
+  producers like pi-agents can color status glyphs while counts keep the normal text
+  color.
+source:
+  mode: sync-stable-queue
+  previous_stable: v3.1.0
