@@ -330,6 +330,35 @@ update. A `remove` message drops the live widget definition. Widget text is
 limited to 512 Unicode code points and terminal control characters are
 stripped.
 
+To color parts of the text, add `content.spans`, an array of up to 64
+`{ text, color? }` runs. Colors use the same theme color names as
+`style.textColor`; producers must not embed ANSI escapes. A span without a
+`color` uses the widget's text color, including a user's `textColor` override,
+while colored spans keep their color. For example, an agent status widget can
+color only its glyphs:
+
+```ts
+content: {
+  type: "text",
+  text: "2◉ 1●",
+  spans: [
+    { text: "2" },
+    { text: "◉", color: "warning" },
+    { text: " 1" },
+    { text: "●", color: "success" },
+  ],
+},
+```
+
+When `spans` is present, the footer renders the spans and ignores `text`; keep
+`text` set to the concatenated span text as a plain fallback. The spans are
+sanitized as one line: whitespace collapses across span boundaries, the joined
+text is trimmed, and the 512 code point limit applies to the total. The widget
+counts as empty when the joined span text is empty. Narrow layouts truncate
+the colored text like plain text, and `content.href` still links the complete
+widget. Spans require pi-fancy-footer 3.2.0 or later; older versions reject
+updates that contain them, so send plain `text` if you must support them.
+
 The structured snapshot can provide `label`, `description`, an icon glyph or
 per-family glyph map, icon and text colors, and layout defaults (`enabled`,
 `row`, `position`, `align`, `fill`, and `minWidth`). Saved user settings override

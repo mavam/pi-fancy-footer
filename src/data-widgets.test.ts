@@ -4,6 +4,7 @@ import {
   createMicrotaskCoalescer,
   FancyFooterDataWidgetStore,
   MAX_DATA_WIDGET_HREF_LENGTH,
+  MAX_DATA_WIDGET_SPANS,
   MAX_DATA_WIDGET_TEXT_CODE_POINTS,
   resolveDataWidgetIcon,
   sanitizeDataWidgetText,
@@ -201,4 +202,88 @@ test("microtask coalescing emits once per turn", async () => {
   request();
   await Promise.resolve();
   assert.equal(calls, 2);
+});
+
+test("data widget spans are sanitized and derive the plain text", () => {
+  const store = new FancyFooterDataWidgetStore();
+  assert.equal(
+    store.apply(
+      upsert("acme.agents", "ignored", {
+        content: {
+          type: "text",
+          text: "ignored",
+          spans: [
+            { text: " 2" },
+            { text: "◉\n", color: "warning" },
+            { text: " 1\x1b[31m" },
+            { text: "" },
+            { text: "● ", color: "success" },
+          ],
+        },
+      }),
+    ),
+    true,
+  );
+  const [widget] = store.values();
+  assert.equal(widget?.content.text, "2◉ 1 [31m●");
+  assert.deepEqual(widget?.content.spans, [
+    { text: "2" },
+    { text: "◉ ", color: "warning" },
+    { text: "1 [31m" },
+    { text: "●", color: "success" },
+  ]);
+});
+
+test("data widgets reject invalid spans", () => {
+  const store = new FancyFooterDataWidgetStore();
+  const withSpans = (spans: unknown) =>
+    upsert("acme.agents", "x", {
+      content: { type: "text", text: "x", spans },
+    });
+  assert.equal(store.apply(withSpans([{ text: "x", color: "red" }])), false);
+  assert.equal(store.apply(withSpans([{ text: 1 }])), false);
+  assert.equal(store.apply(withSpans([{ text: "x", bold: true }])), false);
+  assert.equal(store.apply(withSpans("x")), false);
+  assert.equal(store.values().length, 0);
+});
+
+test("data widget spans enforce count and aggregate length limits", () => {
+  const store = new FancyFooterDataWidgetStore();
+  const withSpans = (spans: unknown[]) =>
+    upsert("acme.agents", "x", {
+      content: { type: "text", text: "x", spans },
+    });
+  const span = { text: "😀".repeat(10), color: "accent" };
+  assert.equal(MAX_DATA_WIDGET_SPANS, 64);
+  assert.equal(store.apply(withSpans(Array(65).fill(span))), false);
+  assert.equal(store.apply(withSpans(Array(64).fill(span))), true);
+  const [widget] = store.values();
+  assert.equal(
+    Array.from(widget?.content.text ?? "").length,
+    MAX_DATA_WIDGET_TEXT_CODE_POINTS,
+  );
+  assert.equal(
+    widget?.content.spans
+      ?.map((item) => Array.from(item.text).length)
+      .reduce((sum, length) => sum + length, 0),
+    MAX_DATA_WIDGET_TEXT_CODE_POINTS,
+  );
+  assert.equal(widget?.content.spans?.length, 52);
+  assert.equal(Array.from(widget?.content.spans?.at(-1)?.text ?? "").length, 2);
+});
+
+test("empty and whitespace-only spans yield empty widget text", () => {
+  for (const spans of [[], [{ text: " \n\t" }, { text: "  ", color: "error" }]]) {
+    const store = new FancyFooterDataWidgetStore();
+    assert.equal(
+      store.apply(
+        upsert("acme.agents", "fallback", {
+          content: { type: "text", text: "fallback", spans },
+        }),
+      ),
+      true,
+    );
+    assert.equal(store.values()[0]?.content.text, "");
+    assert.deepEqual(store.values()[0]?.content.spans, []);
+  }
 });

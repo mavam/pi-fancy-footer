@@ -10,9 +10,26 @@ export const FANCY_FOOTER_PROTOCOL_VERSION = 1 as const;
 export const FANCY_FOOTER_WIDGET_CHANNEL = "pi-fancy-footer:widget";
 export const FANCY_FOOTER_READY_CHANNEL = "pi-fancy-footer:ready";
 
+/** A run of widget text with an optional theme color. */
+export interface FancyFooterTextSpan {
+  text: string;
+  /** Theme color for this run. Omit to use the widget's resolved text color. */
+  color?: FooterWidgetColor;
+}
+
 export interface FancyFooterTextContent {
   type: "text";
+  /**
+   * Plain widget text. When `spans` is present, the footer renders the spans
+   * instead; keep `text` set to their concatenation as a plain fallback.
+   */
   text: string;
+  /**
+   * Optional colored runs (at most 64) that replace `text` for rendering.
+   * Their joined text shares the 512 code point limit. Requires
+   * pi-fancy-footer 3.2.0 or later; older footers reject the update.
+   */
+  spans?: FancyFooterTextSpan[];
   /** Optional HTTP(S) destination for the complete rendered widget. */
   href?: string;
 }

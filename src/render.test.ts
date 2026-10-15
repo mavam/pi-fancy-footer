@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { renderFooterLines } from "./render.ts";
-import type { NormalizedFancyFooterDataWidget } from "./data-widgets.ts";
+import {
+  FancyFooterDataWidgetStore,
+  type NormalizedFancyFooterDataWidget,
+} from "./data-widgets.ts";
 import { parseCodexRateLimitHeaders } from "./provider-status.ts";
 import {
   DEFAULT_FOOTER_CONFIG,
@@ -1093,5 +1096,169 @@ test("renderFooterLines truncates countdown gauges ANSI-safely", () => {
       assert.ok(visibleWidth(line) <= width);
       assert.equal(line.replace(/\x1b\[[0-9;]*m/g, "").includes("\x1b"), false);
     }
+  }
+});
+
+test("data widget spans render their colors and fall back to the text color", () => {
+  const colors: string[] = [];
+  const coloredTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(`${color}:${text}`);
+      return text;
+    },
+    getColorMode: () => "truecolor" as const,
+  };
+  const widget: NormalizedFancyFooterDataWidget = {
+    ...agentWidgets[1]!,
+    content: {
+      type: "text",
+      text: "2◉ 1●",
+      spans: [
+        { text: "2" },
+        { text: "◉", color: "warning" },
+        { text: " 1" },
+        { text: "●", color: "success" },
+      ],
+    },
+    preferredTextColor: "muted",
+    defaults: { ...agentWidgets[1]!.defaults, enabled: undefined },
+  };
+  const config: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: { [widget.id]: { textColor: "accent" } },
+  };
+
+  const lines = renderFooterLines(
+    160,
+    contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+    EMPTY_GIT_INFO,
+    "off",
+    coloredTheme as never,
+    usageMetrics,
+    config,
+    [widget],
+  );
+
+  assert.match(lines.join("\n"), /2◉ 1●/);
+  assert.ok(colors.includes("accent:2"));
+  assert.ok(colors.includes("warning:◉"));
+  assert.ok(colors.includes("accent: 1"));
+  assert.ok(colors.includes("success:●"));
+});
+
+function normalizeSpanWidget(
+  spans: unknown[],
+  extra: Record<string, unknown> = {},
+): NormalizedFancyFooterDataWidget {
+  const store = new FancyFooterDataWidgetStore();
+  assert.equal(
+    store.apply({
+      protocol: 1,
+      type: "upsert",
+      widget: {
+        id: "pi-agents.status",
+        content: { type: "text", text: "", spans, ...extra },
+        icon: false,
+        layout: { row: 1, position: 0, align: "left" },
+      },
+    }),
+    true,
+  );
+  return store.values()[0]!;
+}
+
+test("ANSI-colored data widget spans truncate safely with links", () => {
+  const codes: Record<string, number> = {
+    text: 37,
+    warning: 33,
+    accent: 34,
+    success: 32,
+    dim: 90,
+    error: 31,
+  };
+  const ansiTheme = {
+    fg: (color: string, text: string) =>
+      `\x1b[${codes[color] ?? 39}m${text}\x1b[39m`,
+    getColorMode: () => "truecolor" as const,
+  };
+  const href = "https://example.com/agents";
+  const widget = normalizeSpanWidget(
+    [
+      { text: "2" },
+      { text: "◉", color: "warning" },
+      { text: " 1" },
+      { text: "◐", color: "accent" },
+      { text: " 1" },
+      { text: "●", color: "success" },
+      { text: " 2" },
+      { text: "◌", color: "dim" },
+      { text: " 界界", color: "error" },
+    ],
+    { href },
+  );
+  const config: FooterConfigSnapshot = {
+    ...footerConfig,
+    extensionWidgets: { [widget.id]: { textColor: "text" } },
+  };
+  const render = (width: number) =>
+    renderFooterLines(
+      width,
+      contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+      EMPTY_GIT_INFO,
+      "off",
+      ansiTheme as never,
+      usageMetrics,
+      config,
+      [widget],
+    );
+
+  const full = render(160).join("\n");
+  assert.ok(
+    full.includes(
+      `\x1b]8;;${href}\x07\x1b[37m2\x1b[39m\x1b[33m◉\x1b[39m\x1b[37m 1\x1b[39m` +
+        `\x1b[34m◐\x1b[39m\x1b[37m 1\x1b[39m\x1b[32m●\x1b[39m` +
+        `\x1b[37m 2\x1b[39m\x1b[90m◌\x1b[39m\x1b[31m 界界\x1b[39m\x1b]8;;\x07`,
+    ),
+  );
+
+  for (let width = 1; width <= 24; width++) {
+    for (const line of render(width)) {
+      assert.ok(visibleWidth(line) <= width, `width ${width}: ${line}`);
+      const opens = line.split(`\x1b]8;;${href}\x07`).length - 1;
+      const closes = line.split("\x1b]8;;\x07").length - 1;
+      assert.ok(closes >= opens, `unclosed link at width ${width}`);
+      const rest = line
+        .replace(/\x1b\[[0-9;]*m/g, "")
+        .replace(/\x1b\]8;;[^\x07]*\x07/g, "");
+      assert.equal(rest.includes("\x1b"), false);
+    }
+  }
+});
+
+test("data widgets with empty spans stay hidden", () => {
+  for (const spans of [[], [{ text: "  " }, { text: "\n", color: "error" }]]) {
+    const widget = normalizeSpanWidget(spans);
+    const lines = renderFooterLines(
+      160,
+      contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+      EMPTY_GIT_INFO,
+      "off",
+      theme as never,
+      usageMetrics,
+      footerConfig,
+      [widget],
+    );
+    const withWidget = lines.join("\n");
+    const without = renderFooterLines(
+      160,
+      contextWithModel({ id: "gpt-5", name: "GPT-5" }) as never,
+      EMPTY_GIT_INFO,
+      "off",
+      theme as never,
+      usageMetrics,
+      footerConfig,
+      [],
+    ).join("\n");
+    assert.equal(withWidget, without);
   }
 });
