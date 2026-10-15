@@ -25,7 +25,8 @@ export interface FancyFooterTextContent {
    */
   text: string;
   /**
-   * Optional colored runs that replace `text` for rendering. Requires
+   * Optional colored runs (at most 64) that replace `text` for rendering.
+   * Their joined text shares the 512 code point limit. Requires
    * pi-fancy-footer 3.2.0 or later; older footers reject the update.
    */
   spans?: FancyFooterTextSpan[];
